@@ -1,11 +1,11 @@
-# AGENTS.md — glaudcode
+# AGENTS.md — glaudecode
 
 > **Cross-tool agent memory.** Read by Codex CLI, Cursor, Windsurf, GitHub Copilot natively.
 > Claude Code reads `CLAUDE.md` (symlinked to this file).
 
 ## Project
 
-**glaudcode** — the Claude Code Companion CLI. A meta-layer above Claude Code that handles multi-session orchestration, cross-session memory, mobile/web control, and CLI-level lifecycle hooks.
+**glaudecode** — the Claude Code Companion CLI. A meta-layer above Claude Code that handles multi-session orchestration, cross-session memory, mobile/web control, and CLI-level lifecycle hooks.
 
 ## Status
 
