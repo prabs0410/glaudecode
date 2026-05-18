@@ -1,0 +1,36 @@
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+.turbo/
+
+# Logs / runtime
+*.log
+.env
+.env.local
+.env.*.local
+
+# Spec-Kit working state (keep templates + memory in git)
+.specify/scripts/*.tmp
+.specify/cache/
+
+# Test outputs
+coverage/
+.nyc_output/
+*.lcov
+
+# Secrets / local config
+secrets/
+*.pem
+*.key
