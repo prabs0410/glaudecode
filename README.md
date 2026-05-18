@@ -1,4 +1,4 @@
-# cccli
+# glaudcode
 
 > The Claude Code Companion CLI.
 
@@ -12,16 +12,16 @@ A meta-layer above Claude Code for multi-session orchestration, cross-session me
 
 If you use Claude Code daily, you've hit these:
 
-- **Lost a session because of the 30-day retention sweep?** cccli's session UX layer.
-- **Three Claude Code sessions open, copy-pasting between them?** cccli's multi-session orchestration.
-- **Forked your conversation but lost the parent context?** cccli's multi-session-from-same-context.
-- **Want to approve a long-running task from your phone?** cccli's mobile control.
-- **Wish hooks fired on session lifecycle, not just tool use?** cccli's CLI-level hooks.
+- **Lost a session because of the 30-day retention sweep?** glaudcode's session UX layer.
+- **Three Claude Code sessions open, copy-pasting between them?** glaudcode's multi-session orchestration.
+- **Forked your conversation but lost the parent context?** glaudcode's multi-session-from-same-context.
+- **Want to approve a long-running task from your phone?** glaudcode's mobile control.
+- **Wish hooks fired on session lifecycle, not just tool use?** glaudcode's CLI-level hooks.
 
-cccli is the cockpit Claude Code doesn't ship.
+glaudcode is the cockpit Claude Code doesn't ship.
 
 ## License
 
 [Apache License 2.0](LICENSE) — see [`NOTICE`](NOTICE) for attributions.
 
-You can use, modify, and distribute cccli freely, including in commercial products. Apache 2.0 includes an explicit patent grant from contributors.
+You can use, modify, and distribute glaudcode freely, including in commercial products. Apache 2.0 includes an explicit patent grant from contributors.
