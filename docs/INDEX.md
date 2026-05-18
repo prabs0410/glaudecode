@@ -24,6 +24,17 @@ These live elsewhere by convention. Do not duplicate them under `docs/`.
 
 ---
 
+## Working memory (continuously updated)
+
+These live at `docs/` root (not in a subfolder) because they're updated constantly and need to be reachable in one hop.
+
+| File | Purpose | Update cadence |
+|---|---|---|
+| `docs/state.md` | **Where we are right now.** Locked decisions, in-flight work, immediate next actions. | End of every meaningful work unit |
+| `docs/open-questions.md` | Running list of unresolved decisions with status (OPEN / DEFERRED / ANSWERED). | Whenever a question surfaces or resolves |
+
+---
+
 ## Current folders under `docs/`
 
 ### `docs/adr/` — Architectural Decision Records
@@ -33,6 +44,16 @@ consequences. Naming: `NNNN-kebab-case-title.md`, sequential, never reused.
 - `0002-adopt-pi-design-conventions.md` — adopts Pi-inspired lifecycle events, JSONL tree
   storage, fork verb split, steering primitives, jiti extensions
 - README: [adr/README.md](adr/README.md)
+
+### `docs/handoffs/` — Session transition documents
+Terminal-state captures when a session ends. Frozen-in-time snapshots that let a fresh agent or returning human pick up cold. Naming: `YYYY-MM-DD-headline-slug.md`. Never edited after the writing session.
+- `2026-05-18-bootstrap-to-glaudecode.md` — bootstrap handoff that opened the constitution-ratification session
+- README: [handoffs/README.md](handoffs/README.md)
+
+### `docs/notes/` — Working-memory topic files
+Topic-based files for half-formed thinking that's not yet ADR-ready, not a finished research artifact. The messy middle. Naming: `kebab-case-topic.md`. Lifecycle: either crystallizes into a formal doc, or gets deleted when no longer relevant.
+- *(empty — first note lands when V1 design work begins)*
+- README: [notes/README.md](notes/README.md)
 
 ### `docs/architecture/` — System design (long-form)
 Long-form system design docs that go beyond ADR length. Diagrams, data-flow walk-throughs,
