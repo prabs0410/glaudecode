@@ -22,4 +22,6 @@ cccli is the cockpit Claude Code doesn't ship.
 
 ## License
 
-TBD — see project constitution.
+[Apache License 2.0](LICENSE) — see [`NOTICE`](NOTICE) for attributions.
+
+You can use, modify, and distribute cccli freely, including in commercial products. Apache 2.0 includes an explicit patent grant from contributors.
