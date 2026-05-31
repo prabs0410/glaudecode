@@ -43,6 +43,10 @@ consequences. Naming: `NNNN-kebab-case-title.md`, sequential, never reused.
 - `0001-constitution-principles.md` — locks the 10 constitution principles
 - `0002-adopt-pi-design-conventions.md` — adopts Pi-inspired lifecycle events, JSONL tree
   storage, fork verb split, steering primitives, jiti extensions
+- `0003-pivot-to-terminal-native-positioning.md` — pivots from "meta-layer" to "the terminal
+  that makes Claude Code exceptional"; amends Principles I/II/X, adds XI; constitution → v2.0.0
+- `0004-system-architecture.md` — Tauri 2 + React + xterm.js + Bun-sidecar engine +
+  ClaudeCodeAdapter; build-don't-fork; mandatory integration rules from Principle XI
 - README: [adr/README.md](adr/README.md)
 
 ### `docs/handoffs/` — Session transition documents
@@ -66,6 +70,8 @@ Research outputs that inform design decisions. Three subfolders:
 
 - `docs/research/competitive/` — competitor and adjacent-product analysis
   - `pi.md` — Pi (`@earendil-works/pi-coding-agent`) competitive research (2026-05-18)
+  - `viability-2026.md` — 108-agent verified viability + competitive + integration-risk research
+    (2026-06-01); the evidence base for ADR 0003
   - README: [research/competitive/README.md](research/competitive/README.md)
 - `docs/research/market/` — TAM, user research, pricing analysis
   - *(empty — first artifact when pricing for the paid hosted tier needs validation)*

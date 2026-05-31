@@ -1,24 +1,28 @@
 # GlaudeCode
 
-> The Claude Code Companion CLI.
+> The terminal built to make Claude Code exceptional.
 
-A meta-layer above Claude Code for multi-session orchestration, cross-session memory, and mobile/web control.
+A desktop terminal, deeply integrated with Claude Code, that makes everyday Claude Code work more powerful, visible, and controllable — not a replacement for Claude Code, and not a neutral layer above it.
 
 ## Status
 
-🚧 **Pre-PRD.** Project bootstrapped 2026-05-14. Currently drafting the constitution and feature specs using [Spec-Kit](https://github.com/github/spec-kit).
+🚧 **Pre-implementation.** Bootstrapped 2026-05-14. Constitution v2.0.0 ratified; positioning and architecture locked (see [`docs/adr/`](docs/adr/)). Foundation validation spike is the next step.
 
 ## Why
 
-If you use Claude Code daily, you've hit these:
+If you use Claude Code daily, the terminal you run it in does nothing to help. GlaudeCode does:
 
-- **Lost a session because of the 30-day retention sweep?** GlaudeCode's session UX layer.
-- **Three Claude Code sessions open, copy-pasting between them?** GlaudeCode's multi-session orchestration.
-- **Forked your conversation but lost the parent context?** GlaudeCode's multi-session-from-same-context.
-- **Want to approve a long-running task from your phone?** GlaudeCode's mobile control.
-- **Wish hooks fired on session lifecycle, not just tool use?** GlaudeCode's CLI-level hooks.
+- **See what the agent is actually doing** — live agent state, tool-call timeline, cost as it accrues.
+- **Run Claude Code across several worktrees** without copy-pasting between windows.
+- **Keep and revisit your work** — sessions you can find, name, search, and continue.
+- **Control a running session from your phone or browser** when you step away.
+- **Make it yours** — terminal-native, Linux-first, open source, hackable.
 
-GlaudeCode is the cockpit Claude Code doesn't ship.
+The bar for every feature: it has to make a Claude Code user's work meaningfully better than their current terminal does.
+
+## How it's built
+
+Tauri 2 + React/TypeScript + xterm.js, with a TypeScript engine (Bun) that talks to Claude Code through the Agent SDK. All Claude Code integration is isolated behind a single adapter. See [`docs/adr/0004-system-architecture.md`](docs/adr/0004-system-architecture.md).
 
 ## License
 

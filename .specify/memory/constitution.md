@@ -1,11 +1,23 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (none) → 1.0.0
-Bump rationale: Initial ratification. No prior constitution existed. Baseline MAJOR
-                established per the project's own SemVer policy for v1.0+ artifacts.
+Version change: 1.0.0 → 2.0.0 (2026-06-01)
+Bump rationale: MAJOR — backward-incompatible redefinition of Principles I (Mission),
+                II (Scope Boundary), and X (Anthropic Relationship); added Principle XI
+                (Foundation Risk). Source: ADR 0003. Pivot from "meta-layer above Claude Code"
+                to "the terminal that makes Claude Code exceptional" (integration depth, not
+                layer separation). Driven by competitive reality (Anthropic's own app + opcode)
+                and verified integration-substrate instability — see
+                docs/research/competitive/viability-2026.md.
 
-Added principles:
+v2.0.0 principle changes:
+  I.   Mission — redefined: terminal that makes Claude Code exceptional (was: meta-layer CLI)
+  II.  Scope Boundary — redefined: integration depth / felt-improvement test (was: layer discipline)
+  X.   Anthropic Relationship — redefined: encroachment expected, keep-and-sharpen-or-drop
+       (was: deprecate-or-rebase with 30-day Differentiation Note + layer test)
+  XI.  Foundation Risk — NEW: ClaudeCodeAdapter isolation, SDK-not-raw-JSONL, no tight polling
+
+v1.0.0 original principles (for history):
   I.   Mission
   II.  Scope Boundary (Layer Discipline)
   III. Code Quality Bar (NON-NEGOTIABLE)
@@ -47,23 +59,27 @@ Source of authority: docs/adr/0001-constitution-principles.md (committed 2026-05
 
 ### I. Mission
 
-GlaudeCode is the Claude Code Companion CLI — a meta-layer above Claude Code that adds
-capture+recall, multi-session orchestration, remote cockpit, and session UX. It exists to make
-Claude Code dramatically more useful without replacing or competing with it.
+GlaudeCode is **the terminal built to make Claude Code exceptional.** It is a desktop terminal
+emulator, deeply integrated with Claude Code, that makes everyday Claude Code work more powerful,
+visible, and controllable. It exists to make Claude Code users dramatically more effective — not
+to replace Claude Code, and not to abstract it away behind a neutral layer.
 
-**Rationale**: The project's defensibility comes from operating at a layer Claude Code does not
-serve. Forgetting this mission leads to direct competition with a vendor whose surface area we
-cannot match.
+**Rationale**: Defensibility comes from integration depth (the Cursor-to-VS-Code relationship),
+not from operating at a separate layer. The neutral meta-layer position is occupied by Anthropic's
+own app and free incumbents (opcode); the terminal-native, Claude-Code-tuned experience is the
+remaining opening. See ADR 0003 and `docs/research/competitive/viability-2026.md`.
 
-### II. Scope Boundary (Layer Discipline)
+### II. Scope Boundary (Integration Depth, Not Layer Separation)
 
-GlaudeCode operates at a different layer from Claude Code. Claude Code operates inside one
-session. GlaudeCode operates across many sessions, worktrees, and machines. Anything that
-belongs inside one Claude Code session MUST be either upstreamed to Anthropic or deferred from
-the GlaudeCode roadmap.
+GlaudeCode competes on integration depth, not layer separation. Every feature MUST answer:
+*"does this make a Claude Code user's work meaningfully better than their current terminal does?"*
+Features that merely re-skin what Claude Code, opcode, or Anthropic's own app already do well are
+out of scope. The bar is a felt improvement to the Claude Code experience — especially where
+incumbents are weak: terminal-native UX, Linux-first, and OSS hackability.
 
-**Rationale**: Layer discipline is the single test every feature must pass to remain in scope.
-Without it, scope creep turns this project into a fork of Claude Code.
+**Rationale**: A feature checklist that duplicates the incumbents is not a product. The
+felt-improvement test replaces the old layer test: scope is governed by user value over the
+incumbents, not by a layer boundary.
 
 ### III. Code Quality Bar (NON-NEGOTIABLE)
 
@@ -154,23 +170,36 @@ producing value. Light governance is the honest answer for v0.x.
 **Rationale**: The product's value proposition rests on cross-session, cross-tool agent memory.
 A stale `AGENTS.md` in our own repository would invalidate every claim the project makes.
 
-### X. Anthropic Relationship — Deprecate-or-Rebase with Layer Test
+### X. Anthropic Relationship — Encroachment Is Expected
 
-- When Anthropic ships a feature that appears to overlap with one of ours, GlaudeCode publishes
-  a Differentiation Note within 30 calendar days.
-- **Overlap is judged by layer, not theme.** Anthropic shipping mobile control of one Claude
-  Code session is not overlap with our multi-session cockpit. The Differentiation Note MUST
-  explicitly state which layer Anthropic's feature operates on and which layer ours operates on.
-- **Same-layer overlap → deprecate-or-rebase**: announce sunset for one minor version and then
-  remove our feature, or rebuild our feature on top of Anthropic's. We do not run parallel
-  implementations at the same layer.
-- **Different-layer overlap → keep and sharpen**: retain our feature and update documentation to
-  make the layer distinction explicit and unambiguous.
-- We work with Anthropic, never against.
+- Anthropic owns Claude Code and ships a competing first-party app. Encroachment on GlaudeCode's
+  feature surface is expected and normal, not exceptional.
+- GlaudeCode works *with* Claude Code as a dependency and amplifier, never against it.
+- When Anthropic ships something that overlaps a GlaudeCode feature, do NOT reflexively deprecate.
+  Ask: does our version still serve a Claude Code user better for a real reason (terminal-native,
+  cross-platform/Linux-first, hackable, faster-moving)? If yes → keep and sharpen. If no → drop it.
+- Never depend on Claude Code internals that cannot be isolated behind an adapter (see Principle XI).
 
-**Rationale**: The meta-layer positioning is the project's defensible wedge. Defending it
-honestly requires a public, structured response to Anthropic's roadmap rather than reflexive
-deprecation or reflexive defiance.
+**Rationale**: The platform owner shipping adjacent features is the structural reality of this
+space, not an emergency. A case-by-case keep-and-sharpen-or-drop rule is more honest and durable
+than a fixed deprecation ritual.
+
+### XI. Foundation Risk (NON-NEGOTIABLE)
+
+GlaudeCode is built on Claude Code's session interface, which is verified-unstable: cross-session
+JSONL contamination, auto-update session deletion, and SDK churn (see
+`docs/research/competitive/viability-2026.md`). Therefore:
+
+- All Claude Code integration MUST be isolated behind a single `ClaudeCodeAdapter`.
+- Sessions MUST be read via supported SDK APIs (`listSessions`, `getSessionMessages`), NOT raw
+  `~/.claude/projects` JSONL parsing.
+- Tight `listSessions()` polling is forbidden (documented memory leak); use event/debounce.
+- Multiple Claude Code sessions MUST be isolated per worktree directory (one-dir-many-sessions
+  triggers the contamination bug).
+- The system MUST remain resilient to the Claude Code interface changing without notice.
+
+**Rationale**: The entire product sits on a vendor-controlled, churning, buggy interface. Naming
+this risk and confining it to one adapter is what keeps a foundation change from being fatal.
 
 ## Development Workflow & Quality Gates
 
@@ -218,4 +247,4 @@ deprecation or reflexive defiance.
 - **Source-of-truth pointer**: the most current authority for principle rationale and history is
   the ADR series in `docs/adr/`, anchored by ADR 0001.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-18
+**Version**: 2.0.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-06-01
