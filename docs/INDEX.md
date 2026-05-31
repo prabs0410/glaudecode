@@ -77,7 +77,8 @@ Research outputs that inform design decisions. Three subfolders:
   - *(empty — first artifact when pricing for the paid hosted tier needs validation)*
   - README: [research/market/README.md](research/market/README.md)
 - `docs/research/technical/` — library/framework evaluation, integration spikes
-  - *(empty — first artifact when V1 stack questions need resolution)*
+  - `spike-claude-code-integration.md` — verified spike (2026-06-01): Bun+Agent SDK can read &
+    fork interactively-created sessions, and survives `bun build --compile` on the read path
   - README: [research/technical/README.md](research/technical/README.md)
 
 README at root: [research/README.md](research/README.md)
