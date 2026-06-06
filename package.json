@@ -1,0 +1,14 @@
+{
+  "name": "glaudecode",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The terminal built to make Claude Code exceptional.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "desktop": "bun --cwd packages/desktop run tauri dev",
+    "desktop:build": "bun --cwd packages/desktop run tauri build"
+  }
+}

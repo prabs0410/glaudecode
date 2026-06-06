@@ -23,17 +23,16 @@ Things decided. Don't relitigate. Cross-reference where it lives.
 
 Active work. Things touched in the current or last working session.
 
-- **Docs/ADRs alignment (this session)** — ADR 0003 (positioning), ADR 0004 (architecture) written; constitution → v2.0.0; README rewritten; this file refreshed; INDEX updated. Committing now.
-- **AGENTS.md** — still has earlier uncommitted edits (interaction rules, Git identity, Documentation Index, state pointer) AND still says "meta-layer" in its Project line — needs the positioning fix folded in.
-- **Unpushed commits** to `origin/main`: working-memory artifacts (`72f3fa5`) + Pi/docs-scaffold commits, plus this alignment commit about to land.
+- **Working skeleton built + foundation VERIFIED end-to-end (this session).** `packages/desktop` — Tauri 2 + React + xterm.js + portable-pty. Built, launched, and Claude Code's TUI renders correctly inside our terminal (visual evidence). Both architecture halves now proven: SDK read/fork (`spike-claude-code-integration.md`) + terminal rendering (`spike-tauri-terminal-rendering.md`). Committing the skeleton now.
+- **Monorepo root** — `package.json` with bun workspaces + `desktop` script, per ADR 0004.
 
 ## Next
 
 What comes after current work. Concrete, not aspirational.
 
-- **Fix AGENTS.md "Project" line** to the new positioning + commit AGENTS.md's pending edits.
-- **Push** all unpushed commits to `origin/main`.
-- **Validation spike** — bare Tauri + xterm.js + portable-pty running real `claude`, PLUS the three Principle XI risk-tests: (a) Bun sidecar reads an interactively-created session via SDK; (b) fork/resume works on it; (c) sidecar packaging survives the `bun build --compile` SDK issue (#150) or ship plain Bun. This proves/kills the foundation.
+- **First real feature on the skeleton** — wire the Bun/Agent-SDK engine (proven `listSessions`/`getSessionMessages`) into a sessions sidebar beside the terminal pane, via the ClaudeCodeAdapter. This is the first vertical slice of the actual product.
+- **Push** the skeleton + spike commits to `origin/main`.
 - **Discovery research** — focused pass to find what none of opcode/Anthropic/Wave/Terax does (the felt-improvement wedge per Principle II). Can run in background.
 - **Re-evaluate the 9 features** against Principle II's felt-improvement bar; drop commoditized ones as standalone differentiators.
+- **Cosmetic** — rename window title "desktop" → GlaudeCode (`tauri.conf.json` productName).
 - **Open questions** — `docs/open-questions.md`.

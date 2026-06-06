@@ -79,6 +79,8 @@ Research outputs that inform design decisions. Three subfolders:
 - `docs/research/technical/` — library/framework evaluation, integration spikes
   - `spike-claude-code-integration.md` — verified spike (2026-06-01): Bun+Agent SDK can read &
     fork interactively-created sessions, and survives `bun build --compile` on the read path
+  - `spike-tauri-terminal-rendering.md` — verified spike (2026-06-01): Tauri 2 + xterm.js +
+    portable-pty runs a real shell and Claude Code's TUI renders correctly (visual evidence)
   - README: [research/technical/README.md](research/technical/README.md)
 
 README at root: [research/README.md](research/README.md)
