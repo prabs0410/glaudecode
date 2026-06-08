@@ -157,9 +157,15 @@ live messaging). **Epic A COMPLETE.**
 **Epic B — Extensibility COMPLETE** (branch `feat/v2-b-extensibility`): B1 typed lifecycle `EventBus`
 ✅, B2 jiti `ExtensionHost` (trusted-only, failure-isolated) ✅, B3 advisory rule-based `MetaAgent`
 (off by default, $0, never acts) + `metaObservations` RPC + `MetaAgentPanel` ✅. Also fixed a handoff
-bracketed-paste breakout (strip control bytes in `buildHandoffSummary`). Resume at **Epic C — Cost &
-control** (`docs/design/epic-c-cost-control.md`): C1 context-window gauge ⭐, C2 smart approval ⭐,
-C3 budgets + alerts ⭐, C4 model suggestion.
+bracketed-paste breakout (strip control bytes in `buildHandoffSummary`).
+
+**Epic C — Cost & control COMPLETE** (branch `feat/v2-c-cost-control`): C1 context-window gauge ✅,
+C2 smart approval ✅ (classifyTool policy + reversible settings.json hook installer + ApprovalQueue +
+/approval endpoint + hook runner with fail-closed/open + opt-in approval cards), C3 budgets + cost
+rollups ✅ (pure aggregate/evaluate + CostStore + budgetStatus RPC + BudgetChip; desktop-notification
+alerts deferred to Epic F), C4 model suggestion ✅ (suggestModel heuristic + review-first Haiku chip).
+Resume at **Epic D — Memory & knowledge** (`docs/design/epic-d-memory-knowledge.md`): D1 memory +
+AGENTS.md editor + loaded-context view ⭐, D2 graphify graph (optional) ⭐, D3 global FTS5 search ⭐.
 
 ---
 

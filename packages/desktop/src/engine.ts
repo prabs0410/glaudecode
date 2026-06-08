@@ -212,6 +212,15 @@ export const getBudget = (dir: string) => engineRpc<Budget | null>("getBudget", 
 export const setBudget = (dir: string, budget: Budget) =>
   engineRpc<{ ok: true }>("setBudget", { dir, budget });
 
+export interface ModelSuggestion {
+  suggest: "haiku" | null;
+  reason: string;
+}
+
+/** Cheap-mode suggestion for a session's latest task (Epic C §3.4). Suggestion-first. */
+export const modelSuggestion = (id: string, dir: string) =>
+  engineRpc<ModelSuggestion>("modelSuggestion", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

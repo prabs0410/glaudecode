@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BudgetChip } from "./BudgetChip";
+import { ModelSuggestionChip } from "./ModelSuggestionChip";
 import {
   agentState,
   contextUsage,
@@ -101,6 +102,11 @@ export function StatusBar({ dir, selectedId, projectDir, liveSessions }: StatusB
         </span>
       )}
       {state?.model && <span className="status-model">{state.model}</span>}
+      <ModelSuggestionChip
+        sessionId={selectedId}
+        dir={dir}
+        isLive={liveSessions.some((s) => s.id === selectedId)}
+      />
       <BudgetChip projectDir={projectDir} liveSessions={liveSessions} />
     </div>
   );

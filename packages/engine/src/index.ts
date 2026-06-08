@@ -73,6 +73,8 @@ export type {
 } from "./approvalQueue";
 export { CostStore, aggregateDayCosts, evaluateBudget } from "./budget";
 export type { Budget, BudgetState, BudgetStatus, DayCost, RollupSummary } from "./budget";
+export { suggestModel, latestUserPrompt } from "./modelSuggestion";
+export type { ModelSuggestion } from "./modelSuggestion";
 export type {
   ContentBlock,
   ForkResult,

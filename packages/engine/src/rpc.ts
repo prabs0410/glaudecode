@@ -17,6 +17,7 @@ import { WorktreeManager } from "./worktree";
 import { buildHandoffSummary } from "./handoff";
 import { generateObservations } from "./metaAgent";
 import { computeContextUsage } from "./contextUsage";
+import { suggestModel, latestUserPrompt } from "./modelSuggestion";
 import { ApprovalHookInstaller } from "./approvalHook";
 import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
 import { CostStore, evaluateBudget, type Budget } from "./budget";
@@ -49,7 +50,8 @@ export type RpcMethod =
   | "approvalHookStatus"
   | "budgetStatus"
   | "getBudget"
-  | "setBudget";
+  | "setBudget"
+  | "modelSuggestion";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -78,6 +80,7 @@ const METHODS = new Set<RpcMethod>([
   "budgetStatus",
   "getBudget",
   "setBudget",
+  "modelSuggestion",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -236,6 +239,11 @@ export async function dispatch(
     case "setBudget":
       await (deps.costStore ?? defaultCostStore).setBudget(req(p.dir, "dir"), req(p.budget, "budget") as Budget);
       return { ok: true };
+    case "modelSuggestion": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      const model = deriveAgentState(msgs, Date.now()).model;
+      return suggestModel(latestUserPrompt(msgs), { currentModel: model });
+    }
   }
 }
 
