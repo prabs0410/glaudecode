@@ -30,6 +30,7 @@ These live at `docs/` root (not in a subfolder) because they're updated constant
 
 | File | Purpose | Update cadence |
 |---|---|---|
+| `docs/GOAL.md` | **North-star + V1 autonomous-build backlog** (acceptance criteria + guardrails). The single target an automated build loop works against. | When scope or goal changes |
 | `docs/state.md` | **Where we are right now.** Locked decisions, in-flight work, immediate next actions. | End of every meaningful work unit |
 | `docs/open-questions.md` | Running list of unresolved decisions with status (OPEN / DEFERRED / ANSWERED). | Whenever a question surfaces or resolves |
 
