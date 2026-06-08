@@ -144,8 +144,11 @@ generic re-skin of what Anthropic's app / opcode already do, STOP and flag — d
 commoditized version.
 
 ### Current progress (2026-06-09)
-Branch `feat/v2-a-orchestration` started; **A1 WorktreeManager** in progress (porcelain parser +
-exec wrappers written, tests next). Resume from there.
+Branch `feat/v2-a-orchestration`. **A1 WorktreeManager** ✅ (tested), **A2 ConflictDetector** ✅
+(tested + `conflicts` RPC), **A3 multi-PTY registry (Rust)** ✅ (`PtyRegistry` keyed by `paneId`;
+pane-scoped `pty_spawn/write/resize/kill`; namespaced `pty-output:{paneId}`/`pty-exit:{paneId}`
+events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`). Resume at **A4
+orchestration UI** (tabs/panes + new-session-in-worktree + conflict banner), then A5 context handoff.
 
 ---
 

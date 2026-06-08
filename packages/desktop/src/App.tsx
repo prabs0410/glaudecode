@@ -11,7 +11,18 @@ import { RightDock } from "./RightDock";
 import { projectDir } from "./engine";
 import "./App.css";
 
-function TerminalPane() {
+interface TerminalPaneProps {
+  /** Opaque id binding this xterm instance to one PTY in the Rust registry. */
+  paneId: string;
+  /** Working directory for the spawned process (defaults to the app cwd). */
+  cwd?: string;
+  /** Program to run; omit for an interactive login shell. */
+  cmd?: string;
+  /** Arguments for `cmd` (e.g. ["--session-id", uuid] for a Claude pane). */
+  args?: string[];
+}
+
+function TerminalPane({ paneId, cwd, cmd, args }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn
 
@@ -38,19 +49,19 @@ function TerminalPane() {
     term.focus();
 
     const decoder = new TextDecoder();
-    const unlistenOut = listen<number[]>("pty-output", (e) => {
+    const unlistenOut = listen<number[]>(`pty-output:${paneId}`, (e) => {
       term.write(decoder.decode(new Uint8Array(e.payload), { stream: true }));
     });
-    const unlistenExit = listen("pty-exit", () => {
+    const unlistenExit = listen(`pty-exit:${paneId}`, () => {
       term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
     });
 
-    invoke("pty_spawn", { rows: term.rows, cols: term.cols });
-    term.onData((d) => void invoke("pty_write", { data: d }));
+    invoke("pty_spawn", { paneId, cwd, cmd, args, rows: term.rows, cols: term.cols });
+    term.onData((d) => void invoke("pty_write", { paneId, data: d }));
 
     const refit = () => {
       fit.fit();
-      void invoke("pty_resize", { rows: term.rows, cols: term.cols });
+      void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols });
     };
     const ro = new ResizeObserver(refit);
     ro.observe(hostRef.current);
@@ -59,9 +70,10 @@ function TerminalPane() {
       ro.disconnect();
       unlistenOut.then((f) => f());
       unlistenExit.then((f) => f());
+      void invoke("pty_kill", { paneId });
       term.dispose();
     };
-  }, []);
+  }, [paneId, cwd, cmd, args]);
 
   return <div ref={hostRef} className="terminal-host" />;
 }
@@ -80,7 +92,7 @@ export default function App() {
     <div className="app-root">
       <div className="app-shell">
         <Sidebar dir={dir} selectedId={selectedId} onSelect={setSelectedId} />
-        <TerminalPane />
+        <TerminalPane paneId="main" />
         <RightDock dir={dir} selectedId={selectedId} />
       </div>
       <StatusBar dir={dir} selectedId={selectedId} />
