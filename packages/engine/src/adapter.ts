@@ -5,6 +5,7 @@
 // domain types (see ./types); SDK shapes never leak past here.
 
 import {
+  deleteSession as sdkDeleteSession,
   forkSession as sdkForkSession,
   getSessionInfo as sdkGetSessionInfo,
   getSessionMessages as sdkGetSessionMessages,
@@ -74,5 +75,10 @@ export class ClaudeCodeAdapter {
   /** Set (string) or clear (null) a session's tag. */
   async tagSession(id: string, tag: string | null, scope: SessionScope): Promise<void> {
     await sdkTagSession(id, tag, { dir: scope.dir });
+  }
+
+  /** Permanently delete a session. */
+  async deleteSession(id: string, scope: SessionScope): Promise<void> {
+    await sdkDeleteSession(id, { dir: scope.dir });
   }
 }

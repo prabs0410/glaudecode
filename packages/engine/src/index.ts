@@ -15,6 +15,7 @@ export {
   mapSessionSummary,
   mapUsage,
 } from "./mappers";
+export { filterSessions } from "./filter";
 export type {
   ContentBlock,
   ForkResult,

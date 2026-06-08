@@ -43,3 +43,28 @@ export interface SessionSummary {
 export const projectDir = () => invoke<string>("project_dir");
 
 export const listSessions = (dir: string) => engineRpc<SessionSummary[]>("listSessions", { dir });
+
+export const renameSession = (id: string, title: string, dir: string) =>
+  engineRpc<{ ok: true }>("renameSession", { id, title, dir });
+
+export const tagSession = (id: string, tag: string | null, dir: string) =>
+  engineRpc<{ ok: true }>("tagSession", { id, tag, dir });
+
+export const deleteSession = (id: string, dir: string) =>
+  engineRpc<{ ok: true }>("deleteSession", { id, dir });
+
+// Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
+// that package's tests (test/filter.test.ts); kept in sync deliberately rather than
+// importing the engine package (which pulls the Node-only Agent SDK) into the bundle.
+export function filterSessions(sessions: SessionSummary[], query: string): SessionSummary[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return sessions;
+  const terms = q.split(/\s+/);
+  return sessions.filter((s) => {
+    const haystack = [s.title, s.firstPrompt, s.summary, s.gitBranch, s.tag, s.cwd]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return terms.every((t) => haystack.includes(t));
+  });
+}

@@ -1,45 +1,193 @@
-import { useEffect, useState } from "react";
-import { listSessions, projectDir, type SessionSummary } from "./engine";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  deleteSession,
+  filterSessions,
+  listSessions,
+  renameSession,
+  tagSession,
+  type SessionSummary,
+} from "./engine";
 
-// Sessions sidebar. V1-0b proves the renderer -> engine -> Claude Code pipe by
-// listing real sessions; V1-1 enriches it (search, rename, tag, delete, select).
+interface Props {
+  dir: string | null;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}
 
-export function Sidebar() {
+// Sessions sidebar (V1-1): lists the project's real sessions with live search,
+// selection, inline rename + tag, and delete-with-confirm. All mutations go
+// through the engine RPC and reload the list.
+
+export function Sidebar({ dir, selectedId, onSelect }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState<"rename" | "tag">("rename");
+  const [draft, setDraft] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!dir) return;
+    try {
+      setSessions(await listSessions(dir));
+      setError(null);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  }, [dir]);
 
   useEffect(() => {
-    (async () => {
+    void reload();
+  }, [reload]);
+
+  const visible = useMemo(() => filterSessions(sessions, query), [sessions, query]);
+
+  const submitRename = async (id: string) => {
+    const title = draft.trim();
+    setEditingId(null);
+    if (dir && title) {
       try {
-        const dir = await projectDir();
-        setSessions(await listSessions(dir));
+        await renameSession(id, title, dir);
+        await reload();
       } catch (e: any) {
         setError(String(e?.message ?? e));
-      } finally {
-        setLoading(false);
       }
-    })();
-  }, []);
+    }
+  };
+
+  const doTag = async (id: string) => {
+    if (!dir) return;
+    const tag = draft.trim();
+    setEditingId(null);
+    try {
+      await tagSession(id, tag || null, dir);
+      await reload();
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+  };
+
+  const doDelete = async (id: string) => {
+    setConfirmingId(null);
+    if (!dir) return;
+    try {
+      await deleteSession(id, dir);
+      await reload();
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+  };
 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        Sessions{!loading && !error ? ` · ${sessions.length}` : ""}
+        Sessions{!loading && !error ? ` · ${visible.length}` : ""}
       </div>
+
+      <input
+        className="sidebar-search"
+        placeholder="Search sessions…"
+        value={query}
+        onChange={(e) => setQuery(e.currentTarget.value)}
+        spellCheck={false}
+      />
+
       {error && <div className="sidebar-error">{error}</div>}
+
       <ul className="session-list">
         {loading && <li className="session-empty">Loading…</li>}
+
         {!loading &&
           !error &&
-          sessions.map((s) => (
-            <li key={s.id} className="session-item" title={s.firstPrompt ?? s.id}>
-              <div className="session-title">{s.title || s.firstPrompt || s.id.slice(0, 8)}</div>
-              {s.gitBranch && <div className="session-meta">{s.gitBranch}</div>}
-            </li>
-          ))}
-        {!loading && !error && sessions.length === 0 && (
-          <li className="session-empty">No sessions for this project</li>
+          visible.map((s) => {
+            const isSelected = s.id === selectedId;
+            const isEditing = s.id === editingId;
+            const isConfirming = s.id === confirmingId;
+            return (
+              <li
+                key={s.id}
+                className={`session-item${isSelected ? " selected" : ""}`}
+                onClick={() => onSelect(s.id)}
+              >
+                {isEditing ? (
+                  <input
+                    className="session-edit"
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.currentTarget.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder={editMode === "tag" ? "tag…" : "title…"}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void (editMode === "tag" ? doTag(s.id) : submitRename(s.id));
+                      }
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    onBlur={() => setEditingId(null)}
+                  />
+                ) : (
+                  <div className="session-title">
+                    {s.title || s.firstPrompt || s.id.slice(0, 8)}
+                  </div>
+                )}
+
+                <div className="session-meta">
+                  {s.gitBranch && <span className="session-branch">{s.gitBranch}</span>}
+                  {s.tag && <span className="session-tag">{s.tag}</span>}
+                </div>
+
+                <div className="session-actions" onClick={(e) => e.stopPropagation()}>
+                  {isConfirming ? (
+                    <>
+                      <button className="act danger" onClick={() => void doDelete(s.id)}>
+                        Delete
+                      </button>
+                      <button className="act" onClick={() => setConfirmingId(null)}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="act"
+                        title="Rename"
+                        onClick={() => {
+                          setEditMode("rename");
+                          setDraft(s.title ?? "");
+                          setEditingId(s.id);
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="act"
+                        title="Tag"
+                        onClick={() => {
+                          setEditMode("tag");
+                          setDraft(s.tag ?? "");
+                          setEditingId(s.id);
+                        }}
+                      >
+                        Tag
+                      </button>
+                      <button className="act" title="Delete" onClick={() => setConfirmingId(s.id)}>
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+
+        {!loading && !error && visible.length === 0 && (
+          <li className="session-empty">
+            {sessions.length === 0 ? "No sessions for this project" : "No matches"}
+          </li>
         )}
       </ul>
     </aside>

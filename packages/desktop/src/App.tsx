@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { Sidebar } from "./Sidebar";
+import { projectDir } from "./engine";
 import "./App.css";
 
 function TerminalPane() {
@@ -64,9 +65,18 @@ function TerminalPane() {
 }
 
 export default function App() {
+  const [dir, setDir] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    projectDir()
+      .then(setDir)
+      .catch(() => setDir(null));
+  }, []);
+
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar dir={dir} selectedId={selectedId} onSelect={setSelectedId} />
       <TerminalPane />
     </div>
   );

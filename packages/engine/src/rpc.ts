@@ -15,7 +15,8 @@ export type RpcMethod =
   | "getSessionMessages"
   | "forkSession"
   | "renameSession"
-  | "tagSession";
+  | "tagSession"
+  | "deleteSession";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -24,6 +25,7 @@ const METHODS = new Set<RpcMethod>([
   "forkSession",
   "renameSession",
   "tagSession",
+  "deleteSession",
 ]);
 
 export async function dispatch(
@@ -49,6 +51,9 @@ export async function dispatch(
       return { ok: true };
     case "tagSession":
       await adapter.tagSession(req(p.id, "id"), p.tag ?? null, { dir: req(p.dir, "dir") });
+      return { ok: true };
+    case "deleteSession":
+      await adapter.deleteSession(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return { ok: true };
   }
 }
