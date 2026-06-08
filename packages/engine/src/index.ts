@@ -18,6 +18,8 @@ export {
 export { filterSessions } from "./filter";
 export { deriveAgentState } from "./agentState";
 export type { AgentState, AgentStatus } from "./agentState";
+export { buildTimeline } from "./timeline";
+export type { TimelineEntry, ToolStatus } from "./timeline";
 export type {
   ContentBlock,
   ForkResult,

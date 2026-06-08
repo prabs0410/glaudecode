@@ -64,6 +64,21 @@ export interface AgentState {
 export const agentState = (id: string, dir: string) =>
   engineRpc<AgentState>("agentState", { id, dir });
 
+export type TimelineEntry =
+  | { kind: "thinking"; id: string; text: string; timestamp?: string }
+  | {
+      kind: "tool";
+      id: string;
+      name: string;
+      input: unknown;
+      status: "pending" | "ok" | "error";
+      timestamp?: string;
+    };
+
+/** Computed server-side by the engine (buildTimeline, tested there). */
+export const timeline = (id: string, dir: string) =>
+  engineRpc<TimelineEntry[]>("timeline", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

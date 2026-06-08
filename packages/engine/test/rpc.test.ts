@@ -61,6 +61,18 @@ describe("dispatch", () => {
     const out: any = await dispatch(a, "agentState", { id: "s1", dir: "/r" });
     expect(out.status).toBe("thinking");
   });
+
+  test("timeline computes tool/thinking entries from messages", async () => {
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [
+          { id: "m", role: "assistant", blocks: [{ kind: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        ] as any,
+    });
+    const out: any = await dispatch(a, "timeline", { id: "s1", dir: "/r" });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ kind: "tool", name: "Bash", status: "pending" });
+  });
 });
 
 describe("createRpcHandler", () => {

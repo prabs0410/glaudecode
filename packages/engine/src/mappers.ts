@@ -45,7 +45,9 @@ export function mapBlocks(message: any): ContentBlock[] {
     } else if (b.type === "thinking" && typeof b.thinking === "string") {
       blocks.push({ kind: "thinking", text: b.thinking });
     } else if (b.type === "tool_use") {
-      blocks.push({ kind: "tool_use", name: String(b.name ?? ""), input: b.input });
+      blocks.push({ kind: "tool_use", id: b.id, name: String(b.name ?? ""), input: b.input });
+    } else if (b.type === "tool_result") {
+      blocks.push({ kind: "tool_result", toolUseId: b.tool_use_id, isError: Boolean(b.is_error) });
     }
   }
   return blocks;

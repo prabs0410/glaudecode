@@ -9,6 +9,7 @@
 
 import { ClaudeCodeAdapter } from "./adapter";
 import { deriveAgentState } from "./agentState";
+import { buildTimeline } from "./timeline";
 
 export type RpcMethod =
   | "listSessions"
@@ -18,7 +19,8 @@ export type RpcMethod =
   | "renameSession"
   | "tagSession"
   | "deleteSession"
-  | "agentState";
+  | "agentState"
+  | "timeline";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -29,6 +31,7 @@ const METHODS = new Set<RpcMethod>([
   "tagSession",
   "deleteSession",
   "agentState",
+  "timeline",
 ]);
 
 export async function dispatch(
@@ -61,6 +64,10 @@ export async function dispatch(
     case "agentState": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return deriveAgentState(msgs, Date.now());
+    }
+    case "timeline": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      return buildTimeline(msgs);
     }
   }
 }

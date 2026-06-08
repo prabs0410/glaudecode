@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
+import { TimelinePanel } from "./TimelinePanel";
 import { projectDir } from "./engine";
 import "./App.css";
 
@@ -80,6 +81,7 @@ export default function App() {
       <div className="app-shell">
         <Sidebar dir={dir} selectedId={selectedId} onSelect={setSelectedId} />
         <TerminalPane />
+        <TimelinePanel dir={dir} selectedId={selectedId} />
       </div>
       <StatusBar dir={dir} selectedId={selectedId} />
     </div>

@@ -28,10 +28,16 @@ export interface ThinkingBlock {
 }
 export interface ToolUseBlock {
   kind: "tool_use";
+  id?: string;
   name: string;
   input: unknown;
 }
-export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock;
+export interface ToolResultBlock {
+  kind: "tool_result";
+  toolUseId?: string;
+  isError: boolean;
+}
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
 
 export interface TokenUsage {
   inputTokens?: number;

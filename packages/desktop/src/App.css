@@ -206,3 +206,96 @@ body,
   box-sizing: border-box;
   background: #0d1117;
 }
+
+/* Timeline panel (right) */
+.timeline {
+  width: 320px;
+  min-width: 320px;
+  background: #0b0f14;
+  border-left: 1px solid #1f2630;
+  color: #c9d1d9;
+  display: flex;
+  flex-direction: column;
+  font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
+}
+.timeline-header {
+  padding: 10px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #1f2630;
+}
+.timeline-empty {
+  padding: 12px;
+  color: #6e7681;
+}
+.timeline-error {
+  padding: 10px 12px;
+  color: #f85149;
+  font-size: 11px;
+}
+.timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  flex: 1;
+}
+.tl-entry {
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+.tl-entry:hover {
+  background: #11161d;
+}
+.tl-thinking {
+  display: flex;
+  gap: 6px;
+  color: #9db4d0;
+  cursor: pointer;
+}
+.tl-icon {
+  color: #d29922;
+}
+.tl-thinking-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-thinking-text.open {
+  white-space: pre-wrap;
+}
+.tl-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.tl-tool-name {
+  font-variant-numeric: tabular-nums;
+}
+.tl-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #6e7681;
+}
+.tl-status.pending {
+  background: #d29922;
+}
+.tl-status.ok {
+  background: #3fb950;
+}
+.tl-status.error {
+  background: #f85149;
+}
+.tl-tool-input {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 6px;
+  font: 11px/1.4 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
