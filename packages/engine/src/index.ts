@@ -75,6 +75,8 @@ export { CostStore, aggregateDayCosts, evaluateBudget } from "./budget";
 export type { Budget, BudgetState, BudgetStatus, DayCost, RollupSummary } from "./budget";
 export { suggestModel, latestUserPrompt } from "./modelSuggestion";
 export type { ModelSuggestion } from "./modelSuggestion";
+export { MemoryStore, parseLoadedContext, encodeProjectDir } from "./memory";
+export type { LoadedContext, MemoryFile, ProjectInstructions } from "./memory";
 export type {
   ContentBlock,
   ForkResult,

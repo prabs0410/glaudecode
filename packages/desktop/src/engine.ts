@@ -221,6 +221,32 @@ export interface ModelSuggestion {
 export const modelSuggestion = (id: string, dir: string) =>
   engineRpc<ModelSuggestion>("modelSuggestion", { id, dir });
 
+// ---------- Memory & knowledge (Epic D §3.1) ----------
+
+export interface MemoryFile {
+  path: string;
+  name: string;
+  bytes: number;
+}
+
+export const listMemory = (dir: string) => engineRpc<MemoryFile[]>("listMemory", { dir });
+
+export const readMemory = (dir: string, path: string) =>
+  engineRpc<{ content: string }>("readMemory", { dir, path });
+
+export const writeMemory = (dir: string, path: string, content: string) =>
+  engineRpc<{ ok: true }>("writeMemory", { dir, path, content });
+
+export const readProjectInstructions = (dir: string) =>
+  engineRpc<{ path: string; content: string } | null>("readProjectInstructions", { dir });
+
+export const writeProjectInstructions = (dir: string, content: string) =>
+  engineRpc<{ path: string }>("writeProjectInstructions", { dir, content });
+
+/** What memory/instructions were actually loaded into a given session. */
+export const loadedContext = (id: string, dir: string) =>
+  engineRpc<{ instructions?: string }>("loadedContext", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

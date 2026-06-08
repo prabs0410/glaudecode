@@ -21,6 +21,7 @@ import { suggestModel, latestUserPrompt } from "./modelSuggestion";
 import { ApprovalHookInstaller } from "./approvalHook";
 import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
 import { CostStore, evaluateBudget, type Budget } from "./budget";
+import { MemoryStore, parseLoadedContext } from "./memory";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -51,7 +52,13 @@ export type RpcMethod =
   | "budgetStatus"
   | "getBudget"
   | "setBudget"
-  | "modelSuggestion";
+  | "modelSuggestion"
+  | "listMemory"
+  | "readMemory"
+  | "writeMemory"
+  | "readProjectInstructions"
+  | "writeProjectInstructions"
+  | "loadedContext";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -81,11 +88,18 @@ const METHODS = new Set<RpcMethod>([
   "getBudget",
   "setBudget",
   "modelSuggestion",
+  "listMemory",
+  "readMemory",
+  "writeMemory",
+  "readProjectInstructions",
+  "writeProjectInstructions",
+  "loadedContext",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
 const defaultWorktrees = new WorktreeManager();
 const defaultCostStore = new CostStore();
+const defaultMemoryStore = new MemoryStore();
 
 export interface DispatchDeps {
   worktrees?: WorktreeManager;
@@ -95,6 +109,8 @@ export interface DispatchDeps {
   endpoint?: { port: number; token: string };
   /** Cost/budget persistence (injectable for tests). */
   costStore?: CostStore;
+  /** Memory/instructions file access (injectable for tests). */
+  memoryStore?: MemoryStore;
 }
 
 export async function dispatch(
@@ -243,6 +259,21 @@ export async function dispatch(
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       const model = deriveAgentState(msgs, Date.now()).model;
       return suggestModel(latestUserPrompt(msgs), { currentModel: model });
+    }
+    case "listMemory":
+      return (deps.memoryStore ?? defaultMemoryStore).listMemory(req(p.dir, "dir"));
+    case "readMemory":
+      return { content: await (deps.memoryStore ?? defaultMemoryStore).readMemory(req(p.dir, "dir"), req(p.path, "path")) };
+    case "writeMemory":
+      await (deps.memoryStore ?? defaultMemoryStore).writeMemory(req(p.dir, "dir"), req(p.path, "path"), req(p.content, "content"));
+      return { ok: true };
+    case "readProjectInstructions":
+      return (await (deps.memoryStore ?? defaultMemoryStore).readProjectInstructions(req(p.dir, "dir"))) ?? null;
+    case "writeProjectInstructions":
+      return { path: await (deps.memoryStore ?? defaultMemoryStore).writeProjectInstructions(req(p.dir, "dir"), req(p.content, "content")) };
+    case "loadedContext": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") }, { includeSystemMessages: true });
+      return parseLoadedContext(msgs);
     }
   }
 }
