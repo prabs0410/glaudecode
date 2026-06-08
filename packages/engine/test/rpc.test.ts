@@ -1,11 +1,15 @@
 // Unit tests for the RPC handler + dispatch. Uses a stub adapter so they're fully
 // portable (no SDK, no sessions). Covers auth, routing, validation, and errors.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createRpcHandler, dispatch } from "../src/rpc";
 import type { ClaudeCodeAdapter } from "../src/adapter";
 import type { WorktreeManager } from "../src/worktree";
 import { ApprovalQueue } from "../src/approvalQueue";
+import { CostStore } from "../src/budget";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const TOKEN = "test-token";
 
@@ -263,5 +267,31 @@ describe("/approval endpoint + approval RPCs", () => {
     const res = await pending;
     expect(await res.json()).toMatchObject({ decision: "allow" });
     expect(approvals.list()).toEqual([]);
+  });
+});
+
+describe("budget RPCs", () => {
+  const homes: string[] = [];
+  test("setBudget then budgetStatus reflects live session spend", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glaude-rpc-cost-"));
+    homes.push(home);
+    const costStore = new CostStore(home);
+    const dir = "/repo";
+
+    // An assistant message worth some opus tokens so computeSessionCost > 0.
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [{ id: "m", role: "assistant", model: "claude-opus-4-8", blocks: [], usage: { inputTokens: 1_000_000 } }] as any,
+    });
+
+    await dispatch(a, "setBudget", { dir, budget: { dailyUsd: 10, warnPct: 0.8 } }, { costStore });
+    const status: any = await dispatch(a, "budgetStatus", { dir, sessions: [{ id: "s1", dir }] }, { costStore });
+    // 1M input tokens * $15/M = $15 → over the $10 daily cap
+    expect(status.dailyUsd).toBeCloseTo(15, 1);
+    expect(status.state).toBe("over");
+  });
+
+  afterAll(async () => {
+    for (const h of homes) await rm(h, { recursive: true, force: true });
   });
 });

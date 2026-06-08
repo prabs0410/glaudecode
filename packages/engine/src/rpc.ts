@@ -19,6 +19,7 @@ import { generateObservations } from "./metaAgent";
 import { computeContextUsage } from "./contextUsage";
 import { ApprovalHookInstaller } from "./approvalHook";
 import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
+import { CostStore, evaluateBudget, type Budget } from "./budget";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -45,7 +46,10 @@ export type RpcMethod =
   | "resolveApproval"
   | "installApprovalHook"
   | "uninstallApprovalHook"
-  | "approvalHookStatus";
+  | "approvalHookStatus"
+  | "budgetStatus"
+  | "getBudget"
+  | "setBudget";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -71,10 +75,14 @@ const METHODS = new Set<RpcMethod>([
   "installApprovalHook",
   "uninstallApprovalHook",
   "approvalHookStatus",
+  "budgetStatus",
+  "getBudget",
+  "setBudget",
 ]);
 
-// Stateless git wrapper; one instance is fine to share across requests.
+// Stateless wrappers; one instance each is fine to share across requests.
 const defaultWorktrees = new WorktreeManager();
+const defaultCostStore = new CostStore();
 
 export interface DispatchDeps {
   worktrees?: WorktreeManager;
@@ -82,6 +90,8 @@ export interface DispatchDeps {
   approvals?: ApprovalQueue;
   /** This server's {port, token}, for writing the hook's endpoint file. */
   endpoint?: { port: number; token: string };
+  /** Cost/budget persistence (injectable for tests). */
+  costStore?: CostStore;
 }
 
 export async function dispatch(
@@ -205,6 +215,27 @@ export async function dispatch(
       return { ok: true };
     case "approvalHookStatus":
       return { installed: await new ApprovalHookInstaller().isInstalled(req(p.dir, "dir")) };
+    case "budgetStatus": {
+      // Today's spend = sum of the live sessions' estimated cost; total = that plus the
+      // persisted prior-day rollup. Evaluate against the project's configured budget.
+      const dir = req(p.dir, "dir");
+      const store = deps.costStore ?? defaultCostStore;
+      const sessions: Array<{ id: string; dir: string }> = Array.isArray(p.sessions) ? p.sessions : [];
+      const usds = await Promise.all(
+        sessions.map(async ({ id, dir: sdir }) =>
+          computeSessionCost(await adapter.getSessionMessages(id, { dir: sdir })).usd,
+        ),
+      );
+      const todayUsd = usds.reduce((a, b) => a + b, 0);
+      const rollup = await store.readRollup(dir);
+      const budget = await store.getBudget(dir);
+      return evaluateBudget(budget, { dailyUsd: todayUsd, totalUsd: rollup.totalUsd + todayUsd });
+    }
+    case "getBudget":
+      return (await (deps.costStore ?? defaultCostStore).getBudget(req(p.dir, "dir"))) ?? null;
+    case "setBudget":
+      await (deps.costStore ?? defaultCostStore).setBudget(req(p.dir, "dir"), req(p.budget, "budget") as Budget);
+      return { ok: true };
   }
 }
 

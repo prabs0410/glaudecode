@@ -71,6 +71,8 @@ export type {
   SubmitCall,
   SubmitOptions,
 } from "./approvalQueue";
+export { CostStore, aggregateDayCosts, evaluateBudget } from "./budget";
+export type { Budget, BudgetState, BudgetStatus, DayCost, RollupSummary } from "./budget";
 export type {
   ContentBlock,
   ForkResult,

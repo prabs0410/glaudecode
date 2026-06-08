@@ -28,6 +28,13 @@ export default function App() {
     () => new Set(panes.filter((p) => p.kind === "claude" && p.sessionId).map((p) => p.sessionId!)),
     [panes],
   );
+  const liveSessions = useMemo(
+    () =>
+      panes
+        .filter((p) => p.kind === "claude" && p.sessionId && p.cwd)
+        .map((p) => ({ id: p.sessionId!, dir: p.cwd! })),
+    [panes],
+  );
 
   const selectPane = (paneId: string) => {
     setActivePaneId(paneId);
@@ -117,7 +124,12 @@ export default function App() {
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
       </div>
       <ApprovalPanel dir={dir} />
-      <StatusBar dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
+      <StatusBar
+        dir={inspect?.dir ?? null}
+        selectedId={inspect?.sessionId ?? null}
+        projectDir={dir}
+        liveSessions={liveSessions}
+      />
     </div>
   );
 }

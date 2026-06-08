@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BudgetChip } from "./BudgetChip";
 import {
   agentState,
   contextUsage,
@@ -14,7 +15,15 @@ import {
 
 const POLL_MS = 2000;
 
-export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
+interface StatusBarProps {
+  dir: string | null;
+  selectedId: string | null;
+  /** Project root + live sessions for the project-level budget chip. */
+  projectDir: string | null;
+  liveSessions: Array<{ id: string; dir: string }>;
+}
+
+export function StatusBar({ dir, selectedId, projectDir, liveSessions }: StatusBarProps) {
   const [state, setState] = useState<AgentState | null>(null);
   const [cost, setCost] = useState<SessionCost | null>(null);
   const [ctx, setCtx] = useState<ContextUsage | null>(null);
@@ -61,6 +70,8 @@ export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId:
     return (
       <div className="statusbar">
         <span className="status-muted">No session selected</span>
+        <span className="status-spacer" />
+        <BudgetChip projectDir={projectDir} liveSessions={liveSessions} />
       </div>
     );
   }
@@ -90,6 +101,7 @@ export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId:
         </span>
       )}
       {state?.model && <span className="status-model">{state.model}</span>}
+      <BudgetChip projectDir={projectDir} liveSessions={liveSessions} />
     </div>
   );
 }

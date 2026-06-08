@@ -87,6 +87,42 @@ body,
   color: #6e7681;
   font-variant-numeric: tabular-nums;
 }
+.budget-chip {
+  background: transparent;
+  border: 1px solid #1f2630;
+  color: #9db4d0;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.budget-chip:hover {
+  background: #161b22;
+}
+.budget-chip.none {
+  color: #6e7681;
+  border-style: dashed;
+}
+.budget-chip.warn {
+  color: #e3b341;
+  border-color: #6b4a1d;
+}
+.budget-chip.over {
+  color: #f85149;
+  border-color: #5c2a2a;
+  font-weight: 600;
+}
+.budget-input {
+  width: 80px;
+  background: #0d1117;
+  border: 1px solid #2f81f7;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 1px 6px;
+  outline: none;
+}
 
 .sidebar {
   width: 260px;

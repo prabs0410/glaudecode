@@ -187,6 +187,31 @@ export const uninstallApprovalHook = (dir: string) =>
 export const approvalHookStatus = (dir: string) =>
   engineRpc<{ installed: boolean }>("approvalHookStatus", { dir });
 
+// ---------- Budgets (Epic C §3.3) ----------
+
+export interface Budget {
+  dailyUsd?: number;
+  totalUsd?: number;
+  warnPct: number;
+}
+
+export interface BudgetStatus {
+  state: "none" | "ok" | "warn" | "over";
+  dailyUsd: number;
+  totalUsd: number;
+  dailyPct?: number;
+  totalPct?: number;
+  budget?: Budget;
+}
+
+export const budgetStatus = (dir: string, sessions: Array<{ id: string; dir: string }>) =>
+  engineRpc<BudgetStatus>("budgetStatus", { dir, sessions });
+
+export const getBudget = (dir: string) => engineRpc<Budget | null>("getBudget", { dir });
+
+export const setBudget = (dir: string, budget: Budget) =>
+  engineRpc<{ ok: true }>("setBudget", { dir, budget });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.
