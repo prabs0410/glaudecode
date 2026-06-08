@@ -95,81 +95,57 @@ branch `feat/v1-0-engine-adapter`. Architecture: pure session-computation logic 
 
 ## V2 Scope — "The terminal you can run many agents in and walk away from"
 
-Everything in the previously-discussed feature set that V1 did not already deliver. Ordered by
-dependency and value (foundational + differentiated first; the cockpit last because it is the
-biggest). Same definition of done and guardrails as V1: each item is a branch + PR, tests gate
-the PR, all Claude Code access stays behind the ClaudeCodeAdapter (Principle XI), build in order.
+**V2 is specified in detail across SEVEN research-backed epic design docs in `docs/design/`. This
+section is the index + build order; the design doc is the source of truth for each epic.**
 
-### V2-1 — Multi-session orchestration (foundational; build in three slices)
-- **V2-1a Worktree-paired sessions:** spawn and track multiple `claude` processes, one per git
-  worktree, each isolated in its own session directory (avoids the contamination bug). UI: tabs or
-  panes to switch between live sessions. *Acceptance:* run ≥2 sessions across worktrees at once,
-  each independent, switchable.
-- **V2-1b Cross-session conflict detection ⭐:** warn when two live sessions touch the same file
-  (from their changes streams). *Acceptance:* a visible warning when two sessions edit one path.
-- **V2-1c Context handoff:** extract a summary/artifact from one session and inject it as context
-  into another (via fork/resume-with-context — no live messaging). *Acceptance:* hand one
-  session's result into another on demand.
+> **MANDATORY for the build loop:** before implementing ANY item, READ that epic's design doc in
+> full (`docs/design/epic-<x>-*.md`) — it has the architecture, data model, edge cases, security,
+> test plan, and acceptance criteria. Do NOT build from this index alone; that produces the thin,
+> namesake implementation V2 exists to avoid. Build each item against its design doc.
 
-### V2-2 — Lifecycle hooks + jiti extensions ⭐ (the hackable/OSS foundation)
-Engine EventBus emits lifecycle events (session start/fork/switch/compact + GC's cross-session
-events per ADR 0002); a jiti-based loader runs user `.ts` extensions in the Bun sidecar.
-*Acceptance:* a sample extension reacts to a real session event.
+**Build order: A → B → C → D → E → F → G** (dependency + value; A is foundational multi-PTY, G is the
+largest). The differentiated "walk away & trust it" cluster is A + C(approval) + C(gauge) + B(meta-agent).
 
-### V2-3 — Meta-agent (advisory watcher) ⭐
-A background loop (engine, via SDK `query` — costs SDK credits) reads active sessions and surfaces
-observations ("session 3 stuck 5 min", "1 & 4 edit same file", "2 finished"). Advisory only.
-*Acceptance:* surfaces ≥1 real cross-session observation; clearly never acts autonomously.
+### Locked decisions (founder-approved 2026-06-09)
+1. **Pane↔session binding — RESOLVED:** `claude --session-id <uuid>` is supported; spawn with a
+   generated uuid and bind deterministically. (`--name`/`--model`/`--permission-mode`/`--fork-session`
+   also available.)
+2. **Extensions:** trusted-only for V2 (documented risk); sandboxing is a pre-1.0 gate.
+3. **Approvals:** opt-in (toggle), not auto-managed settings.json; dangerous tools fail-closed when
+   the engine is unreachable, read-only fail-open.
+4. **graphify/Python:** optional (degrade gracefully); global search ships FTS5-first, embeddings later.
+5. **Cockpit:** "view + steer" scope (state + approvals + follow-ups); terminal pixel-mirroring
+   deferred; desktop + web share a `packages/ui`.
 
-### V2-4 — Knowledge graph (graphify) ⭐
-Spawn graphify (Python) over the project, read `graph.json`, render it in a panel. *Acceptance:*
-the project's graph renders; bundled-Python dependency documented.
+### Epics (each = one or more branch+PR; build its items in order)
+- **Epic A — Orchestration** → `docs/design/epic-a-orchestration.md`
+  A1 WorktreeManager · A2 ConflictDetector ⭐ · A3 multi-PTY registry (Rust) · A4 orchestration UI
+  (tabs/panes, new-session-in-worktree via `claude --session-id`, conflict banner) · A5 context handoff.
+- **Epic B — Extensibility** → `docs/design/epic-b-extensibility.md`
+  B1 EventBus · B2 jiti ExtensionHost (trusted-only) · B3 meta-agent (advisory, opt-in, budget-aware) ⭐.
+- **Epic C — Cost & control** → `docs/design/epic-c-cost-control.md`
+  C1 context-window gauge ⭐ · C2 smart approval (policy + PreToolUse-hook→engine callback + pane) ⭐ ·
+  C3 budgets + alerts ⭐ · C4 model suggestion (cheap-mode).
+- **Epic D — Memory & knowledge** → `docs/design/epic-d-memory-knowledge.md`
+  D1 memory + AGENTS.md editor + "loaded context" view ⭐ · D2 graphify graph (optional) ⭐ ·
+  D3 global FTS5 search ⭐.
+- **Epic E — Session tooling** → `docs/design/epic-e-session-tooling.md`
+  E1 GitManager · E2 git-in-changes (status/stage/commit) ⭐ · E3 inline diff editor · E4 session
+  compare ⭐ · E5 semantic resume · E6 replay/share ⭐ · E7 bookmarks.
+- **Epic F — Terminal UX** → `docs/design/epic-f-terminal-ux.md`
+  F1 command palette · F2 keybindings · F3 prompt library + slash-command builder ⭐ ·
+  F4 desktop notifications ⭐.
+- **Epic G — Cockpit** → `docs/design/epic-g-cockpit.md`
+  G1 RemoteServer + WS event stream · G2 pairing + scoped/expiring tokens (security-critical) ·
+  G3 `packages/ui` extraction + web/PWA client · G4 mobile view+steer + remote approvals ⭐.
 
-### V2-5 — Memory tab + in-app AGENTS.md editor ⭐
-Surface and edit project memory + `AGENTS.md`; show what's actually loaded into context.
-*Acceptance:* view + edit memory/AGENTS.md from the app; edits persist to disk.
+**Differentiation filter (Principle II):** the ⭐ items are the moat. If any item drifts into a
+generic re-skin of what Anthropic's app / opcode already do, STOP and flag — do not ship the
+commoditized version.
 
-### V2-6 — Context-window gauge ⭐
-Show how full the context is and warn before auto-compaction. *Acceptance:* a live gauge reflecting
-the selected session's context usage with a pre-compaction warning.
-
-### V2-7 — Smart approval pane ⭐
-Surface tool approvals without breaking the output stream; policy to auto-approve read-only tools
-and always-ask dangerous ones (`rm`, `push`). *Acceptance:* approve/deny a tool call from the pane;
-policy honored.
-
-### V2-8 — Prompt library + slash-command builder ⭐
-Save, template, search prompts; build custom slash commands. *Acceptance:* save and reuse a
-templated prompt; define a working custom slash command.
-
-### V2-9 — Session compare / diff (side-by-side) ⭐
-Diff two sessions/runs side by side (what changed between attempts). *Acceptance:* pick two
-sessions and see a meaningful side-by-side comparison.
-
-### V2-10 — Semantic resume
-On reopening a session, generate "here's what you were doing and the likely next step" (V1 already
-delivers session discovery/continue). *Acceptance:* a useful AI summary on resume.
-
-### V2-11 — Session replay / share ⭐
-Export a session as a portable, shareable replay file (teaching, PRs, build-in-public).
-*Acceptance:* export + re-open a replay that reproduces the session view.
-
-### V2-12 — Inline diff editor
-Accept/revert hunks for the agent's changes in the changes panel. *Acceptance:* view and revert a
-hunk. (Commoditized — lower priority within V2.)
-
-### V2-13 — Command palette + keybindings
-Cmd-K fuzzy actions over app commands; configurable keybindings. *Acceptance:* invoke core actions
-from the palette; rebind a key.
-
-### V2-14 — Web + mobile cockpit (largest; last)
-Expose the engine's RemoteServer beyond localhost (auth + transport the user provides) and ship a
-web client (PWA) reused on mobile to view/steer running sessions. *Acceptance:* view and steer a
-session from a browser, and from a phone browser, against the local engine.
-
-**Differentiation note (Principle II):** the sharpest cluster is V2-1 + V2-3 + V2-6 + V2-7 — the
-"run many agents and walk away" capability neither Anthropic's app nor opcode delivers. Build it
-well; don't let any item drift into a generic re-skin of what incumbents already do.
+### Current progress (2026-06-09)
+Branch `feat/v2-a-orchestration` started; **A1 WorktreeManager** in progress (porcelain parser +
+exec wrappers written, tests next). Resume from there.
 
 ---
 
@@ -182,14 +158,18 @@ well; don't let any item drift into a generic re-skin of what incumbents already
    load-bearing — commits MUST stay `prabs0410`).
 4. **Respect the adapter rule (Principle XI).** All Claude Code access via `ClaudeCodeAdapter` +
    SDK APIs; no raw JSONL parsing; no tight polling.
-5. **One item at a time, in order.** Follow the V1 build order; do not start V1-N+1 until V1-N's PR
-   exists and is green.
+5. **One item at a time, in epic order (A→G).** Do not start the next item until the current item's
+   work is committed and green. Within an epic, follow the item order (A1, A2, …).
 6. **Stop on repeated failure.** After 2 consecutive failed attempts on an item, STOP and leave a
    clear note for human review rather than thrash.
 7. **Keep docs honest (Principle IX).** Every PR updates AGENTS.md / `docs/INDEX.md` / `docs/state.md`
    as relevant, in the same PR.
 8. **Felt-improvement filter (Principle II).** If an item drifts into generic re-skinning of what
    Anthropic's app / opcode already do, stop and flag — do not ship the commoditized version.
+9. **Design-doc-first + TDD.** READ the epic's `docs/design/` doc before building. Pure logic
+   (parsers, state derivation, cost, conflict detection, etc.) lives in `@glaudecode/engine` and is
+   unit-tested there; UI logic gets component/typecheck coverage. No item is "done" until its
+   design-doc acceptance criteria are met and its tests pass.
 
 ### The one human knob
 - **Auto-merge to `main`:** OFF by default (PRs stay open for human approval). May be turned ON by
@@ -198,10 +178,15 @@ well; don't let any item drift into a generic re-skin of what incumbents already
 ---
 
 ## How this gets executed (the loop)
-The backlog above becomes the work queue (optionally pushed to GitHub issues via Spec-Kit
-`/speckit.taskstoissues`). An autonomous loop (e.g. ralph-loop, or `/loop` over a build command)
-picks the next open item, implements it on a branch under the guardrails, runs tests + review,
-opens a PR, and continues. The founder kicks off the loop and reviews PRs.
+V2 is fully specified: this index + the seven `docs/design/` epic docs. The autonomous loop reads
+the current epic's design doc, implements the next item against it (design-doc-first + TDD), commits
+on a feature branch under the guardrails, and continues in epic order A→G. V1 is complete; resume at
+**Epic A, item A1 (WorktreeManager)** on branch `feat/v2-a-orchestration` — the porcelain parser +
+git exec wrappers are written; finish its tests, then A2 onward.
+
+PRs are currently blocked on `prabs0410` GitHub auth (commits land on the branch correctly as
+prabs0410; opening PRs needs `gh auth login` as prabs0410 — see memory). Until then the loop commits
+per-item on the branch; the founder opens PRs/merges when authenticated.
 
 **Honest note (recorded with founder's informed consent, 2026-06-08):** maximum autonomy on a
 taste-dependent product carries real risk of building the commoditized version well while missing
