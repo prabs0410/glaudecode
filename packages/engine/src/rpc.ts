@@ -15,6 +15,7 @@ import { detectConflicts } from "./conflicts";
 import { computeSessionCost } from "./cost";
 import { WorktreeManager } from "./worktree";
 import { buildHandoffSummary } from "./handoff";
+import { generateObservations } from "./metaAgent";
 
 export type RpcMethod =
   | "listSessions"
@@ -32,7 +33,8 @@ export type RpcMethod =
   | "listWorktrees"
   | "createWorktree"
   | "removeWorktree"
-  | "handoff";
+  | "handoff"
+  | "metaObservations";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -51,6 +53,7 @@ const METHODS = new Set<RpcMethod>([
   "createWorktree",
   "removeWorktree",
   "handoff",
+  "metaObservations",
 ]);
 
 // Stateless git wrapper; one instance is fine to share across requests.
@@ -131,6 +134,20 @@ export async function dispatch(
         adapter.getSessionMessages(id, { dir }),
       ]);
       return { prompt: buildHandoffSummary(msgs, { fromTitle: info?.title ?? info?.firstPrompt }) };
+    }
+    case "metaObservations": {
+      // Advisory cross-session observations (Epic B §3.3). Off by default — the caller
+      // (UI) only invokes this when the user turns the meta-agent on. Rule-based: no
+      // model cost. `now` is overridable for deterministic tests.
+      const sessions: Array<{ id: string; dir: string; title?: string }> = Array.isArray(p.sessions) ? p.sessions : [];
+      const now = typeof p.now === "number" ? p.now : Date.now();
+      const inputs = await Promise.all(
+        sessions.map(async ({ id, dir, title }) => {
+          const msgs = await adapter.getSessionMessages(id, { dir });
+          return { sessionId: id, title, state: deriveAgentState(msgs, now), changes: buildChanges(msgs) };
+        }),
+      );
+      return generateObservations(inputs, { now });
     }
   }
 }

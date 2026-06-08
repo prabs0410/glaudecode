@@ -148,6 +148,30 @@ describe("dispatch", () => {
   test("handoff requires fromId", async () => {
     await expect(dispatch(stubAdapter(), "handoff", { dir: "/r" })).rejects.toThrow(/missing required param: fromId/);
   });
+
+  test("metaObservations surfaces a finished session from its computed state", async () => {
+    const now = 1_700_000_000_000;
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [
+          {
+            id: "m1",
+            role: "assistant",
+            timestamp: new Date(now - 10_000).toISOString(),
+            blocks: [{ kind: "tool_use", name: "Write", input: { file_path: "/x.ts" } }],
+          },
+          // Latest message is a plain text turn → no pending tool → idle.
+          { id: "m2", role: "assistant", timestamp: new Date(now).toISOString(), blocks: [{ kind: "text", text: "done" }] },
+        ] as any,
+    });
+    const out: any = await dispatch(a, "metaObservations", {
+      now,
+      sessions: [{ id: "s1", dir: "/r", title: "work" }],
+    });
+    // idle (last turn is text) + one changed file (from the earlier Write) → finished
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: "finished:s1", level: "info" });
+  });
 });
 
 describe("createRpcHandler", () => {

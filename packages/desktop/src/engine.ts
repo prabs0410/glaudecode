@@ -136,6 +136,18 @@ export const conflicts = (sessions: Array<{ id: string; dir: string }>) =>
 export const handoff = (fromId: string, dir: string) =>
   engineRpc<{ prompt: string }>("handoff", { fromId, dir });
 
+export interface Observation {
+  id: string;
+  level: "info" | "warn";
+  text: string;
+  sessionIds: string[];
+  at: string;
+}
+
+/** Advisory cross-session observations (Epic B §3.3). Caller opts in (off by default). */
+export const metaObservations = (sessions: Array<{ id: string; dir: string; title?: string }>) =>
+  engineRpc<Observation[]>("metaObservations", { sessions });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

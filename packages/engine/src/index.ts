@@ -48,6 +48,8 @@ export type {
   ExtensionModule,
   LoadedExtension,
 } from "./extensionHost";
+export { MetaAgent, generateObservations } from "./metaAgent";
+export type { MetaAgentInput, Observation, ObserveOptions } from "./metaAgent";
 export type {
   ContentBlock,
   ForkResult,
