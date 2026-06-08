@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TerminalPane } from "./TerminalPane";
+import { ConflictBanner } from "./ConflictBanner";
 
 // A pane is one terminal tab: either a plain shell or a Claude Code session bound to
 // a worktree. For Claude panes `paneId === sessionId` (the uuid we mint and pass to
@@ -139,6 +140,12 @@ export function Workspace({
       </div>
 
       {error && <div className="workspace-error">{error}</div>}
+
+      <ConflictBanner
+        sessions={panes
+          .filter((p) => p.kind === "claude" && p.sessionId && p.cwd)
+          .map((p) => ({ id: p.sessionId!, dir: p.cwd!, title: p.title }))}
+      />
 
       <div className="panes">
         {panes.map((p) => (

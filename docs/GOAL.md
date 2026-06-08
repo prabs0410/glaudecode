@@ -147,8 +147,11 @@ commoditized version.
 Branch `feat/v2-a-orchestration`. **A1 WorktreeManager** ✅ (tested), **A2 ConflictDetector** ✅
 (tested + `conflicts` RPC), **A3 multi-PTY registry (Rust)** ✅ (`PtyRegistry` keyed by `paneId`;
 pane-scoped `pty_spawn/write/resize/kill`; namespaced `pty-output:{paneId}`/`pty-exit:{paneId}`
-events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`). Resume at **A4
-orchestration UI** (tabs/panes + new-session-in-worktree + conflict banner), then A5 context handoff.
+events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`), **A4 orchestration
+UI** ✅ (worktree+conflicts RPC; tabbed `Workspace` over N panes; "+ Claude" flow: create worktree →
+mint uuid → spawn `claude --session-id`; per-pane right-dock/status binding; sidebar live dots;
+non-blocking `ConflictBanner`). Resume at **A5 context handoff** (`handoff` RPC via fork/resume with
+the source session's summary injected), then Epic B.
 
 ---
 

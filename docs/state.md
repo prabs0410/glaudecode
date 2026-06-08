@@ -1,6 +1,6 @@
 # Current State
 
-**Last updated:** 2026-06-09 (V2 Epic A in progress — A1/A2/A3 landed)
+**Last updated:** 2026-06-09 (V2 Epic A — A1–A4 landed; A5 context handoff next)
 **Update protocol:** Refresh the three sections below at the end of every meaningful work unit. Stale state is worse than no state — if a section is unchanged for >2 working sessions, prune it.
 
 ---
@@ -25,7 +25,7 @@ Active work. Things touched in the current or last working session.
 
 - **V1 COMPLETE (2026-06-09).** All six features in `docs/GOAL.md` built, tested, committed on branch `feat/v1-0-engine-adapter`: V1-0 engine+adapter, V1-0b sidecar wiring, V1-1 sessions sidebar (search/rename/tag/delete), V1-2 agent-state status bar, V1-3 tool-call timeline + thinking panel, V1-4 token/cost counter, V1-5 changes panel + tabbed right dock. Engine 56/56 tests pass; engine + desktop tsc clean; frontend production-build succeeds.
 - **Architecture pattern in use**: pure session-computation logic lives in `@glaudecode/engine` (tested) and is exposed via RPC methods (agentState/timeline/sessionCost/sessionChanges) computed server-side; the WebView just renders. ClaudeCodeAdapter is the sole Claude Code access point (Principle XI).
-- **V2 Epic A — Orchestration (in progress, branch `feat/v2-a-orchestration`).** Per `docs/design/epic-a-orchestration.md`. Landed: A1 `WorktreeManager` (porcelain parser + git arg-array wrappers, tested), A2 `ConflictDetector` (pure path-overlap detection + `conflicts` RPC, tested), A3 multi-PTY registry (Rust core: `PtyRegistry` keyed by `paneId`; pane-scoped `pty_spawn/pty_write/pty_resize/pty_kill`; namespaced `pty-output:{paneId}`/`pty-exit:{paneId}` events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`). Engine 65/65; Rust + desktop tsc clean. Next: A4 orchestration UI (tabs/panes + new-session-in-worktree + conflict banner), A5 context handoff.
+- **V2 Epic A — Orchestration (in progress, branch `feat/v2-a-orchestration`).** Per `docs/design/epic-a-orchestration.md`. Landed: A1 `WorktreeManager` (porcelain parser + git arg-array wrappers, tested), A2 `ConflictDetector` (pure path-overlap detection, tested), A3 multi-PTY registry (Rust core: `PtyRegistry` keyed by `paneId`; pane-scoped `pty_spawn/pty_write/pty_resize/pty_kill`; namespaced `pty-output:{paneId}`/`pty-exit:{paneId}` events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`), A4 orchestration UI — worktree+conflicts RPC, tabbed `Workspace` over N panes, "+ Claude" new-session flow (create worktree → mint uuid → `claude --session-id`), per-pane right-dock/status binding, sidebar live dots, non-blocking `ConflictBanner`. Engine 68/68; Rust + desktop tsc clean; vite build green. Next: A5 context handoff (`handoff` RPC via fork/resume-with-prompt).
 - **Not yet done**: branches unpushed/unmerged (PRs blocked on prabs0410 gh auth — see memory); visual review of the panels pending; V1-4 cost price table is a best-effort estimate.
 
 ## Next

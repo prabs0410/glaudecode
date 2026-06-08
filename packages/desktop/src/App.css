@@ -309,6 +309,29 @@ body,
   border-bottom: 1px solid #5c2a2a;
   word-break: break-word;
 }
+.conflict-banner {
+  background: #2a1f12;
+  border-bottom: 1px solid #6b4a1d;
+  color: #e3b341;
+  font: 11px/1.5 ui-sans-serif, system-ui, sans-serif;
+  padding: 5px 10px;
+}
+.conflict-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.conflict-icon {
+  flex-shrink: 0;
+}
+.conflict-path {
+  color: #f0c674;
+  font-weight: 600;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.conflict-detail {
+  color: #c9a456;
+}
 .panes {
   flex: 1;
   min-height: 0;
