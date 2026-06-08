@@ -70,6 +70,7 @@ export function mapSessionMessage(m: any): SessionMessage {
     parentId: m?.parentUuid ?? m?.parent_tool_use_id ?? undefined,
     role: mapRole(m?.type),
     timestamp: m?.timestamp ?? undefined,
+    model: typeof m?.message?.model === "string" ? m.message.model : undefined,
     blocks: mapBlocks(m?.message),
     usage: mapUsage(m?.message),
   };

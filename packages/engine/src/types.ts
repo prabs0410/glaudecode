@@ -45,6 +45,8 @@ export interface SessionMessage {
   parentId?: string;
   role: MessageRole;
   timestamp?: string;
+  /** Model that produced an assistant message (e.g. "claude-opus-4-8"), if present. */
+  model?: string;
   blocks: ContentBlock[];
   usage?: TokenUsage;
 }

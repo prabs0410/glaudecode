@@ -16,6 +16,8 @@ export {
   mapUsage,
 } from "./mappers";
 export { filterSessions } from "./filter";
+export { deriveAgentState } from "./agentState";
+export type { AgentState, AgentStatus } from "./agentState";
 export type {
   ContentBlock,
   ForkResult,

@@ -6,11 +6,73 @@ body,
   background: #0d1117;
 }
 
-.app-shell {
+.app-root {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+}
+
+.app-shell {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  background: #0b0f14;
+  border-top: 1px solid #1f2630;
+  color: #9db4d0;
+  font: 11px/1 ui-sans-serif, system-ui, sans-serif;
+}
+.status-muted {
+  color: #6e7681;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6e7681;
+}
+.status-dot.thinking {
+  background: #d29922;
+  animation: pulse 1s ease-in-out infinite;
+}
+.status-dot.running-tool {
+  background: #2f81f7;
+  animation: pulse 1s ease-in-out infinite;
+}
+.status-dot.idle {
+  background: #3fb950;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.status-label {
+  color: #c9d1d9;
+}
+.status-elapsed {
+  color: #6e7681;
+}
+.status-spacer {
+  flex: 1;
+}
+.status-model {
+  color: #6e7681;
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar {

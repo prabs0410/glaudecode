@@ -52,6 +52,15 @@ describe("dispatch", () => {
     await dispatch(a, "tagSession", { id: "s1", dir: "/r" });
     expect(seenTag).toBeNull();
   });
+
+  test("agentState computes from session messages", async () => {
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [{ id: "m", role: "user", timestamp: new Date().toISOString(), blocks: [] }] as any,
+    });
+    const out: any = await dispatch(a, "agentState", { id: "s1", dir: "/r" });
+    expect(out.status).toBe("thinking");
+  });
 });
 
 describe("createRpcHandler", () => {

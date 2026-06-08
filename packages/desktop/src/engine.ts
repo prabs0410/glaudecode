@@ -53,6 +53,17 @@ export const tagSession = (id: string, tag: string | null, dir: string) =>
 export const deleteSession = (id: string, dir: string) =>
   engineRpc<{ ok: true }>("deleteSession", { id, dir });
 
+export interface AgentState {
+  status: "idle" | "thinking" | "running-tool";
+  toolName?: string;
+  model?: string;
+  sinceMs?: number;
+}
+
+/** Computed server-side by the engine (deriveAgentState, tested there). */
+export const agentState = (id: string, dir: string) =>
+  engineRpc<AgentState>("agentState", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

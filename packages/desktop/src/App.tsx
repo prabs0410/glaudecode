@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { Sidebar } from "./Sidebar";
+import { StatusBar } from "./StatusBar";
 import { projectDir } from "./engine";
 import "./App.css";
 
@@ -75,9 +76,12 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-shell">
-      <Sidebar dir={dir} selectedId={selectedId} onSelect={setSelectedId} />
-      <TerminalPane />
+    <div className="app-root">
+      <div className="app-shell">
+        <Sidebar dir={dir} selectedId={selectedId} onSelect={setSelectedId} />
+        <TerminalPane />
+      </div>
+      <StatusBar dir={dir} selectedId={selectedId} />
     </div>
   );
 }

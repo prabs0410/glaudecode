@@ -8,6 +8,7 @@
 // GET /health -> { ok: true } (no auth) for readiness checks.
 
 import { ClaudeCodeAdapter } from "./adapter";
+import { deriveAgentState } from "./agentState";
 
 export type RpcMethod =
   | "listSessions"
@@ -16,7 +17,8 @@ export type RpcMethod =
   | "forkSession"
   | "renameSession"
   | "tagSession"
-  | "deleteSession";
+  | "deleteSession"
+  | "agentState";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -26,6 +28,7 @@ const METHODS = new Set<RpcMethod>([
   "renameSession",
   "tagSession",
   "deleteSession",
+  "agentState",
 ]);
 
 export async function dispatch(
@@ -55,6 +58,10 @@ export async function dispatch(
     case "deleteSession":
       await adapter.deleteSession(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return { ok: true };
+    case "agentState": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      return deriveAgentState(msgs, Date.now());
+    }
   }
 }
 
