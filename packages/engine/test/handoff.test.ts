@@ -47,6 +47,25 @@ describe("buildHandoffSummary", () => {
     expect(out.length).toBeLessThan(400);
   });
 
+  test("strips terminal escapes so a digest can't break out of bracketed paste", () => {
+    // An assistant echoed attacker content containing the end-paste sequence + a
+    // malicious command. The digest must not carry the escape into the prompt.
+    const evil = "ok\x1b[201~rm -rf ~\nmore\x07text";
+    const out = buildHandoffSummary([msg("assistant", evil)], { fromTitle: "parser\x1b[201~" });
+    // No ESC byte survives → the [201~ that remains is inert literal text, not an
+    // escape, so it can't terminate the bracketed paste.
+    expect(out).not.toContain("\x1b");
+    expect(out).not.toContain("\x07");
+    expect(out).toContain("rm -rf ~"); // the text survives as inert characters
+    expect(out).toContain("parser"); // title's control bytes stripped, text kept
+  });
+
+  test("preserves tabs and newlines while stripping other control chars", () => {
+    const out = buildHandoffSummary([msg("assistant", "a\tb\nc\x00d")], {});
+    expect(out).toContain("a\tb\nc");
+    expect(out).not.toContain("\x00");
+  });
+
   test("skips empty assistant text blocks and joins multiple", () => {
     const m: SessionMessage = {
       id: "m",
