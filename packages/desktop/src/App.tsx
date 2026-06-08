@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { RightDock } from "./RightDock";
 import { Workspace, type Pane } from "./Workspace";
+import { ApprovalPanel } from "./ApprovalPanel";
 import { createWorktree, handoff, projectDir } from "./engine";
 import "./App.css";
 
@@ -115,6 +116,7 @@ export default function App() {
         />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
       </div>
+      <ApprovalPanel dir={dir} />
       <StatusBar dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
     </div>
   );

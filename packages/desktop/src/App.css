@@ -7,6 +7,7 @@ body,
 }
 
 .app-root {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -477,6 +478,102 @@ body,
   padding: 8px;
   box-sizing: border-box;
   background: #0d1117;
+}
+
+/* Smart-approval layer: floating, over the terminal area, clear of the right dock */
+.approval-layer {
+  position: absolute;
+  top: 42px;
+  right: 332px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 30;
+  pointer-events: none;
+}
+.approval-layer > * {
+  pointer-events: auto;
+}
+.approval-switch {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #11161d;
+  border: 1px solid #1f2630;
+  color: #9db4d0;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: 11px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+.approval-switch:hover {
+  background: #21262d;
+}
+.approval-switch-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6e7681;
+}
+.approval-switch.on {
+  color: #c9d1d9;
+  border-color: #2f4b7a;
+}
+.approval-switch.on .approval-switch-dot {
+  background: #3fb950;
+}
+.approval-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left: 3px solid #2f81f7;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+  color: #c9d1d9;
+}
+.approval-card.danger {
+  border-left-color: #f85149;
+}
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.approval-tool {
+  font-weight: 600;
+}
+.approval-badge {
+  background: #3d1a1a;
+  color: #f85149;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+.approval-detail {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: #e3b341;
+  word-break: break-word;
+  max-height: 64px;
+  overflow: auto;
+}
+.approval-reason {
+  color: #6e7681;
+  font-size: 11px;
+  margin: 4px 0;
+}
+.approval-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.approval-error {
+  color: #f85149;
+  font-size: 11px;
 }
 
 /* Right dock (Timeline | Changes) */
