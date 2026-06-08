@@ -30,6 +30,15 @@ export { detectConflicts } from "./conflicts";
 export type { ConflictWarning, SessionChanges } from "./conflicts";
 export { buildHandoffSummary } from "./handoff";
 export type { HandoffOptions } from "./handoff";
+export { EventBus } from "./eventBus";
+export type {
+  EmitResult,
+  LifecycleEvent,
+  LifecycleEventType,
+  LifecycleHandler,
+  SessionStartReason,
+  Subscription,
+} from "./eventBus";
 export type {
   ContentBlock,
   ForkResult,
