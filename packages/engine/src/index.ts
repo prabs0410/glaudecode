@@ -39,6 +39,15 @@ export type {
   SessionStartReason,
   Subscription,
 } from "./eventBus";
+export { ExtensionHost, defaultExtensionDirs } from "./extensionHost";
+export type {
+  CommandFn,
+  ExtensionApi,
+  ExtensionHostOptions,
+  ExtensionImporter,
+  ExtensionModule,
+  LoadedExtension,
+} from "./extensionHost";
 export type {
   ContentBlock,
   ForkResult,
