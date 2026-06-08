@@ -22,6 +22,7 @@ import { ApprovalHookInstaller } from "./approvalHook";
 import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
 import { CostStore, evaluateBudget, type Budget } from "./budget";
 import { MemoryStore, parseLoadedContext } from "./memory";
+import { GraphManager } from "./graph";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -58,7 +59,8 @@ export type RpcMethod =
   | "writeMemory"
   | "readProjectInstructions"
   | "writeProjectInstructions"
-  | "loadedContext";
+  | "loadedContext"
+  | "buildGraph";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -94,12 +96,14 @@ const METHODS = new Set<RpcMethod>([
   "readProjectInstructions",
   "writeProjectInstructions",
   "loadedContext",
+  "buildGraph",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
 const defaultWorktrees = new WorktreeManager();
 const defaultCostStore = new CostStore();
 const defaultMemoryStore = new MemoryStore();
+const defaultGraphManager = new GraphManager();
 
 export interface DispatchDeps {
   worktrees?: WorktreeManager;
@@ -275,6 +279,8 @@ export async function dispatch(
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") }, { includeSystemMessages: true });
       return parseLoadedContext(msgs);
     }
+    case "buildGraph":
+      return defaultGraphManager.buildGraph(req(p.dir, "dir"));
   }
 }
 

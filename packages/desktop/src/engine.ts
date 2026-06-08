@@ -247,6 +247,27 @@ export const writeProjectInstructions = (dir: string, content: string) =>
 export const loadedContext = (id: string, dir: string) =>
   engineRpc<{ instructions?: string }>("loadedContext", { id, dir });
 
+export interface GraphNode {
+  id: string;
+  label: string;
+  kind: string;
+}
+export interface GraphEdge {
+  from: string;
+  to: string;
+  kind: string;
+}
+export interface GraphResult {
+  available: boolean;
+  reason?: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
+/** Build the project knowledge graph via graphify (degrades if Python/graphify absent). */
+export const buildGraph = (dir: string) => engineRpc<GraphResult>("buildGraph", { dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

@@ -2,11 +2,12 @@ import { useState } from "react";
 import { TimelinePanel } from "./TimelinePanel";
 import { ChangesPanel } from "./ChangesPanel";
 import { MemoryPanel } from "./MemoryPanel";
+import { GraphPanel } from "./GraphPanel";
 
-// Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), and Memory (Epic D) for the
+// Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), Memory + Graph (Epic D) for the
 // selected session / project.
 
-type Tab = "timeline" | "changes" | "memory";
+type Tab = "timeline" | "changes" | "memory" | "graph";
 
 export function RightDock({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -32,11 +33,18 @@ export function RightDock({ dir, selectedId }: { dir: string | null; selectedId:
         >
           Memory
         </button>
+        <button
+          className={`dock-tab${tab === "graph" ? " active" : ""}`}
+          onClick={() => setTab("graph")}
+        >
+          Graph
+        </button>
       </div>
       <div className="dock-body">
         {tab === "timeline" && <TimelinePanel dir={dir} selectedId={selectedId} />}
         {tab === "changes" && <ChangesPanel dir={dir} selectedId={selectedId} />}
         {tab === "memory" && <MemoryPanel dir={dir} selectedId={selectedId} />}
+        {tab === "graph" && <GraphPanel dir={dir} />}
       </div>
     </section>
   );

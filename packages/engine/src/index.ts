@@ -77,6 +77,8 @@ export { suggestModel, latestUserPrompt } from "./modelSuggestion";
 export type { ModelSuggestion } from "./modelSuggestion";
 export { MemoryStore, parseLoadedContext, encodeProjectDir } from "./memory";
 export type { LoadedContext, MemoryFile, ProjectInstructions } from "./memory";
+export { GraphManager, mapGraphJson } from "./graph";
+export type { GraphEdge, GraphNode, GraphResult } from "./graph";
 export type {
   ContentBlock,
   ForkResult,

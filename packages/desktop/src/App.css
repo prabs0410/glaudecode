@@ -757,6 +757,65 @@ body,
   overflow: auto;
 }
 
+/* Knowledge graph panel (Epic D) */
+.graph-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  min-height: 0;
+}
+.graph-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.graph-stats {
+  color: #6e7681;
+  font-size: 11px;
+}
+.graph-guide {
+  padding: 10px;
+  background: #15110a;
+  border: 1px solid #6b4a1d;
+  border-radius: 6px;
+  color: #e3b341;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.graph-body {
+  min-height: 0;
+  overflow: auto;
+}
+.graph-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.graph-node {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.graph-node:hover {
+  background: #11161d;
+}
+.graph-kind {
+  flex-shrink: 0;
+  color: #79c0ff;
+  background: #15233a;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+.graph-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Changes list */
 .changes-list {
   list-style: none;
