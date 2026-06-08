@@ -5,9 +5,10 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
+import { Sidebar } from "./Sidebar";
 import "./App.css";
 
-export default function App() {
+function TerminalPane() {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn
 
@@ -44,14 +45,15 @@ export default function App() {
     invoke("pty_spawn", { rows: term.rows, cols: term.cols });
     term.onData((d) => void invoke("pty_write", { data: d }));
 
-    const onResize = () => {
+    const refit = () => {
       fit.fit();
       void invoke("pty_resize", { rows: term.rows, cols: term.cols });
     };
-    window.addEventListener("resize", onResize);
+    const ro = new ResizeObserver(refit);
+    ro.observe(hostRef.current);
 
     return () => {
-      window.removeEventListener("resize", onResize);
+      ro.disconnect();
       unlistenOut.then((f) => f());
       unlistenExit.then((f) => f());
       term.dispose();
@@ -59,4 +61,13 @@ export default function App() {
   }, []);
 
   return <div ref={hostRef} className="terminal-host" />;
+}
+
+export default function App() {
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <TerminalPane />
+    </div>
+  );
 }

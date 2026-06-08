@@ -1,14 +1,22 @@
-// GlaudeCode desktop — PTY bridge spike.
-// Opens a real PTY running the user's login shell, streams output bytes to the
-// WebView via `pty-output` events, accepts input via `pty_write`, and resizes
-// via `pty_resize`. The frontend renders the stream with xterm.js. Run `claude`
-// inside the resulting terminal to validate Claude Code's TUI rendering.
+// GlaudeCode desktop core.
+//
+// Two responsibilities:
+//   1. PTY bridge — run a real shell (and Claude Code) in the xterm.js pane.
+//   2. Engine sidecar — spawn the host-agnostic @glaudecode/engine as a Bun child
+//      process, read its {port, token} handshake, and expose the endpoint + the
+//      project directory to the WebView. All Claude Code data flows through the
+//      engine's RPC (Constitution Principle XI); the core never reads sessions.
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
-use std::io::{Read, Write};
+use serde::{Deserialize, Serialize};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+// ---------- PTY ----------
 
 #[derive(Default)]
 struct PtyState {
@@ -46,8 +54,6 @@ fn pty_spawn(app: AppHandle, state: State<PtyState>, rows: u16, cols: u16) -> Re
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    // Emit raw bytes; the frontend decodes with a streaming
-                    // TextDecoder so multibyte UTF-8 split across reads is safe.
                     let _ = app.emit("pty-output", buf[..n].to_vec());
                 }
                 Err(_) => break,
@@ -77,12 +83,113 @@ fn pty_resize(state: State<PtyState>, rows: u16, cols: u16) -> Result<(), String
     Ok(())
 }
 
+// ---------- Engine sidecar ----------
+
+#[derive(Clone, Serialize, Deserialize)]
+struct EngineEndpoint {
+    port: u16,
+    token: String,
+}
+
+#[derive(Default)]
+struct EngineState {
+    endpoint: Mutex<Option<EngineEndpoint>>,
+    child: Mutex<Option<Child>>,
+}
+
+fn engine_entry_path() -> PathBuf {
+    if let Ok(p) = std::env::var("GLAUDE_ENGINE_ENTRY") {
+        return PathBuf::from(p);
+    }
+    // <crate>/../../engine/bin/serve.ts  (dev layout: packages/desktop/src-tauri)
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest.join("../../engine/bin/serve.ts");
+    std::fs::canonicalize(&path).unwrap_or(path)
+}
+
+fn spawn_engine(state: &EngineState) -> Result<(), String> {
+    let entry = engine_entry_path();
+    let mut child = Command::new("bun")
+        .arg(&entry)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("failed to spawn engine (bun {:?}): {}", entry, e))?;
+
+    let stdout = child.stdout.take().ok_or("engine produced no stdout")?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .map_err(|e| format!("reading engine handshake: {}", e))?;
+    let endpoint: EngineEndpoint = serde_json::from_str(line.trim())
+        .map_err(|e| format!("bad engine handshake '{}': {}", line.trim(), e))?;
+
+    // Drain the rest of stdout so the pipe never blocks the engine.
+    thread::spawn(move || {
+        for _ in reader.lines() {}
+    });
+
+    *state.endpoint.lock().unwrap() = Some(endpoint);
+    *state.child.lock().unwrap() = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+fn engine_endpoint(state: State<EngineState>) -> Result<EngineEndpoint, String> {
+    state
+        .endpoint
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "engine not ready".to_string())
+}
+
+/// The project directory whose sessions the UI should list — the nearest git
+/// repo root at/above the process cwd, else the cwd itself.
+#[tauri::command]
+fn project_dir() -> String {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut dir = cwd.as_path();
+    loop {
+        if dir.join(".git").exists() {
+            return dir.to_string_lossy().into_owned();
+        }
+        match dir.parent() {
+            Some(p) => dir = p,
+            None => break,
+        }
+    }
+    cwd.to_string_lossy().into_owned()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(PtyState::default())
-        .invoke_handler(tauri::generate_handler![pty_spawn, pty_write, pty_resize])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .manage(EngineState::default())
+        .setup(|app| {
+            if let Err(e) = spawn_engine(app.state::<EngineState>().inner()) {
+                eprintln!("[glaudecode] engine sidecar failed: {e}");
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            engine_endpoint,
+            project_dir
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            if let Some(mut child) = app_handle.state::<EngineState>().child.lock().unwrap().take() {
+                let _ = child.kill();
+            }
+        }
+    });
 }

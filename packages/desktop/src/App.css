@@ -6,9 +6,74 @@ body,
   background: #0d1117;
 }
 
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: #0b0f14;
+  border-right: 1px solid #1f2630;
+  color: #c9d1d9;
+  display: flex;
+  flex-direction: column;
+  font: 12px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.sidebar-header {
+  padding: 10px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #1f2630;
+  letter-spacing: 0.02em;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  flex: 1;
+}
+
+.session-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.session-item:hover {
+  background: #161b22;
+}
+
+.session-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  color: #6e7681;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.session-empty {
+  padding: 10px 12px;
+  color: #6e7681;
+}
+
+.sidebar-error {
+  padding: 10px 12px;
+  color: #f85149;
+  font-size: 11px;
+  word-break: break-word;
+}
+
 .terminal-host {
-  position: fixed;
-  inset: 0;
+  flex: 1;
+  min-width: 0;
   padding: 8px;
   box-sizing: border-box;
   background: #0d1117;
