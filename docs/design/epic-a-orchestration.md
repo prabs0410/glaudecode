@@ -125,9 +125,11 @@ interface ConflictWarning { path: string; sessionIds: string[] }
 - **Hand off** one session's result into another on demand (via fork/resume).
 
 ## 9. Open questions (for review)
-1. **Pane↔session id binding — does `claude` accept `--session-id <new-uuid>`?** If yes, deterministic
-   and clean; if no, we rely on the newest-in-dir heuristic + manual rebind. *This is the single most
-   important thing to verify before building Epic A — a short spike.*
+1. **Pane↔session id binding — RESOLVED (2026-06-09 spike):** `claude --session-id <uuid>` IS
+   supported ("Use a specific session ID for the session"). We generate the uuid, spawn
+   `claude --session-id <uuid>` in the worktree PTY, and bind the pane to it deterministically — no
+   heuristic, no manual rebind needed. Also confirmed available: `--name`, `--model`,
+   `--permission-mode`, `--fork-session`, `--resume`, `--continue` (useful for Epics C/E).
 2. **Tabs vs split-panes for V2-1a** — start tabs (simpler), add split later? (Recommended: tabs first.)
 3. **Worktree home** — `<repo>/.glaudecode/worktrees/` vs a user-config path? (Recommended: under repo,
    gitignored.)

@@ -6,7 +6,20 @@ of code until its epic design doc is written and reviewed.** This is the discipl
 prescribes (brainstorm → specify → plan → tasks → TDD), applied properly.
 
 ## Status
-All seven docs are drafted as a batch for founder review before any implementation.
+**APPROVED by founder 2026-06-09 ("all good").** Implementation proceeds in build order A→G under
+the V1 guardrails (branch+PR, tests gate, ClaudeCodeAdapter for all Claude Code access).
+
+### Gating decisions locked (founder accepted the recommended answers)
+1. **Epic A pane↔session binding:** verify `claude --session-id` via a spike *before* building A;
+   fall back to newest-in-dir heuristic + manual rebind if unsupported.
+2. **Epic B sandboxing:** trusted-only extensions for V2 (documented risk); real sandboxing is a
+   pre-1.0 gate.
+3. **Epic C approvals:** opt-in (a toggle), not auto-managed `.claude/settings.json`. Dangerous tools
+   fail-closed when the engine is unreachable; read-only fail-open.
+4. **Epic D:** graphify/Python is optional (degrade gracefully, guide-to-install) — not bundled in V2;
+   global search ships FTS5-first, embeddings later.
+5. **Epic G:** cockpit scope is "view + steer" (state + approvals + follow-ups); terminal
+   pixel-mirroring deferred. Web/desktop UI share a `packages/ui`.
 
 | Epic | Doc | Status |
 |---|---|---|
