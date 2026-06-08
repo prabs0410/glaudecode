@@ -16,6 +16,7 @@ import { computeSessionCost } from "./cost";
 import { WorktreeManager } from "./worktree";
 import { buildHandoffSummary } from "./handoff";
 import { generateObservations } from "./metaAgent";
+import { computeContextUsage } from "./contextUsage";
 
 export type RpcMethod =
   | "listSessions"
@@ -34,7 +35,8 @@ export type RpcMethod =
   | "createWorktree"
   | "removeWorktree"
   | "handoff"
-  | "metaObservations";
+  | "metaObservations"
+  | "contextUsage";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -54,6 +56,7 @@ const METHODS = new Set<RpcMethod>([
   "removeWorktree",
   "handoff",
   "metaObservations",
+  "contextUsage",
 ]);
 
 // Stateless git wrapper; one instance is fine to share across requests.
@@ -148,6 +151,10 @@ export async function dispatch(
         }),
       );
       return generateObservations(inputs, { now });
+    }
+    case "contextUsage": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      return computeContextUsage(msgs);
     }
   }
 }

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { agentState, sessionCost, type AgentState, type SessionCost } from "./engine";
+import {
+  agentState,
+  contextUsage,
+  sessionCost,
+  type AgentState,
+  type ContextUsage,
+  type SessionCost,
+} from "./engine";
 
 // Agent-state status bar (V1-2). Polls the engine's computed agentState for the
 // selected session every 2s and shows status + tool + elapsed + model. The state
@@ -10,24 +17,28 @@ const POLL_MS = 2000;
 export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
   const [state, setState] = useState<AgentState | null>(null);
   const [cost, setCost] = useState<SessionCost | null>(null);
+  const [ctx, setCtx] = useState<ContextUsage | null>(null);
   const [, setTick] = useState(0); // 1s re-render so the elapsed timer advances
 
   useEffect(() => {
     if (!dir || !selectedId) {
       setState(null);
       setCost(null);
+      setCtx(null);
       return;
     }
     let alive = true;
     const poll = async () => {
       try {
-        const [s, c] = await Promise.all([
+        const [s, c, x] = await Promise.all([
           agentState(selectedId, dir),
           sessionCost(selectedId, dir),
+          contextUsage(selectedId, dir),
         ]);
         if (alive) {
           setState(s);
           setCost(c);
+          setCtx(x);
         }
       } catch {
         /* transient; keep last known values */
@@ -63,6 +74,16 @@ export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId:
       <span className="status-label">{state ? labelFor(state) : "…"}</span>
       {elapsed && <span className="status-elapsed">{elapsed}</span>}
       <span className="status-spacer" />
+      {ctx && (
+        <span
+          className={`status-context${ctx.nearCompaction ? " warn" : ""}`}
+          title={`Context window: ${formatTokens(ctx.usedTokens)} / ${formatTokens(ctx.limit)}${
+            ctx.nearCompaction ? " — compaction near" : ""
+          }`}
+        >
+          ctx {Math.round(ctx.pct * 100)}%
+        </span>
+      )}
       {cost && (
         <span className="status-cost" title="Estimated — tokens × model price table">
           {formatTokens(cost.totalTokens)} tok · ~${cost.usd.toFixed(cost.usd < 1 ? 4 : 2)} est

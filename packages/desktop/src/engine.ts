@@ -103,6 +103,18 @@ export interface SessionCost {
 export const sessionCost = (id: string, dir: string) =>
   engineRpc<SessionCost>("sessionCost", { id, dir });
 
+export interface ContextUsage {
+  usedTokens: number;
+  limit: number;
+  pct: number;
+  nearCompaction: boolean;
+  model?: string;
+}
+
+/** Context-window fullness for a session, or null if the model limit is unknown. */
+export const contextUsage = (id: string, dir: string) =>
+  engineRpc<ContextUsage | null>("contextUsage", { id, dir });
+
 // ---------- Orchestration (Epic A) ----------
 
 export interface WorktreeInfo {

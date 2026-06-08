@@ -70,6 +70,14 @@ body,
 .status-spacer {
   flex: 1;
 }
+.status-context {
+  color: #9db4d0;
+  font-variant-numeric: tabular-nums;
+}
+.status-context.warn {
+  color: #e3b341;
+  font-weight: 600;
+}
 .status-cost {
   color: #9db4d0;
   font-variant-numeric: tabular-nums;

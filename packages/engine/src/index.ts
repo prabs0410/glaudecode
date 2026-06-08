@@ -50,6 +50,8 @@ export type {
 } from "./extensionHost";
 export { MetaAgent, generateObservations } from "./metaAgent";
 export type { MetaAgentInput, Observation, ObserveOptions } from "./metaAgent";
+export { computeContextUsage, DEFAULT_CONTEXT_LIMITS } from "./contextUsage";
+export type { ContextLimitTable, ContextUsage, ContextUsageOptions } from "./contextUsage";
 export type {
   ContentBlock,
   ForkResult,
