@@ -52,6 +52,8 @@ export { MetaAgent, generateObservations } from "./metaAgent";
 export type { MetaAgentInput, Observation, ObserveOptions } from "./metaAgent";
 export { computeContextUsage, DEFAULT_CONTEXT_LIMITS } from "./contextUsage";
 export type { ContextLimitTable, ContextUsage, ContextUsageOptions } from "./contextUsage";
+export { classifyTool } from "./approval";
+export type { ClassifyOptions, ToolClassification, ToolDecision } from "./approval";
 export type {
   ContentBlock,
   ForkResult,
