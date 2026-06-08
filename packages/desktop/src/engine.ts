@@ -79,6 +79,20 @@ export type TimelineEntry =
 export const timeline = (id: string, dir: string) =>
   engineRpc<TimelineEntry[]>("timeline", { id, dir });
 
+export interface SessionCost {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  usd: number;
+  unpricedTokens: number;
+}
+
+/** Computed server-side by the engine (computeSessionCost, tested there). */
+export const sessionCost = (id: string, dir: string) =>
+  engineRpc<SessionCost>("sessionCost", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

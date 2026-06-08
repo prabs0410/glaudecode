@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { agentState, type AgentState } from "./engine";
+import { agentState, sessionCost, type AgentState, type SessionCost } from "./engine";
 
 // Agent-state status bar (V1-2). Polls the engine's computed agentState for the
 // selected session every 2s and shows status + tool + elapsed + model. The state
@@ -9,20 +9,28 @@ const POLL_MS = 2000;
 
 export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
   const [state, setState] = useState<AgentState | null>(null);
+  const [cost, setCost] = useState<SessionCost | null>(null);
   const [, setTick] = useState(0); // 1s re-render so the elapsed timer advances
 
   useEffect(() => {
     if (!dir || !selectedId) {
       setState(null);
+      setCost(null);
       return;
     }
     let alive = true;
     const poll = async () => {
       try {
-        const s = await agentState(selectedId, dir);
-        if (alive) setState(s);
+        const [s, c] = await Promise.all([
+          agentState(selectedId, dir),
+          sessionCost(selectedId, dir),
+        ]);
+        if (alive) {
+          setState(s);
+          setCost(c);
+        }
       } catch {
-        /* transient; keep last known state */
+        /* transient; keep last known values */
       }
     };
     void poll();
@@ -55,9 +63,20 @@ export function StatusBar({ dir, selectedId }: { dir: string | null; selectedId:
       <span className="status-label">{state ? labelFor(state) : "…"}</span>
       {elapsed && <span className="status-elapsed">{elapsed}</span>}
       <span className="status-spacer" />
+      {cost && (
+        <span className="status-cost" title="Estimated — tokens × model price table">
+          {formatTokens(cost.totalTokens)} tok · ~${cost.usd.toFixed(cost.usd < 1 ? 4 : 2)} est
+        </span>
+      )}
       {state?.model && <span className="status-model">{state.model}</span>}
     </div>
   );
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 function labelFor(s: AgentState): string {

@@ -20,6 +20,8 @@ export { deriveAgentState } from "./agentState";
 export type { AgentState, AgentStatus } from "./agentState";
 export { buildTimeline } from "./timeline";
 export type { TimelineEntry, ToolStatus } from "./timeline";
+export { computeSessionCost, DEFAULT_PRICES } from "./cost";
+export type { ModelPrice, PriceTable, SessionCost } from "./cost";
 export type {
   ContentBlock,
   ForkResult,
