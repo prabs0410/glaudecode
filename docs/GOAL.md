@@ -87,10 +87,89 @@ independently shippable vertical slice with explicit acceptance criteria and a t
   updates live.
 - **Tests:** engine test mapping file-history-snapshot → file list over a fixture.
 
-**Explicitly DEFERRED to V2 (do NOT build in V1):** mobile/web cockpit, multi-session
-orchestration + conflict detection + context handoff, knowledge graph (graphify), lifecycle hooks
-+ extensions, meta-agent, inline diff editor. These are real, but V1 must prove the "see-the-work"
-thesis first.
+**V1 STATUS: COMPLETE (2026-06-09).** All six features built, tested (engine 56/56), committed on
+branch `feat/v1-0-engine-adapter`. Architecture: pure session-computation logic in
+`@glaudecode/engine` (tested) exposed via RPC computed server-side; the WebView renders.
+
+---
+
+## V2 Scope — "The terminal you can run many agents in and walk away from"
+
+Everything in the previously-discussed feature set that V1 did not already deliver. Ordered by
+dependency and value (foundational + differentiated first; the cockpit last because it is the
+biggest). Same definition of done and guardrails as V1: each item is a branch + PR, tests gate
+the PR, all Claude Code access stays behind the ClaudeCodeAdapter (Principle XI), build in order.
+
+### V2-1 — Multi-session orchestration (foundational; build in three slices)
+- **V2-1a Worktree-paired sessions:** spawn and track multiple `claude` processes, one per git
+  worktree, each isolated in its own session directory (avoids the contamination bug). UI: tabs or
+  panes to switch between live sessions. *Acceptance:* run ≥2 sessions across worktrees at once,
+  each independent, switchable.
+- **V2-1b Cross-session conflict detection ⭐:** warn when two live sessions touch the same file
+  (from their changes streams). *Acceptance:* a visible warning when two sessions edit one path.
+- **V2-1c Context handoff:** extract a summary/artifact from one session and inject it as context
+  into another (via fork/resume-with-context — no live messaging). *Acceptance:* hand one
+  session's result into another on demand.
+
+### V2-2 — Lifecycle hooks + jiti extensions ⭐ (the hackable/OSS foundation)
+Engine EventBus emits lifecycle events (session start/fork/switch/compact + GC's cross-session
+events per ADR 0002); a jiti-based loader runs user `.ts` extensions in the Bun sidecar.
+*Acceptance:* a sample extension reacts to a real session event.
+
+### V2-3 — Meta-agent (advisory watcher) ⭐
+A background loop (engine, via SDK `query` — costs SDK credits) reads active sessions and surfaces
+observations ("session 3 stuck 5 min", "1 & 4 edit same file", "2 finished"). Advisory only.
+*Acceptance:* surfaces ≥1 real cross-session observation; clearly never acts autonomously.
+
+### V2-4 — Knowledge graph (graphify) ⭐
+Spawn graphify (Python) over the project, read `graph.json`, render it in a panel. *Acceptance:*
+the project's graph renders; bundled-Python dependency documented.
+
+### V2-5 — Memory tab + in-app AGENTS.md editor ⭐
+Surface and edit project memory + `AGENTS.md`; show what's actually loaded into context.
+*Acceptance:* view + edit memory/AGENTS.md from the app; edits persist to disk.
+
+### V2-6 — Context-window gauge ⭐
+Show how full the context is and warn before auto-compaction. *Acceptance:* a live gauge reflecting
+the selected session's context usage with a pre-compaction warning.
+
+### V2-7 — Smart approval pane ⭐
+Surface tool approvals without breaking the output stream; policy to auto-approve read-only tools
+and always-ask dangerous ones (`rm`, `push`). *Acceptance:* approve/deny a tool call from the pane;
+policy honored.
+
+### V2-8 — Prompt library + slash-command builder ⭐
+Save, template, search prompts; build custom slash commands. *Acceptance:* save and reuse a
+templated prompt; define a working custom slash command.
+
+### V2-9 — Session compare / diff (side-by-side) ⭐
+Diff two sessions/runs side by side (what changed between attempts). *Acceptance:* pick two
+sessions and see a meaningful side-by-side comparison.
+
+### V2-10 — Semantic resume
+On reopening a session, generate "here's what you were doing and the likely next step" (V1 already
+delivers session discovery/continue). *Acceptance:* a useful AI summary on resume.
+
+### V2-11 — Session replay / share ⭐
+Export a session as a portable, shareable replay file (teaching, PRs, build-in-public).
+*Acceptance:* export + re-open a replay that reproduces the session view.
+
+### V2-12 — Inline diff editor
+Accept/revert hunks for the agent's changes in the changes panel. *Acceptance:* view and revert a
+hunk. (Commoditized — lower priority within V2.)
+
+### V2-13 — Command palette + keybindings
+Cmd-K fuzzy actions over app commands; configurable keybindings. *Acceptance:* invoke core actions
+from the palette; rebind a key.
+
+### V2-14 — Web + mobile cockpit (largest; last)
+Expose the engine's RemoteServer beyond localhost (auth + transport the user provides) and ship a
+web client (PWA) reused on mobile to view/steer running sessions. *Acceptance:* view and steer a
+session from a browser, and from a phone browser, against the local engine.
+
+**Differentiation note (Principle II):** the sharpest cluster is V2-1 + V2-3 + V2-6 + V2-7 — the
+"run many agents and walk away" capability neither Anthropic's app nor opcode delivers. Build it
+well; don't let any item drift into a generic re-skin of what incumbents already do.
 
 ---
 
