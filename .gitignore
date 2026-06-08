@@ -15,6 +15,9 @@ node_modules/
 .next/
 .turbo/
 
+# GlaudeCode-managed git worktrees for parallel Claude sessions (Epic A)
+.glaudecode/
+
 # Logs / runtime
 *.log
 .env

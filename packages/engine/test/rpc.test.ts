@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { createRpcHandler, dispatch } from "../src/rpc";
 import type { ClaudeCodeAdapter } from "../src/adapter";
+import type { WorktreeManager } from "../src/worktree";
 
 const TOKEN = "test-token";
 
@@ -83,6 +84,54 @@ describe("dispatch", () => {
     });
     const out: any = await dispatch(a, "sessionChanges", { id: "s1", dir: "/r" });
     expect(out).toEqual([{ path: "/x.ts", edits: 1, lastTool: "Write" }]);
+  });
+
+  test("conflicts reads each session from its own worktree dir", async () => {
+    const seen: Array<{ id: string; dir: string }> = [];
+    const a = stubAdapter({
+      getSessionMessages: async (id: any, scope: any) => {
+        seen.push({ id, dir: scope.dir });
+        // both sessions touch /shared.ts → one conflict
+        return [
+          { id: "m", role: "assistant", blocks: [{ kind: "tool_use", name: "Edit", input: { file_path: "/shared.ts" } }] },
+        ] as any;
+      },
+    });
+    const out: any = await dispatch(a, "conflicts", {
+      sessions: [
+        { id: "s1", dir: "/wt/a" },
+        { id: "s2", dir: "/wt/b" },
+      ],
+    });
+    expect(seen).toEqual([
+      { id: "s1", dir: "/wt/a" },
+      { id: "s2", dir: "/wt/b" },
+    ]);
+    expect(out).toEqual([{ path: "/shared.ts", sessionIds: ["s1", "s2"] }]);
+  });
+
+  test("routes worktree methods to the manager", async () => {
+    const calls: any[] = [];
+    const wt = {
+      listWorktrees: async (dir: string) => (calls.push(["list", dir]), [{ path: dir, isMain: true, locked: false, detached: false }]),
+      createWorktree: async (dir: string, branch: string, path?: string) => (calls.push(["create", dir, branch, path]), "/wt/new"),
+      removeWorktree: async (dir: string, path: string, force?: boolean) => void calls.push(["remove", dir, path, force]),
+    } as unknown as WorktreeManager;
+
+    expect(await dispatch(stubAdapter(), "listWorktrees", { dir: "/repo" }, wt)).toEqual([
+      { path: "/repo", isMain: true, locked: false, detached: false },
+    ]);
+    expect(await dispatch(stubAdapter(), "createWorktree", { dir: "/repo", branch: "feat-x" }, wt)).toEqual({ path: "/wt/new" });
+    expect(await dispatch(stubAdapter(), "removeWorktree", { dir: "/repo", path: "/wt/new", force: true }, wt)).toEqual({ ok: true });
+    expect(calls).toEqual([
+      ["list", "/repo"],
+      ["create", "/repo", "feat-x", undefined],
+      ["remove", "/repo", "/wt/new", true],
+    ]);
+  });
+
+  test("createWorktree requires a branch", async () => {
+    await expect(dispatch(stubAdapter(), "createWorktree", { dir: "/repo" })).rejects.toThrow(/missing required param: branch/);
   });
 });
 

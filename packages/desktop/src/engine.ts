@@ -103,6 +103,35 @@ export interface SessionCost {
 export const sessionCost = (id: string, dir: string) =>
   engineRpc<SessionCost>("sessionCost", { id, dir });
 
+// ---------- Orchestration (Epic A) ----------
+
+export interface WorktreeInfo {
+  path: string;
+  branch?: string;
+  head?: string;
+  isMain: boolean;
+  locked: boolean;
+  detached: boolean;
+}
+
+export const listWorktrees = (dir: string) => engineRpc<WorktreeInfo[]>("listWorktrees", { dir });
+
+/** Create a worktree on a new branch under <dir>/.glaudecode/worktrees/<branch>. */
+export const createWorktree = (dir: string, branch: string) =>
+  engineRpc<{ path: string }>("createWorktree", { dir, branch });
+
+export const removeWorktree = (dir: string, path: string, force = false) =>
+  engineRpc<{ ok: true }>("removeWorktree", { dir, path, force });
+
+export interface ConflictWarning {
+  path: string;
+  sessionIds: string[];
+}
+
+/** Cross-session file conflicts. Each session is read from its own worktree dir. */
+export const conflicts = (sessions: Array<{ id: string; dir: string }>) =>
+  engineRpc<ConflictWarning[]>("conflicts", { sessions });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

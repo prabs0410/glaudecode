@@ -13,6 +13,7 @@ import { buildTimeline } from "./timeline";
 import { buildChanges } from "./changes";
 import { detectConflicts } from "./conflicts";
 import { computeSessionCost } from "./cost";
+import { WorktreeManager } from "./worktree";
 
 export type RpcMethod =
   | "listSessions"
@@ -26,7 +27,10 @@ export type RpcMethod =
   | "timeline"
   | "sessionCost"
   | "sessionChanges"
-  | "conflicts";
+  | "conflicts"
+  | "listWorktrees"
+  | "createWorktree"
+  | "removeWorktree";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -41,12 +45,19 @@ const METHODS = new Set<RpcMethod>([
   "sessionCost",
   "sessionChanges",
   "conflicts",
+  "listWorktrees",
+  "createWorktree",
+  "removeWorktree",
 ]);
+
+// Stateless git wrapper; one instance is fine to share across requests.
+const defaultWorktrees = new WorktreeManager();
 
 export async function dispatch(
   adapter: ClaudeCodeAdapter,
   method: string,
   params: any,
+  worktrees: WorktreeManager = defaultWorktrees,
 ): Promise<unknown> {
   if (!METHODS.has(method as RpcMethod)) {
     throw new Error(`unknown method: ${method}`);
@@ -87,16 +98,26 @@ export async function dispatch(
       return buildChanges(msgs);
     }
     case "conflicts": {
-      const dir = req(p.dir, "dir");
-      const ids: string[] = Array.isArray(p.sessionIds) ? p.sessionIds : [];
+      // Each live pane runs in its own worktree, so a session's messages must be
+      // read from *that pane's* dir — sessions bucket by cwd (Principle XI).
+      const sessions: Array<{ id: string; dir: string }> = Array.isArray(p.sessions) ? p.sessions : [];
       const perSession = await Promise.all(
-        ids.map(async (sessionId) => ({
-          sessionId,
-          changes: buildChanges(await adapter.getSessionMessages(sessionId, { dir })),
+        sessions.map(async ({ id, dir }) => ({
+          sessionId: id,
+          changes: buildChanges(await adapter.getSessionMessages(id, { dir })),
         })),
       );
       return detectConflicts(perSession);
     }
+    case "listWorktrees":
+      return worktrees.listWorktrees(req(p.dir, "dir"));
+    case "createWorktree":
+      return {
+        path: await worktrees.createWorktree(req(p.dir, "dir"), req(p.branch, "branch"), p.path ?? undefined),
+      };
+    case "removeWorktree":
+      await worktrees.removeWorktree(req(p.dir, "dir"), req(p.path, "path"), !!p.force);
+      return { ok: true };
   }
 }
 
