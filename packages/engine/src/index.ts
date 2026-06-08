@@ -24,6 +24,8 @@ export { computeSessionCost, DEFAULT_PRICES } from "./cost";
 export type { ModelPrice, PriceTable, SessionCost } from "./cost";
 export { buildChanges } from "./changes";
 export type { ChangeEntry } from "./changes";
+export { WorktreeManager, parseWorktreePorcelain } from "./worktree";
+export type { WorktreeInfo } from "./worktree";
 export type {
   ContentBlock,
   ForkResult,
