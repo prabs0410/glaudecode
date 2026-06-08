@@ -203,9 +203,137 @@ body,
   word-break: break-word;
 }
 
+/* Workspace: tab bar over N terminal panes */
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+}
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px;
+  background: #0b0f14;
+  border-bottom: 1px solid #1f2630;
+  overflow: hidden;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px 6px 0 0;
+  color: #9db4d0;
+  font: 12px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-bottom: none;
+}
+.tab:hover {
+  background: #11161d;
+}
+.tab.active {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-color: #1f2630;
+  box-shadow: inset 0 2px 0 #2f81f7;
+}
+.tab-kind {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6e7681;
+  flex-shrink: 0;
+}
+.tab-kind.claude {
+  background: #2f81f7;
+}
+.tab-kind.shell {
+  background: #3fb950;
+}
+.tab-title {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-close {
+  background: transparent;
+  border: none;
+  color: #6e7681;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.tab-close:hover {
+  color: #f85149;
+  background: #21262d;
+}
+.tab-new {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.newsession {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.newsession-input {
+  width: 150px;
+  padding: 3px 6px;
+  background: #0d1117;
+  border: 1px solid #2f81f7;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font: 12px/1 ui-sans-serif, system-ui, sans-serif;
+  outline: none;
+}
+.workspace-error {
+  padding: 6px 10px;
+  color: #f85149;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  background: #1a1012;
+  border-bottom: 1px solid #5c2a2a;
+  word-break: break-word;
+}
+.panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.pane-mount {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.session-live {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3fb950;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
 .terminal-host {
   flex: 1;
   min-width: 0;
+  height: 100%;
   padding: 8px;
   box-sizing: border-box;
   background: #0d1117;

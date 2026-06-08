@@ -12,13 +12,15 @@ interface Props {
   dir: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Sessions with a live pane running right now — shown with a "live" dot. */
+  liveSessionIds?: Set<string>;
 }
 
 // Sessions sidebar (V1-1): lists the project's real sessions with live search,
 // selection, inline rename + tag, and delete-with-confirm. All mutations go
 // through the engine RPC and reload the list.
 
-export function Sidebar({ dir, selectedId, onSelect }: Props) {
+export function Sidebar({ dir, selectedId, onSelect, liveSessionIds }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,7 @@ export function Sidebar({ dir, selectedId, onSelect }: Props) {
                   />
                 ) : (
                   <div className="session-title">
+                    {liveSessionIds?.has(s.id) && <span className="session-live" title="Running now" />}
                     {s.title || s.firstPrompt || s.id.slice(0, 8)}
                   </div>
                 )}
