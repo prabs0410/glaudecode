@@ -66,6 +66,14 @@ component contracts. ADRs reference architecture docs; architecture docs do not 
 - *(empty — first doc lands when V1 implementation begins)*
 - README: [architecture/README.md](architecture/README.md)
 
+### `docs/design/` — V2 epic design docs (research-backed, pre-implementation)
+Per-epic design docs for the V2 scope. No V2 feature is built until its doc is written + reviewed
+(the discipline V1's velocity build skipped). Each covers problem/value, research, architecture,
+data model, edge cases, security, test plan, acceptance, open questions.
+- `epic-a-orchestration.md` … `epic-g-cockpit.md` (A orchestration, B extensibility, C cost&control,
+  D memory&knowledge, E session-tooling, F terminal-UX, G cockpit)
+- README: [design/README.md](design/README.md)
+
 ### `docs/research/` — Investigation outputs
 Research outputs that inform design decisions. Three subfolders:
 
