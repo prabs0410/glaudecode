@@ -4,6 +4,10 @@
 
 export { ClaudeCodeAdapter } from "./adapter";
 export type { ForkOptions, GetMessagesOptions } from "./adapter";
+export { createRpcHandler, dispatch } from "./rpc";
+export type { RpcMethod } from "./rpc";
+export { startEngineServer } from "./server";
+export type { EngineServer, StartOptions } from "./server";
 export {
   mapBlocks,
   mapRole,
