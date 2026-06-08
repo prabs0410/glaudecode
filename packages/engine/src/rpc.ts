@@ -14,6 +14,7 @@ import { buildChanges } from "./changes";
 import { detectConflicts } from "./conflicts";
 import { computeSessionCost } from "./cost";
 import { WorktreeManager } from "./worktree";
+import { buildHandoffSummary } from "./handoff";
 
 export type RpcMethod =
   | "listSessions"
@@ -30,7 +31,8 @@ export type RpcMethod =
   | "conflicts"
   | "listWorktrees"
   | "createWorktree"
-  | "removeWorktree";
+  | "removeWorktree"
+  | "handoff";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -48,6 +50,7 @@ const METHODS = new Set<RpcMethod>([
   "listWorktrees",
   "createWorktree",
   "removeWorktree",
+  "handoff",
 ]);
 
 // Stateless git wrapper; one instance is fine to share across requests.
@@ -118,6 +121,17 @@ export async function dispatch(
     case "removeWorktree":
       await worktrees.removeWorktree(req(p.dir, "dir"), req(p.path, "path"), !!p.force);
       return { ok: true };
+    case "handoff": {
+      // Build an injectable digest of where the source session left off. No live
+      // messaging exists in Claude Code (§3.5); the UI pastes this into the target.
+      const id = req(p.fromId, "fromId");
+      const dir = req(p.dir, "dir");
+      const [info, msgs] = await Promise.all([
+        adapter.getSessionInfo(id, { dir }),
+        adapter.getSessionMessages(id, { dir }),
+      ]);
+      return { prompt: buildHandoffSummary(msgs, { fromTitle: info?.title ?? info?.firstPrompt }) };
+    }
   }
 }
 

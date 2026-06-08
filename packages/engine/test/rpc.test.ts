@@ -133,6 +133,21 @@ describe("dispatch", () => {
   test("createWorktree requires a branch", async () => {
     await expect(dispatch(stubAdapter(), "createWorktree", { dir: "/repo" })).rejects.toThrow(/missing required param: branch/);
   });
+
+  test("handoff returns an injectable digest of the source session", async () => {
+    const a = stubAdapter({
+      getSessionInfo: async () => ({ id: "s1", title: "parser work" }) as any,
+      getSessionMessages: async () =>
+        [{ id: "m", role: "assistant", blocks: [{ kind: "text", text: "added the parser" }] }] as any,
+    });
+    const out: any = await dispatch(a, "handoff", { fromId: "s1", dir: "/r" });
+    expect(out.prompt).toContain('handed off from session "parser work"');
+    expect(out.prompt).toContain("added the parser");
+  });
+
+  test("handoff requires fromId", async () => {
+    await expect(dispatch(stubAdapter(), "handoff", { dir: "/r" })).rejects.toThrow(/missing required param: fromId/);
+  });
 });
 
 describe("createRpcHandler", () => {

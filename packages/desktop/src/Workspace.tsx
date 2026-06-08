@@ -23,6 +23,7 @@ interface Props {
   onClosePane: (paneId: string) => void;
   onNewShell: () => void;
   onNewClaude: (branch: string) => Promise<void>;
+  onHandoff: (fromPaneId: string, toPaneId: string) => Promise<void>;
   /** Worktree creation needs a known project dir; disable the control until then. */
   canCreateSession: boolean;
 }
@@ -36,12 +37,35 @@ export function Workspace({
   onClosePane,
   onNewShell,
   onNewClaude,
+  onHandoff,
   canCreateSession,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+
+  const active = panes.find((p) => p.paneId === activePaneId);
+  const handoffTargets =
+    active?.kind === "claude"
+      ? panes.filter((p) => p.kind === "claude" && p.paneId !== active.paneId)
+      : [];
+
+  const doHandoff = async (toId: string) => {
+    if (!active) return;
+    setHandoffBusy(true);
+    setError(null);
+    try {
+      await onHandoff(active.paneId, toId);
+      setHandoffOpen(false);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
 
   const submit = async () => {
     const name = branch.trim();
@@ -123,6 +147,31 @@ export function Workspace({
             </div>
           ) : (
             <>
+              {handoffTargets.length > 0 && (
+                <div className="handoff">
+                  <button
+                    className="act"
+                    title="Hand this session's context to another"
+                    onClick={() => setHandoffOpen((o) => !o)}
+                  >
+                    ⇄ Hand off
+                  </button>
+                  {handoffOpen && (
+                    <div className="handoff-menu">
+                      {handoffTargets.map((t) => (
+                        <button
+                          key={t.paneId}
+                          className="handoff-item"
+                          disabled={handoffBusy}
+                          onClick={() => void doHandoff(t.paneId)}
+                        >
+                          {t.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 className="act"
                 title="New Claude session in a fresh worktree"

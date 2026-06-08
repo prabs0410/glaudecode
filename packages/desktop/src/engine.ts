@@ -132,6 +132,10 @@ export interface ConflictWarning {
 export const conflicts = (sessions: Array<{ id: string; dir: string }>) =>
   engineRpc<ConflictWarning[]>("conflicts", { sessions });
 
+/** Build an injectable digest of where a source session left off (§3.5). */
+export const handoff = (fromId: string, dir: string) =>
+  engineRpc<{ prompt: string }>("handoff", { fromId, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

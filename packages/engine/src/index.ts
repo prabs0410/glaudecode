@@ -28,6 +28,8 @@ export { WorktreeManager, parseWorktreePorcelain } from "./worktree";
 export type { WorktreeInfo } from "./worktree";
 export { detectConflicts } from "./conflicts";
 export type { ConflictWarning, SessionChanges } from "./conflicts";
+export { buildHandoffSummary } from "./handoff";
+export type { HandoffOptions } from "./handoff";
 export type {
   ContentBlock,
   ForkResult,

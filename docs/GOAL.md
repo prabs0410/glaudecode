@@ -150,8 +150,10 @@ pane-scoped `pty_spawn/write/resize/kill`; namespaced `pty-output:{paneId}`/`pty
 events; `cmd`/`args` so a pane hosts the shell or `claude --session-id <uuid>`), **A4 orchestration
 UI** ✅ (worktree+conflicts RPC; tabbed `Workspace` over N panes; "+ Claude" flow: create worktree →
 mint uuid → spawn `claude --session-id`; per-pane right-dock/status binding; sidebar live dots;
-non-blocking `ConflictBanner`). Resume at **A5 context handoff** (`handoff` RPC via fork/resume with
-the source session's summary injected), then Epic B.
+non-blocking `ConflictBanner`), **A5 context handoff** ✅ (`buildHandoffSummary` pure digest +
+`handoff` RPC; UI pastes the digest into the target pane via bracketed paste — terminal-native, no
+live messaging). **Epic A COMPLETE.** Resume at **Epic B — Extensibility** (`docs/design/epic-b-extensibility.md`):
+B1 EventBus, B2 jiti ExtensionHost (trusted-only), B3 meta-agent (advisory, opt-in, budget-aware).
 
 ---
 

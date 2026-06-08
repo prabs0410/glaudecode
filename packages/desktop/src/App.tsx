@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { RightDock } from "./RightDock";
 import { Workspace, type Pane } from "./Workspace";
-import { createWorktree, projectDir } from "./engine";
+import { createWorktree, handoff, projectDir } from "./engine";
 import "./App.css";
 
 const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
@@ -78,6 +79,21 @@ export default function App() {
     if (dir) setInspect({ sessionId: id, dir });
   };
 
+  // Hand the source pane's session context into the target pane. We fetch a digest
+  // (server-side, tested) and paste it into the target's PTY via bracketed paste so
+  // multi-line text arrives as one block for the user to review and send — there is
+  // no live inter-session messaging in Claude Code (Epic A §3.5).
+  const onHandoff = async (fromPaneId: string, toPaneId: string) => {
+    const from = panes.find((p) => p.paneId === fromPaneId);
+    if (!from?.sessionId || !from.cwd) throw new Error("source is not a Claude session");
+    const { prompt } = await handoff(from.sessionId, from.cwd);
+    const bracketed = `\x1b[200~${prompt}\x1b[201~`;
+    await invoke("pty_write", { paneId: toPaneId, data: bracketed });
+    setActivePaneId(toPaneId);
+    const to = panes.find((p) => p.paneId === toPaneId);
+    if (to?.sessionId) setInspect({ sessionId: to.sessionId, dir: to.cwd ?? dir ?? "" });
+  };
+
   return (
     <div className="app-root">
       <div className="app-shell">
@@ -94,6 +110,7 @@ export default function App() {
           onClosePane={closePane}
           onNewShell={newShell}
           onNewClaude={newClaude}
+          onHandoff={onHandoff}
           canCreateSession={!!dir}
         />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
