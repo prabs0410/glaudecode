@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
+import { MetaAgentPanel } from "./MetaAgentPanel";
 
 // A pane is one terminal tab: either a plain shell or a Claude Code session bound to
 // a worktree. For Claude panes `paneId === sessionId` (the uuid we mint and pass to
@@ -52,6 +53,10 @@ export function Workspace({
     active?.kind === "claude"
       ? panes.filter((p) => p.kind === "claude" && p.paneId !== active.paneId)
       : [];
+  // Live Claude sessions feed the cross-session widgets (conflicts, advisor).
+  const liveSessions = panes
+    .filter((p) => p.kind === "claude" && p.sessionId && p.cwd)
+    .map((p) => ({ id: p.sessionId!, dir: p.cwd!, title: p.title }));
 
   const doHandoff = async (toId: string) => {
     if (!active) return;
@@ -190,11 +195,8 @@ export function Workspace({
 
       {error && <div className="workspace-error">{error}</div>}
 
-      <ConflictBanner
-        sessions={panes
-          .filter((p) => p.kind === "claude" && p.sessionId && p.cwd)
-          .map((p) => ({ id: p.sessionId!, dir: p.cwd!, title: p.title }))}
-      />
+      <ConflictBanner sessions={liveSessions} />
+      <MetaAgentPanel sessions={liveSessions} />
 
       <div className="panes">
         {panes.map((p) => (

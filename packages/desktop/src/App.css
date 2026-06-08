@@ -369,6 +369,78 @@ body,
 .conflict-detail {
   color: #c9a456;
 }
+/* Advisory meta-agent strip (off by default) */
+.advisor {
+  background: #0b0f14;
+  border-bottom: 1px solid #1f2630;
+  font: 11px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+.advisor-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+}
+.advisor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #161b22;
+  border: 1px solid #1f2630;
+  color: #9db4d0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.advisor-toggle:hover {
+  background: #21262d;
+}
+.advisor-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6e7681;
+}
+.advisor-toggle.on {
+  color: #c9d1d9;
+  border-color: #2f4b7a;
+}
+.advisor-toggle.on .advisor-dot {
+  background: #2f81f7;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.advisor-cost {
+  color: #6e7681;
+  font-variant-numeric: tabular-nums;
+}
+.advisor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.advisor-item {
+  padding: 3px 8px;
+  border-radius: 4px;
+  border-left: 2px solid #6e7681;
+}
+.advisor-item.info {
+  color: #9db4d0;
+  border-left-color: #2f81f7;
+  background: #0d1320;
+}
+.advisor-item.warn {
+  color: #e3b341;
+  border-left-color: #d29922;
+  background: #1a140a;
+}
+.advisor-empty {
+  padding: 0 10px 6px 10px;
+  color: #6e7681;
+}
 .panes {
   flex: 1;
   min-height: 0;
