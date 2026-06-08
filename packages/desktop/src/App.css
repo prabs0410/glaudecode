@@ -180,6 +180,52 @@ body,
   border-color: #2f81f7;
 }
 
+/* Global content search (Epic D) */
+.gsearch {
+  padding: 8px 8px 0 8px;
+  border-bottom: 1px solid #1f2630;
+}
+.gsearch-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.gsearch-input {
+  margin: 0;
+  flex: 1;
+}
+.gsearch-results {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.gsearch-hit {
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.gsearch-hit:hover {
+  background: #161b22;
+}
+.gsearch-snippet {
+  font-size: 11px;
+  color: #c9d1d9;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.gsearch-snippet mark {
+  background: #43391a;
+  color: #f0c674;
+  border-radius: 2px;
+}
+.gsearch-meta {
+  font-size: 10px;
+  color: #6e7681;
+  margin-top: 2px;
+}
+
 .session-item {
   padding: 6px 8px;
   border-radius: 6px;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GlobalSearch } from "./GlobalSearch";
 import {
   deleteSession,
   filterSessions,
@@ -90,9 +91,11 @@ export function Sidebar({ dir, selectedId, onSelect, liveSessionIds }: Props) {
         Sessions{!loading && !error ? ` · ${visible.length}` : ""}
       </div>
 
+      <GlobalSearch dir={dir} onSelect={onSelect} />
+
       <input
         className="sidebar-search"
-        placeholder="Search sessions…"
+        placeholder="Filter these sessions…"
         value={query}
         onChange={(e) => setQuery(e.currentTarget.value)}
         spellCheck={false}

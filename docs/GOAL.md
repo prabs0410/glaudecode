@@ -164,8 +164,11 @@ C2 smart approval ✅ (classifyTool policy + reversible settings.json hook insta
 /approval endpoint + hook runner with fail-closed/open + opt-in approval cards), C3 budgets + cost
 rollups ✅ (pure aggregate/evaluate + CostStore + budgetStatus RPC + BudgetChip; desktop-notification
 alerts deferred to Epic F), C4 model suggestion ✅ (suggestModel heuristic + review-first Haiku chip).
-Resume at **Epic D — Memory & knowledge** (`docs/design/epic-d-memory-knowledge.md`): D1 memory +
-AGENTS.md editor + loaded-context view ⭐, D2 graphify graph (optional) ⭐, D3 global FTS5 search ⭐.
+**Epic D — Memory & knowledge COMPLETE** (branch `feat/v2-d-memory-knowledge`): D1 memory + AGENTS.md
+editor + loaded-context view ✅, D2 graphify graph (optional, degrades) ✅, D3 global FTS5 search ✅.
+Resume at **Epic E — Session tooling** (`docs/design/epic-e-session-tooling.md`): E1 GitManager,
+E2 git-in-changes ⭐, E3 inline diff editor, E4 session compare ⭐, E5 semantic resume, E6 replay/share
+⭐, E7 bookmarks.
 
 ---
 

@@ -268,6 +268,20 @@ export interface GraphResult {
 /** Build the project knowledge graph via graphify (degrades if Python/graphify absent). */
 export const buildGraph = (dir: string) => engineRpc<GraphResult>("buildGraph", { dir });
 
+export interface SearchHit {
+  sessionId: string;
+  snippet: string;
+  score: number;
+  when?: string;
+}
+
+/** Full-text search across indexed sessions (Epic D §3.3). */
+export const search = (query: string, limit?: number) =>
+  engineRpc<SearchHit[]>("search", { query, limit });
+
+/** (Re)index a project's sessions into the global search index. */
+export const reindex = (dir: string) => engineRpc<{ indexed: number }>("reindex", { dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

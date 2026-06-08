@@ -23,7 +23,11 @@ import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
 import { CostStore, evaluateBudget, type Budget } from "./budget";
 import { MemoryStore, parseLoadedContext } from "./memory";
 import { GraphManager } from "./graph";
+import { SearchIndex } from "./searchIndex";
+import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export type RpcMethod =
@@ -60,7 +64,9 @@ export type RpcMethod =
   | "readProjectInstructions"
   | "writeProjectInstructions"
   | "loadedContext"
-  | "buildGraph";
+  | "buildGraph"
+  | "reindex"
+  | "search";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -97,6 +103,8 @@ const METHODS = new Set<RpcMethod>([
   "writeProjectInstructions",
   "loadedContext",
   "buildGraph",
+  "reindex",
+  "search",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -104,6 +112,32 @@ const defaultWorktrees = new WorktreeManager();
 const defaultCostStore = new CostStore();
 const defaultMemoryStore = new MemoryStore();
 const defaultGraphManager = new GraphManager();
+
+// The search index is a single on-disk db; create it lazily so importing this module
+// has no filesystem side effects (tests inject their own in-memory index).
+let _searchIndex: SearchIndex | null = null;
+function getSearchIndex(deps: DispatchDeps): SearchIndex {
+  if (deps.searchIndex) return deps.searchIndex;
+  if (!_searchIndex) {
+    const dir = join(homedir(), ".glaudecode");
+    mkdirSync(dir, { recursive: true });
+    _searchIndex = new SearchIndex(join(dir, "index.db"));
+  }
+  return _searchIndex;
+}
+
+/** Concatenate a session's human-readable text (prompts, replies, thinking) for indexing. */
+function sessionBody(messages: SessionMessage[]): string {
+  return messages
+    .map((m) =>
+      m.blocks
+        .filter((b): b is { kind: "text" | "thinking"; text: string } => b.kind === "text" || b.kind === "thinking")
+        .map((b) => b.text)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
 
 export interface DispatchDeps {
   worktrees?: WorktreeManager;
@@ -115,6 +149,8 @@ export interface DispatchDeps {
   costStore?: CostStore;
   /** Memory/instructions file access (injectable for tests). */
   memoryStore?: MemoryStore;
+  /** Global search index (injectable for tests). */
+  searchIndex?: SearchIndex;
 }
 
 export async function dispatch(
@@ -145,6 +181,7 @@ export async function dispatch(
       return { ok: true };
     case "deleteSession":
       await adapter.deleteSession(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      getSearchIndex(deps).evict(req(p.id, "id")); // keep the search index consistent (§5)
       return { ok: true };
     case "agentState": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
@@ -281,6 +318,19 @@ export async function dispatch(
     }
     case "buildGraph":
       return defaultGraphManager.buildGraph(req(p.dir, "dir"));
+    case "reindex": {
+      // Read sessions via the adapter (Principle XI) and (re)index their text.
+      const dir = req(p.dir, "dir");
+      const index = getSearchIndex(deps);
+      const sessions = await adapter.listSessions({ dir });
+      for (const s of sessions) {
+        const msgs = await adapter.getSessionMessages(s.id, { dir });
+        index.indexSession(s.id, sessionBody(msgs), s.lastModified ?? s.createdAt);
+      }
+      return { indexed: sessions.length };
+    }
+    case "search":
+      return getSearchIndex(deps).search(req(p.query, "query"), typeof p.limit === "number" ? p.limit : 20);
   }
 }
 

@@ -79,6 +79,8 @@ export { MemoryStore, parseLoadedContext, encodeProjectDir } from "./memory";
 export type { LoadedContext, MemoryFile, ProjectInstructions } from "./memory";
 export { GraphManager, mapGraphJson } from "./graph";
 export type { GraphEdge, GraphNode, GraphResult } from "./graph";
+export { SearchIndex } from "./searchIndex";
+export type { SearchHit } from "./searchIndex";
 export type {
   ContentBlock,
   ForkResult,

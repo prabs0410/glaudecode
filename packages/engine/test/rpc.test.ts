@@ -7,6 +7,7 @@ import type { ClaudeCodeAdapter } from "../src/adapter";
 import type { WorktreeManager } from "../src/worktree";
 import { ApprovalQueue } from "../src/approvalQueue";
 import { CostStore } from "../src/budget";
+import { SearchIndex } from "../src/searchIndex";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -293,5 +294,34 @@ describe("budget RPCs", () => {
 
   afterAll(async () => {
     for (const h of homes) await rm(h, { recursive: true, force: true });
+  });
+});
+
+describe("search RPCs", () => {
+  test("reindex then search returns matching sessions; delete evicts", async () => {
+    const searchIndex = new SearchIndex();
+    const a = stubAdapter({
+      listSessions: async () => [{ id: "s1" }, { id: "s2" }] as any,
+      getSessionMessages: async (id: string) =>
+        [
+          {
+            id: "m",
+            role: "assistant",
+            blocks: [{ kind: "text", text: id === "s1" ? "worktree porcelain parser" : "cost token estimate" }],
+          },
+        ] as any,
+      deleteSession: async () => {},
+    });
+
+    const reindexed: any = await dispatch(a, "reindex", { dir: "/repo" }, { searchIndex });
+    expect(reindexed).toEqual({ indexed: 2 });
+
+    const hits: any = await dispatch(a, "search", { query: "worktree" }, { searchIndex });
+    expect(hits).toHaveLength(1);
+    expect(hits[0].sessionId).toBe("s1");
+
+    await dispatch(a, "deleteSession", { id: "s1", dir: "/repo" }, { searchIndex });
+    expect(await dispatch(a, "search", { query: "worktree" }, { searchIndex })).toEqual([]);
+    searchIndex.close();
   });
 });
