@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { timeline, type TimelineEntry } from "./engine";
 
-// Tool-call timeline + thinking panel (V1-3). Polls the engine's computed
-// timeline for the selected session and renders thinking blocks and tool calls
-// in order. Long entries collapse. Timeline is built server-side (buildTimeline,
-// unit-tested in @glaudecode/engine).
-
+// Tool-call timeline + thinking panel (V1-3). Renders inside the right dock.
 const POLL_MS = 2000;
 
 export function TimelinePanel({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
@@ -45,45 +41,33 @@ export function TimelinePanel({ dir, selectedId }: { dir: string | null; selecte
       return next;
     });
 
-  if (!selectedId) {
-    return (
-      <section className="timeline">
-        <div className="timeline-header">Timeline</div>
-        <div className="timeline-empty">Select a session to see its activity</div>
-      </section>
-    );
-  }
+  if (!selectedId) return <div className="dock-empty">Select a session to see its activity</div>;
+  if (error) return <div className="dock-error">{error}</div>;
 
   return (
-    <section className="timeline">
-      <div className="timeline-header">Timeline · {entries.length}</div>
-      {error && <div className="timeline-error">{error}</div>}
-      <ol className="timeline-list">
-        {entries.map((e) => {
-          const open = expanded.has(e.id);
-          if (e.kind === "thinking") {
-            return (
-              <li key={e.id} className="tl-entry tl-thinking" onClick={() => toggle(e.id)}>
-                <span className="tl-icon">✳</span>
-                <span className={`tl-thinking-text${open ? " open" : ""}`}>{e.text}</span>
-              </li>
-            );
-          }
+    <ol className="timeline-list">
+      {entries.map((e) => {
+        const open = expanded.has(e.id);
+        if (e.kind === "thinking") {
           return (
-            <li key={e.id} className="tl-entry tl-tool">
-              <div className="tl-tool-head" onClick={() => toggle(e.id)}>
-                <span className={`tl-status ${e.status}`} />
-                <span className="tl-tool-name">{e.name}</span>
-              </div>
-              {open && (
-                <pre className="tl-tool-input">{safeJson(e.input)}</pre>
-              )}
+            <li key={e.id} className="tl-entry tl-thinking" onClick={() => toggle(e.id)}>
+              <span className="tl-icon">✳</span>
+              <span className={`tl-thinking-text${open ? " open" : ""}`}>{e.text}</span>
             </li>
           );
-        })}
-        {entries.length === 0 && !error && <li className="timeline-empty">No activity yet</li>}
-      </ol>
-    </section>
+        }
+        return (
+          <li key={e.id} className="tl-entry tl-tool">
+            <div className="tl-tool-head" onClick={() => toggle(e.id)}>
+              <span className={`tl-status ${e.status}`} />
+              <span className="tl-tool-name">{e.name}</span>
+            </div>
+            {open && <pre className="tl-tool-input">{safeJson(e.input)}</pre>}
+          </li>
+        );
+      })}
+      {entries.length === 0 && <li className="dock-empty">No activity yet</li>}
+    </ol>
   );
 }
 

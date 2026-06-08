@@ -22,6 +22,8 @@ export { buildTimeline } from "./timeline";
 export type { TimelineEntry, ToolStatus } from "./timeline";
 export { computeSessionCost, DEFAULT_PRICES } from "./cost";
 export type { ModelPrice, PriceTable, SessionCost } from "./cost";
+export { buildChanges } from "./changes";
+export type { ChangeEntry } from "./changes";
 export type {
   ContentBlock,
   ForkResult,

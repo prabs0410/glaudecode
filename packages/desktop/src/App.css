@@ -211,8 +211,8 @@ body,
   background: #0d1117;
 }
 
-/* Timeline panel (right) */
-.timeline {
+/* Right dock (Timeline | Changes) */
+.rightdock {
   width: 320px;
   min-width: 320px;
   background: #0b0f14;
@@ -222,20 +222,71 @@ body,
   flex-direction: column;
   font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
 }
-.timeline-header {
-  padding: 10px 12px;
-  font-weight: 600;
+.dock-tabs {
+  display: flex;
   border-bottom: 1px solid #1f2630;
 }
-.timeline-empty {
+.dock-tab {
+  flex: 1;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #6e7681;
+  font: inherit;
+  cursor: pointer;
+}
+.dock-tab:hover {
+  color: #c9d1d9;
+}
+.dock-tab.active {
+  color: #c9d1d9;
+  border-bottom-color: #2f81f7;
+}
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.dock-empty {
   padding: 12px;
   color: #6e7681;
 }
-.timeline-error {
+.dock-error {
   padding: 10px 12px;
   color: #f85149;
   font-size: 11px;
 }
+
+/* Changes list */
+.changes-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+.change-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.change-item:hover {
+  background: #11161d;
+}
+.change-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.change-meta {
+  color: #6e7681;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
 .timeline-list {
   list-style: none;
   margin: 0;

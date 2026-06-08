@@ -79,6 +79,16 @@ export type TimelineEntry =
 export const timeline = (id: string, dir: string) =>
   engineRpc<TimelineEntry[]>("timeline", { id, dir });
 
+export interface ChangeEntry {
+  path: string;
+  edits: number;
+  lastTool: string;
+}
+
+/** Computed server-side by the engine (buildChanges, tested there). */
+export const sessionChanges = (id: string, dir: string) =>
+  engineRpc<ChangeEntry[]>("sessionChanges", { id, dir });
+
 export interface SessionCost {
   inputTokens: number;
   outputTokens: number;

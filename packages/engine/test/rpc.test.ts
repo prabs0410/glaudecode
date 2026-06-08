@@ -73,6 +73,17 @@ describe("dispatch", () => {
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ kind: "tool", name: "Bash", status: "pending" });
   });
+
+  test("sessionChanges lists files from write tools", async () => {
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [
+          { id: "m", role: "assistant", blocks: [{ kind: "tool_use", name: "Write", input: { file_path: "/x.ts" } }] },
+        ] as any,
+    });
+    const out: any = await dispatch(a, "sessionChanges", { id: "s1", dir: "/r" });
+    expect(out).toEqual([{ path: "/x.ts", edits: 1, lastTool: "Write" }]);
+  });
 });
 
 describe("createRpcHandler", () => {

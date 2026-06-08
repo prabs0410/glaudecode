@@ -10,6 +10,7 @@
 import { ClaudeCodeAdapter } from "./adapter";
 import { deriveAgentState } from "./agentState";
 import { buildTimeline } from "./timeline";
+import { buildChanges } from "./changes";
 import { computeSessionCost } from "./cost";
 
 export type RpcMethod =
@@ -22,7 +23,8 @@ export type RpcMethod =
   | "deleteSession"
   | "agentState"
   | "timeline"
-  | "sessionCost";
+  | "sessionCost"
+  | "sessionChanges";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -35,6 +37,7 @@ const METHODS = new Set<RpcMethod>([
   "agentState",
   "timeline",
   "sessionCost",
+  "sessionChanges",
 ]);
 
 export async function dispatch(
@@ -75,6 +78,10 @@ export async function dispatch(
     case "sessionCost": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return computeSessionCost(msgs);
+    }
+    case "sessionChanges": {
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      return buildChanges(msgs);
     }
   }
 }
