@@ -160,6 +160,33 @@ export interface Observation {
 export const metaObservations = (sessions: Array<{ id: string; dir: string; title?: string }>) =>
   engineRpc<Observation[]>("metaObservations", { sessions });
 
+// ---------- Smart approval (Epic C §3.2) ----------
+
+export interface ApprovalRequest {
+  id: string;
+  sessionId: string;
+  tool: string;
+  input: unknown;
+  classified: "auto-allow" | "ask" | "auto-deny";
+  dangerous: boolean;
+  reason: string;
+  at: string;
+}
+
+export const pendingApprovals = () => engineRpc<ApprovalRequest[]>("pendingApprovals", {});
+
+export const resolveApproval = (id: string, decision: "allow" | "deny") =>
+  engineRpc<{ ok: boolean }>("resolveApproval", { id, decision });
+
+export const installApprovalHook = (dir: string) =>
+  engineRpc<{ ok: true }>("installApprovalHook", { dir });
+
+export const uninstallApprovalHook = (dir: string) =>
+  engineRpc<{ ok: true }>("uninstallApprovalHook", { dir });
+
+export const approvalHookStatus = (dir: string) =>
+  engineRpc<{ installed: boolean }>("approvalHookStatus", { dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

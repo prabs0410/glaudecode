@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { createRpcHandler, dispatch } from "../src/rpc";
 import type { ClaudeCodeAdapter } from "../src/adapter";
 import type { WorktreeManager } from "../src/worktree";
+import { ApprovalQueue } from "../src/approvalQueue";
 
 const TOKEN = "test-token";
 
@@ -118,11 +119,11 @@ describe("dispatch", () => {
       removeWorktree: async (dir: string, path: string, force?: boolean) => void calls.push(["remove", dir, path, force]),
     } as unknown as WorktreeManager;
 
-    expect(await dispatch(stubAdapter(), "listWorktrees", { dir: "/repo" }, wt)).toEqual([
+    expect(await dispatch(stubAdapter(), "listWorktrees", { dir: "/repo" }, { worktrees: wt })).toEqual([
       { path: "/repo", isMain: true, locked: false, detached: false },
     ]);
-    expect(await dispatch(stubAdapter(), "createWorktree", { dir: "/repo", branch: "feat-x" }, wt)).toEqual({ path: "/wt/new" });
-    expect(await dispatch(stubAdapter(), "removeWorktree", { dir: "/repo", path: "/wt/new", force: true }, wt)).toEqual({ ok: true });
+    expect(await dispatch(stubAdapter(), "createWorktree", { dir: "/repo", branch: "feat-x" }, { worktrees: wt })).toEqual({ path: "/wt/new" });
+    expect(await dispatch(stubAdapter(), "removeWorktree", { dir: "/repo", path: "/wt/new", force: true }, { worktrees: wt })).toEqual({ ok: true });
     expect(calls).toEqual([
       ["list", "/repo"],
       ["create", "/repo", "feat-x", undefined],
@@ -218,5 +219,49 @@ describe("createRpcHandler", () => {
     const h = createRpcHandler(stubAdapter(), TOKEN);
     const res = await h(new Request("http://127.0.0.1/other"));
     expect(res.status).toBe(404);
+  });
+});
+
+describe("/approval endpoint + approval RPCs", () => {
+  const post = (h: any, body: unknown, path = "/approval", token = TOKEN) =>
+    h(
+      new Request(`http://127.0.0.1${path}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  test("auto-allows a read-only tool", async () => {
+    const approvals = new ApprovalQueue();
+    const h = createRpcHandler(stubAdapter(), TOKEN, { approvals });
+    const res = await post(h, { sessionId: "s1", tool: "Read", input: { file_path: "/x" } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ decision: "allow" });
+  });
+
+  test("requires auth and a tool", async () => {
+    const approvals = new ApprovalQueue();
+    const h = createRpcHandler(stubAdapter(), TOKEN, { approvals });
+    expect((await post(h, { tool: "Read" }, "/approval", "wrong")).status).toBe(401);
+    expect((await post(h, { sessionId: "s1" })).status).toBe(400);
+  });
+
+  test("an 'ask' is pending until resolved via RPC, then the POST resolves", async () => {
+    const approvals = new ApprovalQueue();
+    const h = createRpcHandler(stubAdapter(), TOKEN, { approvals });
+    const pending = post(h, { sessionId: "s1", tool: "Bash", input: { command: "git push" } });
+
+    // Let the handler parse the body and enqueue before we inspect the queue.
+    await new Promise((r) => setTimeout(r, 5));
+    // It should now be listed via the RPC.
+    const list: any = await dispatch(stubAdapter(), "pendingApprovals", {}, { approvals });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ tool: "Bash", dangerous: true });
+
+    await dispatch(stubAdapter(), "resolveApproval", { id: list[0].id, decision: "allow" }, { approvals });
+    const res = await pending;
+    expect(await res.json()).toMatchObject({ decision: "allow" });
+    expect(approvals.list()).toEqual([]);
   });
 });

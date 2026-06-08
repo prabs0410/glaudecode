@@ -63,6 +63,14 @@ export {
   removeApprovalHook,
 } from "./approvalHook";
 export type { ApprovalHookOptions, ClaudeSettings } from "./approvalHook";
+export { ApprovalQueue } from "./approvalQueue";
+export type {
+  ApprovalRequest,
+  ApprovalResult,
+  FinalDecision,
+  SubmitCall,
+  SubmitOptions,
+} from "./approvalQueue";
 export type {
   ContentBlock,
   ForkResult,

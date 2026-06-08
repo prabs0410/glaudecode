@@ -17,6 +17,10 @@ import { WorktreeManager } from "./worktree";
 import { buildHandoffSummary } from "./handoff";
 import { generateObservations } from "./metaAgent";
 import { computeContextUsage } from "./contextUsage";
+import { ApprovalHookInstaller } from "./approvalHook";
+import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 export type RpcMethod =
   | "listSessions"
@@ -36,7 +40,12 @@ export type RpcMethod =
   | "removeWorktree"
   | "handoff"
   | "metaObservations"
-  | "contextUsage";
+  | "contextUsage"
+  | "pendingApprovals"
+  | "resolveApproval"
+  | "installApprovalHook"
+  | "uninstallApprovalHook"
+  | "approvalHookStatus";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -57,17 +66,31 @@ const METHODS = new Set<RpcMethod>([
   "handoff",
   "metaObservations",
   "contextUsage",
+  "pendingApprovals",
+  "resolveApproval",
+  "installApprovalHook",
+  "uninstallApprovalHook",
+  "approvalHookStatus",
 ]);
 
 // Stateless git wrapper; one instance is fine to share across requests.
 const defaultWorktrees = new WorktreeManager();
 
+export interface DispatchDeps {
+  worktrees?: WorktreeManager;
+  /** Stateful approval queue (per-server); required for the approval RPCs. */
+  approvals?: ApprovalQueue;
+  /** This server's {port, token}, for writing the hook's endpoint file. */
+  endpoint?: { port: number; token: string };
+}
+
 export async function dispatch(
   adapter: ClaudeCodeAdapter,
   method: string,
   params: any,
-  worktrees: WorktreeManager = defaultWorktrees,
+  deps: DispatchDeps = {},
 ): Promise<unknown> {
+  const worktrees = deps.worktrees ?? defaultWorktrees;
   if (!METHODS.has(method as RpcMethod)) {
     throw new Error(`unknown method: ${method}`);
   }
@@ -156,20 +179,74 @@ export async function dispatch(
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return computeContextUsage(msgs);
     }
+    case "pendingApprovals":
+      return deps.approvals?.list() ?? [];
+    case "resolveApproval": {
+      const ok = deps.approvals?.resolve(req(p.id, "id"), req(p.decision, "decision") as FinalDecision) ?? false;
+      return { ok };
+    }
+    case "installApprovalHook": {
+      // Opt-in. Write this server's endpoint where the hook can read it, then merge the
+      // PreToolUse hook into .claude/settings.json (reversible).
+      const dir = req(p.dir, "dir");
+      if (!deps.endpoint) throw new Error("engine endpoint unavailable");
+      const endpointFile = join(dir, ".glaudecode", "approval-endpoint.json");
+      await mkdir(dirname(endpointFile), { recursive: true });
+      await writeFile(endpointFile, JSON.stringify(deps.endpoint), "utf8");
+      const binPath = join(import.meta.dir, "..", "bin", "approval-hook.ts");
+      await new ApprovalHookInstaller().install(dir, {
+        command: `bun ${binPath} ${endpointFile}`,
+        timeoutSec: 300,
+      });
+      return { ok: true };
+    }
+    case "uninstallApprovalHook":
+      await new ApprovalHookInstaller().uninstall(req(p.dir, "dir"));
+      return { ok: true };
+    case "approvalHookStatus":
+      return { installed: await new ApprovalHookInstaller().isInstalled(req(p.dir, "dir")) };
   }
 }
 
-export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string) {
+export interface RpcHandlerDeps {
+  approvals?: ApprovalQueue;
+  /** Mutable holder — the server fills in `port` after it binds. */
+  endpoint?: { port: number; token: string };
+}
+
+export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps: RpcHandlerDeps = {}) {
+  const authed = (request: Request) => request.headers.get("authorization") === `Bearer ${token}`;
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ ok: true });
     }
+
+    // The PreToolUse hook POSTs pending tool calls here and blocks on the decision.
+    if (url.pathname === "/approval") {
+      if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+      if (!authed(request)) return new Response("unauthorized", { status: 401 });
+      if (!deps.approvals) return Response.json({ decision: "deny", reason: "approvals unavailable" });
+      let body: any;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json({ error: "invalid JSON body" }, { status: 400 });
+      }
+      if (!body?.tool) return Response.json({ error: "missing tool" }, { status: 400 });
+      const result = await deps.approvals.submit({
+        sessionId: String(body.sessionId ?? ""),
+        tool: String(body.tool),
+        input: body.input,
+        repoDir: body.repoDir ? String(body.repoDir) : undefined,
+      });
+      return Response.json(result);
+    }
+
     if (url.pathname !== "/rpc") return new Response("not found", { status: 404 });
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-    if (request.headers.get("authorization") !== `Bearer ${token}`) {
-      return new Response("unauthorized", { status: 401 });
-    }
+    if (!authed(request)) return new Response("unauthorized", { status: 401 });
 
     let body: any;
     try {
@@ -179,7 +256,10 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string) {
     }
 
     try {
-      const result = await dispatch(adapter, body?.method, body?.params);
+      const result = await dispatch(adapter, body?.method, body?.params, {
+        approvals: deps.approvals,
+        endpoint: deps.endpoint,
+      });
       return Response.json({ result });
     } catch (e: any) {
       return Response.json({ error: String(e?.message ?? e) }, { status: 400 });

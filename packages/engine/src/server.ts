@@ -8,10 +8,12 @@
 
 import { ClaudeCodeAdapter } from "./adapter";
 import { createRpcHandler } from "./rpc";
+import { ApprovalQueue } from "./approvalQueue";
 
 export interface EngineServer {
   port: number;
   token: string;
+  approvals: ApprovalQueue;
   stop: () => void;
 }
 
@@ -25,7 +27,12 @@ export interface StartOptions {
 export function startEngineServer(opts: StartOptions = {}): EngineServer {
   const token = opts.token ?? crypto.randomUUID();
   const adapter = new ClaudeCodeAdapter();
-  const handler = createRpcHandler(adapter, token);
+  const approvals = new ApprovalQueue();
+  // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
+  // only known after Bun.serve binds. The handler closes over this object, so filling
+  // in `port` below is visible to later requests.
+  const endpoint = { port: 0, token };
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint });
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -39,10 +46,15 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     server.stop(true);
     throw new Error("engine server failed to bind a TCP port");
   }
+  endpoint.port = server.port;
 
   return {
     port: server.port,
     token,
-    stop: () => server.stop(true),
+    approvals,
+    stop: () => {
+      approvals.clear();
+      server.stop(true);
+    },
   };
 }
