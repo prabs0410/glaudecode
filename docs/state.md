@@ -23,8 +23,9 @@ Things decided. Don't relitigate. Cross-reference where it lives.
 
 Active work. Things touched in the current or last working session.
 
-- **Working skeleton built + foundation VERIFIED end-to-end (this session).** `packages/desktop` — Tauri 2 + React + xterm.js + portable-pty. Built, launched, and Claude Code's TUI renders correctly inside our terminal (visual evidence). Both architecture halves now proven: SDK read/fork (`spike-claude-code-integration.md`) + terminal rendering (`spike-tauri-terminal-rendering.md`). Committing the skeleton now.
-- **Monorepo root** — `package.json` with bun workspaces + `desktop` script, per ADR 0004.
+- **V1 COMPLETE (2026-06-09).** All six features in `docs/GOAL.md` built, tested, committed on branch `feat/v1-0-engine-adapter`: V1-0 engine+adapter, V1-0b sidecar wiring, V1-1 sessions sidebar (search/rename/tag/delete), V1-2 agent-state status bar, V1-3 tool-call timeline + thinking panel, V1-4 token/cost counter, V1-5 changes panel + tabbed right dock. Engine 56/56 tests pass; engine + desktop tsc clean; frontend production-build succeeds.
+- **Architecture pattern in use**: pure session-computation logic lives in `@glaudecode/engine` (tested) and is exposed via RPC methods (agentState/timeline/sessionCost/sessionChanges) computed server-side; the WebView just renders. ClaudeCodeAdapter is the sole Claude Code access point (Principle XI).
+- **Not yet done**: branch unpushed/unmerged (PR blocked on prabs0410 gh auth — see memory); visual review of the panels pending; V1-4 cost price table is a best-effort estimate.
 
 ## Next
 
