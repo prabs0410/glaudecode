@@ -54,6 +54,15 @@ export { computeContextUsage, DEFAULT_CONTEXT_LIMITS } from "./contextUsage";
 export type { ContextLimitTable, ContextUsage, ContextUsageOptions } from "./contextUsage";
 export { classifyTool } from "./approval";
 export type { ClassifyOptions, ToolClassification, ToolDecision } from "./approval";
+export {
+  ApprovalHookInstaller,
+  HOOK_SENTINEL,
+  buildApprovalHookEntry,
+  hasApprovalHook,
+  mergeApprovalHook,
+  removeApprovalHook,
+} from "./approvalHook";
+export type { ApprovalHookOptions, ClaudeSettings } from "./approvalHook";
 export type {
   ContentBlock,
   ForkResult,
