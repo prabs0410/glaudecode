@@ -11,6 +11,7 @@ import { ClaudeCodeAdapter } from "./adapter";
 import { deriveAgentState } from "./agentState";
 import { buildTimeline } from "./timeline";
 import { buildChanges } from "./changes";
+import { detectConflicts } from "./conflicts";
 import { computeSessionCost } from "./cost";
 
 export type RpcMethod =
@@ -24,7 +25,8 @@ export type RpcMethod =
   | "agentState"
   | "timeline"
   | "sessionCost"
-  | "sessionChanges";
+  | "sessionChanges"
+  | "conflicts";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -38,6 +40,7 @@ const METHODS = new Set<RpcMethod>([
   "timeline",
   "sessionCost",
   "sessionChanges",
+  "conflicts",
 ]);
 
 export async function dispatch(
@@ -82,6 +85,17 @@ export async function dispatch(
     case "sessionChanges": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return buildChanges(msgs);
+    }
+    case "conflicts": {
+      const dir = req(p.dir, "dir");
+      const ids: string[] = Array.isArray(p.sessionIds) ? p.sessionIds : [];
+      const perSession = await Promise.all(
+        ids.map(async (sessionId) => ({
+          sessionId,
+          changes: buildChanges(await adapter.getSessionMessages(sessionId, { dir })),
+        })),
+      );
+      return detectConflicts(perSession);
     }
   }
 }

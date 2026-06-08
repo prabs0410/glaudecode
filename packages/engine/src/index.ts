@@ -26,6 +26,8 @@ export { buildChanges } from "./changes";
 export type { ChangeEntry } from "./changes";
 export { WorktreeManager, parseWorktreePorcelain } from "./worktree";
 export type { WorktreeInfo } from "./worktree";
+export { detectConflicts } from "./conflicts";
+export type { ConflictWarning, SessionChanges } from "./conflicts";
 export type {
   ContentBlock,
   ForkResult,
