@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { RightDock } from "./RightDock";
@@ -39,6 +40,16 @@ export default function App() {
   const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
+
+  // Window title reflects the active pane (a Claude session's name, or the project dir).
+  useEffect(() => {
+    const active = panes.find((p) => p.paneId === activePaneId);
+    const ctx =
+      active?.kind === "claude" ? active.title : dir ? dir.split("/").filter(Boolean).pop() : null;
+    void getCurrentWindow()
+      .setTitle(ctx ? `GlaudeCode — ${ctx}` : "GlaudeCode")
+      .catch(() => {});
+  }, [activePaneId, panes, dir]);
   const [keymap, setKeymap] = useState<Keybinding[]>([]);
   const commandsRef = useRef<Command[]>([]);
 
