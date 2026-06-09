@@ -189,6 +189,16 @@ client, EventBus push stream (cockpit polls for now), terminal pixel-mirroring.
 
 ## V3 — Terminal Polish & Feel
 
+> **✅ V3 COMPLETE (2026-06-09, branch `feat/v3-terminal-polish` — A4 icon + A1–A3 window also touch
+> `feat/shell-autosuggestions` lineage).** All clusters shipped: A branding & window (rename→GlaudeCode,
+> context title, remember geometry, app icon), B terminal feel (font zoom, clickable links, Cmd-F
+> search, copy/paste, cursor style, themes incl. light, unicode11 width, scrollback+visual bell),
+> C shell feel (fc -R history, zsh-syntax-highlighting, directory-scoped suggestions, clickable file
+> paths), D layout & tabs (collapsible panels, Cmd-1..9, close-confirm, drag-reorder, zen, split panes),
+> E the big ones (E1 split panes ✅, E2 OSC 133/7 shell integration ✅). Also fixed along the way: the
+> keymap mod=Cmd-on-mac bug, and a file-open code-execution vector (allowlist + reveal-only). Engine
+> 255/255; Rust + desktop tsc/build green.
+
 > Quality-of-life polish that makes GlaudeCode "the terminal you live in." Smaller than the V2
 > epics: most items are self-contained and need NO design doc — implement directly, test, commit.
 > The 🏗 items (V3-E) DO get a short `docs/design/` note first (split panes + OSC 133 shell
@@ -273,14 +283,10 @@ the session tooling — lean into those.
 ---
 
 ## How this gets executed (the loop)
-**V1 and V2 (epics A–G) are COMPLETE.** The active backlog is now **V3 — Terminal Polish & Feel**
-(above). The autonomous loop implements the next V3 item in order (A→E), TDD where there's pure
-logic, writing a short `docs/design/` note first ONLY for the 🏗 items (V3-E1 split panes, V3-E2 OSC
-133), and commits per-item on a feature branch under the guardrails. **Resume at V3-A1 (rename
-"desktop" → GlaudeCode).** Items already shipped on `feat/shell-autosuggestions` (autosuggestions,
-smart Tab, resizable panels) must NOT be redone.
-
-Guardrail #5 note: "epic order A→G" now reads as **V3 item order A→E** (the V2 epics are done).
+**V1, V2 (epics A–G), and V3 (terminal polish A–E) are all COMPLETE.** No active backlog remains in
+this file. New work should be added as a new versioned section (e.g. V4) with the same guardrails +
+definition-of-done before the loop resumes. All work is committed per-item on `feat/*` branches;
+PRs remain blocked on `prabs0410` GitHub auth (see memory).
 
 PRs are currently blocked on `prabs0410` GitHub auth (commits land on the branch correctly as
 prabs0410; opening PRs needs `gh auth login` as prabs0410 — see memory). Until then the loop commits
