@@ -20,6 +20,9 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { command: "view.zoom-in", keys: "mod+=" },
   { command: "view.zoom-out", keys: "mod+-" },
   { command: "view.zoom-reset", keys: "mod+0" },
+  { command: "view.toggle-sidebar", keys: "mod+b" },
+  { command: "view.toggle-dock", keys: "mod+shift+b" },
+  { command: "view.zen", keys: "mod+shift+enter" },
 ];
 
 const MOD_TOKENS = new Set(["mod", "cmd", "command", "meta", "ctrl", "control"]);

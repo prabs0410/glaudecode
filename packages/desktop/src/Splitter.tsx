@@ -9,9 +9,11 @@ interface Props {
   max: number;
   sign: 1 | -1;
   onChange: (next: number) => void;
+  /** Double-click the divider (e.g. to collapse the adjacent panel). */
+  onDoubleClick?: () => void;
 }
 
-export function Splitter({ value, min, max, sign, onChange }: Props) {
+export function Splitter({ value, min, max, sign, onChange, onDoubleClick }: Props) {
   const drag = useRef<{ startX: number; startVal: number } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -36,5 +38,13 @@ export function Splitter({ value, min, max, sign, onChange }: Props) {
     window.addEventListener("pointerup", up);
   };
 
-  return <div className="splitter" onPointerDown={onPointerDown} role="separator" aria-orientation="vertical" />;
+  return (
+    <div
+      className="splitter"
+      onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
+      role="separator"
+      aria-orientation="vertical"
+    />
+  );
 }

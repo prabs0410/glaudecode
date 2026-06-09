@@ -42,6 +42,11 @@ export default function App() {
   const [fontSize, setFontSize] = useState(() => num(localStorage.getItem("glaude.fontSize"), 13));
   useEffect(() => localStorage.setItem("glaude.fontSize", String(fontSize)), [fontSize]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("glaude.sidebarCollapsed") === "1");
+  const [dockCollapsed, setDockCollapsed] = useState(() => localStorage.getItem("glaude.dockCollapsed") === "1");
+  const [zen, setZen] = useState(false);
+  useEffect(() => localStorage.setItem("glaude.sidebarCollapsed", sidebarCollapsed ? "1" : "0"), [sidebarCollapsed]);
+  useEffect(() => localStorage.setItem("glaude.dockCollapsed", dockCollapsed ? "1" : "0"), [dockCollapsed]);
   const [copyOnSelect, setCopyOnSelect] = useState(() => localStorage.getItem("glaude.copyOnSelect") === "1");
   useEffect(() => localStorage.setItem("glaude.copyOnSelect", copyOnSelect ? "1" : "0"), [copyOnSelect]);
   const [cursorStyle, setCursorStyle] = useState<"block" | "bar" | "underline">(
@@ -217,6 +222,24 @@ export default function App() {
         keywords: "color scheme light dark solarized",
         run: () => setThemeName((t) => THEME_NAMES[(THEME_NAMES.indexOf(t) + 1) % THEME_NAMES.length]),
       },
+      {
+        id: "view.toggle-sidebar",
+        title: sidebarCollapsed ? "Show sidebar" : "Hide sidebar",
+        hint: "mod+b",
+        run: () => setSidebarCollapsed((c) => !c),
+      },
+      {
+        id: "view.toggle-dock",
+        title: dockCollapsed ? "Show right dock" : "Hide right dock",
+        hint: "mod+shift+b",
+        run: () => setDockCollapsed((c) => !c),
+      },
+      {
+        id: "view.zen",
+        title: zen ? "Exit zen mode" : "Zen mode (hide all chrome)",
+        hint: "mod+shift+enter",
+        run: () => setZen((z) => !z),
+      },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -232,7 +255,7 @@ export default function App() {
           }),
       },
     ],
-    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink, themeName],
+    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink, themeName, sidebarCollapsed, dockCollapsed, zen],
   );
   commandsRef.current = commands;
 
@@ -254,14 +277,25 @@ export default function App() {
   return (
     <div className="app-root">
       <div className="app-shell">
-        <Sidebar
-          dir={dir}
-          selectedId={inspect?.sessionId ?? null}
-          onSelect={selectSession}
-          liveSessionIds={liveSessionIds}
-          width={sidebarW}
-        />
-        <Splitter value={sidebarW} min={180} max={520} sign={1} onChange={setSidebarW} />
+        {!zen && !sidebarCollapsed && (
+          <Sidebar
+            dir={dir}
+            selectedId={inspect?.sessionId ?? null}
+            onSelect={selectSession}
+            liveSessionIds={liveSessionIds}
+            width={sidebarW}
+          />
+        )}
+        {!zen && !sidebarCollapsed && (
+          <Splitter
+            value={sidebarW}
+            min={180}
+            max={520}
+            sign={1}
+            onChange={setSidebarW}
+            onDoubleClick={() => setSidebarCollapsed(true)}
+          />
+        )}
         <Workspace
           panes={panes}
           activePaneId={activePaneId}
@@ -279,8 +313,19 @@ export default function App() {
           cursorBlink={cursorBlink}
           theme={TERMINAL_THEMES[themeName]}
         />
-        <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
-        <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />
+        {!zen && !dockCollapsed && (
+          <Splitter
+            value={dockW}
+            min={240}
+            max={600}
+            sign={-1}
+            onChange={setDockW}
+            onDoubleClick={() => setDockCollapsed(true)}
+          />
+        )}
+        {!zen && !dockCollapsed && (
+          <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />
+        )}
       </div>
       <ApprovalPanel dir={dir} />
       <NotificationService
@@ -311,12 +356,14 @@ export default function App() {
         />
       )}
       {pairingOpen && <PairingModal onClose={() => setPairingOpen(false)} />}
-      <StatusBar
-        dir={inspect?.dir ?? null}
-        selectedId={inspect?.sessionId ?? null}
-        projectDir={dir}
-        liveSessions={liveSessions}
-      />
+      {!zen && (
+        <StatusBar
+          dir={inspect?.dir ?? null}
+          selectedId={inspect?.sessionId ?? null}
+          projectDir={dir}
+          liveSessions={liveSessions}
+        />
+      )}
     </div>
   );
 }
