@@ -9,3 +9,13 @@ you may not use this software except in compliance with the License.
 You may obtain a copy of the License at:
 
     http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------------
+Third-party components bundled with GlaudeCode:
+
+zsh-autosuggestions (v0.7.0) — packages/desktop/src-tauri/resources/shell/
+  Fish-like autosuggestions for zsh.
+  https://github.com/zsh-users/zsh-autosuggestions
+  Copyright (c) 2013 Thiago de Arruda
+  Copyright (c) 2016-2021 Eric Freese
+  Licensed under the MIT License.

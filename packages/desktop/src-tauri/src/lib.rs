@@ -37,6 +37,48 @@ struct PtyRegistry {
     panes: Mutex<HashMap<String, PaneHandle>>,
 }
 
+// Vendored fish-like autosuggestions plugin (MIT — see NOTICE), embedded in the binary so
+// it ships without resource-path plumbing and works in dev + prod alike.
+const ZSH_AUTOSUGGESTIONS: &str = include_str!("../resources/shell/zsh-autosuggestions.zsh");
+
+/// Write a ZDOTDIR wrapper under ~/.glaudecode/shell that sources the user's real zsh config
+/// and then our autosuggestions plugin. Returns (wrapper_dir, real_zdotdir) on success.
+/// The wrapper keeps ZDOTDIR pointed at itself only long enough to run our rc files, then
+/// restores the user's real ZDOTDIR — so dotfiles that read $ZDOTDIR keep working.
+fn setup_zsh_autosuggestions() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok()?;
+    let base = PathBuf::from(&home).join(".glaudecode").join("shell");
+    let wrapper = base.join("zdotdir");
+    std::fs::create_dir_all(&wrapper).ok()?;
+
+    let plugin = base.join("zsh-autosuggestions.zsh");
+    std::fs::write(&plugin, ZSH_AUTOSUGGESTIONS).ok()?;
+    let wrapper_str = wrapper.to_string_lossy().into_owned();
+    let plugin_str = plugin.to_string_lossy().into_owned();
+
+    // Each wrapper file: point ZDOTDIR at the real dir, source the real counterpart, then
+    // restore ZDOTDIR to the wrapper so zsh reads our next file too.
+    let real_then_back = |real_file: &str| -> String {
+        format!(
+            "ZDOTDIR=\"${{_GLAUDE_REAL_ZDOTDIR:-$HOME}}\"\n[[ -f \"$ZDOTDIR/{f}\" ]] && source \"$ZDOTDIR/{f}\"\nZDOTDIR=\"{w}\"\n",
+            f = real_file,
+            w = wrapper_str
+        )
+    };
+    std::fs::write(wrapper.join(".zshenv"), real_then_back(".zshenv")).ok()?;
+    std::fs::write(wrapper.join(".zprofile"), real_then_back(".zprofile")).ok()?;
+
+    // .zshrc additionally loads the plugin, then restores the real ZDOTDIR for the session.
+    let zshrc = format!(
+        "ZDOTDIR=\"${{_GLAUDE_REAL_ZDOTDIR:-$HOME}}\"\n[[ -f \"$ZDOTDIR/.zshrc\" ]] && source \"$ZDOTDIR/.zshrc\"\nZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'\nsource \"{p}\"\nZDOTDIR=\"${{_GLAUDE_REAL_ZDOTDIR:-$HOME}}\"\n",
+        p = plugin_str
+    );
+    std::fs::write(wrapper.join(".zshrc"), zshrc).ok()?;
+
+    let real = std::env::var("ZDOTDIR").unwrap_or(home);
+    Some((wrapper_str, real))
+}
+
 #[tauri::command]
 fn pty_spawn(
     app: AppHandle,
@@ -71,8 +113,19 @@ fn pty_spawn(
         }
         None => {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+            let is_zsh =
+                std::path::Path::new(&shell).file_name().and_then(|n| n.to_str()) == Some("zsh");
             let mut b = CommandBuilder::new(shell);
             b.arg("-l");
+            // Fish-like command autosuggestions for zsh (from shell history), injected ONLY
+            // into GlaudeCode's shells via a ZDOTDIR wrapper — the user's ~/.zshrc is never
+            // modified. Best-effort: if setup fails, the shell just spawns without it.
+            if is_zsh {
+                if let Some((wrapper, real)) = setup_zsh_autosuggestions() {
+                    b.env("ZDOTDIR", &wrapper);
+                    b.env("_GLAUDE_REAL_ZDOTDIR", &real);
+                }
+            }
             b
         }
     };
@@ -243,6 +296,7 @@ fn project_dir() -> String {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(PtyRegistry::default())
         .manage(EngineState::default())
         .setup(|app| {
