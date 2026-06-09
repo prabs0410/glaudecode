@@ -41,6 +41,8 @@ export default function App() {
   const [fontSize, setFontSize] = useState(() => num(localStorage.getItem("glaude.fontSize"), 13));
   useEffect(() => localStorage.setItem("glaude.fontSize", String(fontSize)), [fontSize]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [copyOnSelect, setCopyOnSelect] = useState(() => localStorage.getItem("glaude.copyOnSelect") === "1");
+  useEffect(() => localStorage.setItem("glaude.copyOnSelect", copyOnSelect ? "1" : "0"), [copyOnSelect]);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
 
@@ -180,6 +182,12 @@ export default function App() {
       { id: "view.zoom-out", title: "Zoom out", hint: "mod+-", run: () => setFontSize((s) => Math.max(8, s - 1)) },
       { id: "view.zoom-reset", title: "Reset zoom", hint: "mod+0", run: () => setFontSize(13) },
       { id: "terminal.search", title: "Find in terminal", hint: "mod+f", run: () => setSearchOpen(true) },
+      {
+        id: "terminal.copy-on-select",
+        title: copyOnSelect ? "Copy on select: off" : "Copy on select: on",
+        keywords: "clipboard selection",
+        run: () => setCopyOnSelect((c) => !c),
+      },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -195,7 +203,7 @@ export default function App() {
           }),
       },
     ],
-    [panes, activePaneId, dir, quiet],
+    [panes, activePaneId, dir, quiet, copyOnSelect],
   );
   commandsRef.current = commands;
 
@@ -237,6 +245,7 @@ export default function App() {
           fontSize={fontSize}
           searchOpen={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
+          copyOnSelect={copyOnSelect}
         />
         <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />

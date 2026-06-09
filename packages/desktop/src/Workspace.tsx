@@ -32,6 +32,7 @@ interface Props {
   /** Whether the in-terminal search bar is open (shown on the active pane). */
   searchOpen: boolean;
   onCloseSearch: () => void;
+  copyOnSelect: boolean;
 }
 
 // The workspace: a tab bar over N panes plus the "new session" flow. All panes stay
@@ -48,6 +49,7 @@ export function Workspace({
   fontSize,
   searchOpen,
   onCloseSearch,
+  copyOnSelect,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
@@ -221,6 +223,7 @@ export function Workspace({
               fontSize={fontSize}
               searchActive={searchOpen && p.paneId === activePaneId}
               onCloseSearch={onCloseSearch}
+              copyOnSelect={copyOnSelect}
             />
           </div>
         ))}

@@ -9,6 +9,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 
+const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+
 export interface TerminalPaneProps {
   /** Opaque id binding this xterm instance to one PTY in the Rust registry. */
   paneId: string;
@@ -24,6 +26,8 @@ export interface TerminalPaneProps {
   searchActive?: boolean;
   /** Called when the user closes the search bar (Esc / ✕). */
   onCloseSearch?: () => void;
+  /** Auto-copy the selection to the clipboard when you select text. */
+  copyOnSelect?: boolean;
 }
 
 // One xterm.js terminal bound to one Rust-side PTY (Epic A). Spawn parameters are
@@ -38,12 +42,15 @@ export function TerminalPane({
   fontSize = 13,
   searchActive = false,
   onCloseSearch,
+  copyOnSelect = false,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const copyOnSelectRef = useRef(copyOnSelect);
+  copyOnSelectRef.current = copyOnSelect;
 
   // Apply font-size changes live and tell the PTY the new dimensions.
   useEffect(() => {
@@ -80,6 +87,31 @@ export function TerminalPane({
     const search = new SearchAddon();
     term.loadAddon(search);
     searchRef.current = search;
+
+    // Copy/paste: Cmd/Ctrl-C copies the selection (Ctrl-C with no selection still goes to
+    // the PTY as SIGINT); Cmd/Ctrl-V pastes via bracketed paste so multiline content arrives
+    // as one block and won't auto-execute.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      const mod = IS_MAC ? e.metaKey : e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "c" && term.hasSelection()) {
+        void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+        return false;
+      }
+      if (mod && e.key.toLowerCase() === "v") {
+        void navigator.clipboard
+          .readText()
+          .then((t) => t && invoke("pty_write", { paneId, data: `\x1b[200~${t}\x1b[201~` }))
+          .catch(() => {});
+        return false;
+      }
+      return true;
+    });
+    term.onSelectionChange(() => {
+      if (copyOnSelectRef.current && term.hasSelection()) {
+        void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+      }
+    });
     fit.fit();
     term.focus();
 
