@@ -170,9 +170,20 @@ editor + loaded-context view ✅, D2 graphify graph (optional, degrades) ✅, D3
 git-in-changes ✅, E3 inline diff per-hunk revert ✅, E4 session compare ✅, E5 semantic resume ✅,
 E6 replay/share + redaction ✅, E7 bookmarks ✅. **Epic F — Terminal UX COMPLETE** (branch `feat/v2-f-terminal-ux`): F1 command palette (Cmd-K) ✅,
 F2 keybindings ✅, F3 prompt library + slash-command builder ✅, F4 desktop notifications ✅.
-Resume at **Epic G — Cockpit** (`docs/design/epic-g-cockpit.md`, the LAST epic): G1 RemoteServer +
-WS event stream, G2 pairing + scoped/expiring tokens (security-critical), G3 `packages/ui` extraction
-+ web/PWA client, G4 mobile view+steer + remote approvals ⭐.
+**Epic G — Cockpit COMPLETE** (branch `feat/v2-g-cockpit`): G2 pairing + scoped/expiring tokens +
+fail-safe scope enforcement ✅, G1 RemoteServer (`/app` + `/ws` + `/pair`, opt-in remote bind,
+default localhost-only) ✅, G3/G4 mobile cockpit — pair by code, view sessions, **answer approvals
+from a phone** ✅.
+
+## ✅ V2 COMPLETE (2026-06-09)
+All seven epics A–G built design-doc-first + TDD, each on its own `feat/v2-<x>-*` branch, committed
+under the guardrails (branch+PR, tests gate, never destructive, prabs0410 identity, ClaudeCodeAdapter
+for all CC access). Engine 246/246 tests green; engine + desktop tsc clean; vite build + Rust build
+green. Branches are unpushed/unmerged — PRs are blocked on `prabs0410` GitHub auth (the founder must
+`gh auth login` as prabs0410; gh is currently logged in as ashinclude — see memory). Tracked,
+non-blocking deferrals: graphify (needs Python — degrades gracefully), SDK-`query` digests
+(cost-gated), force-directed graph viz, FTS embeddings, full `packages/ui` extraction + React web
+client, EventBus push stream (cockpit polls for now), terminal pixel-mirroring.
 
 ---
 
