@@ -68,11 +68,23 @@ fn setup_zsh_autosuggestions() -> Option<(String, String)> {
     std::fs::write(wrapper.join(".zshenv"), real_then_back(".zshenv")).ok()?;
     std::fs::write(wrapper.join(".zprofile"), real_then_back(".zprofile")).ok()?;
 
-    // .zshrc additionally loads the plugin, then restores the real ZDOTDIR for the session.
-    let zshrc = format!(
-        "ZDOTDIR=\"${{_GLAUDE_REAL_ZDOTDIR:-$HOME}}\"\n[[ -f \"$ZDOTDIR/.zshrc\" ]] && source \"$ZDOTDIR/.zshrc\"\nZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'\nsource \"{p}\"\nZDOTDIR=\"${{_GLAUDE_REAL_ZDOTDIR:-$HOME}}\"\n",
-        p = plugin_str
-    );
+    // .zshrc: load the user's config, then the plugin, then bind smart-Tab — accept the
+    // autosuggestion if one is shown, else fall through to whatever Tab was already bound to
+    // (so frameworks like fzf-tab keep working). Finally restore the real ZDOTDIR. Written
+    // from a raw-string template (with the plugin path substituted) to keep the zsh legible.
+    let zshrc = r#"ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
+[[ -f "$ZDOTDIR/.zshrc" ]] && source "$ZDOTDIR/.zshrc"
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+source "__GLAUDE_PLUGIN__"
+# GlaudeCode smart Tab: accept the autosuggestion if shown, else the prior Tab behavior.
+typeset -g _GLAUDE_ORIG_TAB="${$(bindkey '^I')##* }"
+[[ -z "$_GLAUDE_ORIG_TAB" || "$_GLAUDE_ORIG_TAB" == "undefined-key" ]] && _GLAUDE_ORIG_TAB=expand-or-complete
+_glaude_smart_tab() { if [[ -n "$POSTDISPLAY" ]]; then zle autosuggest-accept; else zle "$_GLAUDE_ORIG_TAB"; fi }
+zle -N _glaude_smart_tab
+bindkey '^I' _glaude_smart_tab
+ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
+"#
+    .replace("__GLAUDE_PLUGIN__", &plugin_str);
     std::fs::write(wrapper.join(".zshrc"), zshrc).ok()?;
 
     let real = std::env::var("ZDOTDIR").unwrap_or(home);
