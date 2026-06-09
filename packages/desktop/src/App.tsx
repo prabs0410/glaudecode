@@ -28,6 +28,8 @@ export default function App() {
   const [dir, setDir] = useState<string | null>(null);
   const [panes, setPanes] = useState<Pane[]>(INITIAL_PANES);
   const [activePaneId, setActivePaneId] = useState<string>("main");
+  // Second pane shown side-by-side with the active one (V3-E1). null = single (tabs).
+  const [splitPaneId, setSplitPaneId] = useState<string | null>(null);
   // What the right dock + status bar inspect: the active Claude pane's session, or a
   // session clicked in the sidebar. Last focus wins.
   const [inspect, setInspect] = useState<{ sessionId: string; dir: string } | null>(null);
@@ -150,6 +152,7 @@ export default function App() {
     if (target?.kind === "claude" && !confirm(`Close "${target.title}"? Its Claude session will be terminated.`)) {
       return;
     }
+    if (paneId === splitPaneId) setSplitPaneId(null);
     setPanes((ps) => {
       const next = ps.filter((p) => p.paneId !== paneId);
       if (paneId === activePaneId) {
@@ -163,6 +166,22 @@ export default function App() {
 
   const selectSession = (id: string) => {
     if (dir) setInspect({ sessionId: id, dir });
+  };
+
+  // Toggle a 2-pane side-by-side split (V3-E1). Secondary = next pane, or a fresh shell.
+  const toggleSplit = () => {
+    if (splitPaneId) {
+      setSplitPaneId(null);
+      return;
+    }
+    const other = panes.find((p) => p.paneId !== activePaneId);
+    if (other) {
+      setSplitPaneId(other.paneId);
+      return;
+    }
+    const id = crypto.randomUUID();
+    setPanes((ps) => [...ps, { paneId: id, kind: "shell", title: "Shell", cwd: dir ?? undefined }]);
+    setSplitPaneId(id);
   };
 
   const reorderPanes = (from: number, to: number) => {
@@ -193,6 +212,7 @@ export default function App() {
       { id: "pane.new-shell", title: "New shell pane", hint: "mod+t", run: newShell },
       { id: "pane.next", title: "Next pane", hint: "mod+]", run: () => cyclePane(1) },
       { id: "pane.prev", title: "Previous pane", hint: "mod+[", run: () => cyclePane(-1) },
+      { id: "pane.split", title: splitPaneId ? "Unsplit" : "Split right", hint: "mod+d", run: toggleSplit },
       ...Array.from({ length: 9 }, (_, i) => ({
         id: `pane.go-${i + 1}`,
         title: `Switch to pane ${i + 1}`,
@@ -278,7 +298,7 @@ export default function App() {
           }),
       },
     ],
-    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink, themeName, sidebarCollapsed, dockCollapsed, zen],
+    [panes, activePaneId, splitPaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink, themeName, sidebarCollapsed, dockCollapsed, zen],
   );
   commandsRef.current = commands;
 
@@ -322,6 +342,7 @@ export default function App() {
         <Workspace
           panes={panes}
           activePaneId={activePaneId}
+          splitPaneId={splitPaneId}
           onSelectPane={selectPane}
           onClosePane={closePane}
           onNewShell={newShell}

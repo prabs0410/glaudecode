@@ -572,6 +572,9 @@ body,
   min-width: 0;
   min-height: 0;
 }
+.pane-mount.split {
+  border-left: 1px solid #1f2630;
+}
 .session-live {
   display: inline-block;
   width: 7px;

@@ -21,6 +21,8 @@ export interface Pane {
 interface Props {
   panes: Pane[];
   activePaneId: string | null;
+  /** Second pane shown side-by-side with the active one (V3-E1). */
+  splitPaneId?: string | null;
   onSelectPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onNewShell: () => void;
@@ -46,6 +48,7 @@ interface Props {
 export function Workspace({
   panes,
   activePaneId,
+  splitPaneId = null,
   onSelectPane,
   onClosePane,
   onNewShell,
@@ -230,8 +233,8 @@ export function Workspace({
         {panes.map((p) => (
           <div
             key={p.paneId}
-            className="pane-mount"
-            style={{ display: p.paneId === activePaneId ? "block" : "none" }}
+            className={`pane-mount${p.paneId === splitPaneId ? " split" : ""}`}
+            style={{ display: p.paneId === activePaneId || p.paneId === splitPaneId ? "block" : "none" }}
           >
             <TerminalPane
               paneId={p.paneId}
