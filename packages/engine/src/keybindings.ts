@@ -23,6 +23,15 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { command: "view.toggle-sidebar", keys: "mod+b" },
   { command: "view.toggle-dock", keys: "mod+shift+b" },
   { command: "view.zen", keys: "mod+shift+enter" },
+  { command: "pane.go-1", keys: "mod+1" },
+  { command: "pane.go-2", keys: "mod+2" },
+  { command: "pane.go-3", keys: "mod+3" },
+  { command: "pane.go-4", keys: "mod+4" },
+  { command: "pane.go-5", keys: "mod+5" },
+  { command: "pane.go-6", keys: "mod+6" },
+  { command: "pane.go-7", keys: "mod+7" },
+  { command: "pane.go-8", keys: "mod+8" },
+  { command: "pane.go-9", keys: "mod+9" },
 ];
 
 const MOD_TOKENS = new Set(["mod", "cmd", "command", "meta", "ctrl", "control"]);

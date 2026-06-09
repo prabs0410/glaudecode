@@ -179,6 +179,15 @@ export default function App() {
       { id: "pane.new-shell", title: "New shell pane", hint: "mod+t", run: newShell },
       { id: "pane.next", title: "Next pane", hint: "mod+]", run: () => cyclePane(1) },
       { id: "pane.prev", title: "Previous pane", hint: "mod+[", run: () => cyclePane(-1) },
+      ...Array.from({ length: 9 }, (_, i) => ({
+        id: `pane.go-${i + 1}`,
+        title: `Switch to pane ${i + 1}`,
+        hint: `mod+${i + 1}`,
+        run: () => {
+          const p = panes[i];
+          if (p) selectPane(p.paneId);
+        },
+      })),
       {
         id: "pane.close",
         title: "Close active pane",
