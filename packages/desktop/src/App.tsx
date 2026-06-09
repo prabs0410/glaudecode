@@ -165,6 +165,16 @@ export default function App() {
     if (dir) setInspect({ sessionId: id, dir });
   };
 
+  const reorderPanes = (from: number, to: number) => {
+    setPanes((ps) => {
+      if (from < 0 || from >= ps.length || to < 0 || to >= ps.length) return ps;
+      const next = [...ps];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
   const cyclePane = (delta: number) => {
     setPanes((ps) => {
       if (ps.length < 2) return ps;
@@ -317,6 +327,7 @@ export default function App() {
           onNewShell={newShell}
           onNewClaude={newClaude}
           onHandoff={onHandoff}
+          onReorder={reorderPanes}
           canCreateSession={!!dir}
           fontSize={fontSize}
           searchOpen={searchOpen}

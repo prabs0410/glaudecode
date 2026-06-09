@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ITheme } from "@xterm/xterm";
 import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
@@ -26,6 +26,8 @@ interface Props {
   onNewShell: () => void;
   onNewClaude: (branch: string) => Promise<void>;
   onHandoff: (fromPaneId: string, toPaneId: string) => Promise<void>;
+  /** Reorder a tab from one index to another (drag-and-drop). */
+  onReorder: (from: number, to: number) => void;
   /** Worktree creation needs a known project dir; disable the control until then. */
   canCreateSession: boolean;
   /** Shared terminal font size (px). */
@@ -49,6 +51,7 @@ export function Workspace({
   onNewShell,
   onNewClaude,
   onHandoff,
+  onReorder,
   canCreateSession,
   fontSize,
   searchOpen,
@@ -64,6 +67,7 @@ export function Workspace({
   const [error, setError] = useState<string | null>(null);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [handoffBusy, setHandoffBusy] = useState(false);
+  const dragIdx = useRef<number | null>(null);
 
   const active = panes.find((p) => p.paneId === activePaneId);
   const handoffTargets =
@@ -109,12 +113,19 @@ export function Workspace({
     <section className="workspace">
       <div className="tabbar">
         <div className="tabs">
-          {panes.map((p) => (
+          {panes.map((p, i) => (
             <div
               key={p.paneId}
               className={`tab${p.paneId === activePaneId ? " active" : ""}`}
               onClick={() => onSelectPane(p.paneId)}
               title={p.worktreePath ?? p.cwd ?? p.title}
+              draggable
+              onDragStart={() => (dragIdx.current = i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragIdx.current !== null && dragIdx.current !== i) onReorder(dragIdx.current, i);
+                dragIdx.current = null;
+              }}
             >
               <span className={`tab-kind ${p.kind}`} />
               <span className="tab-title">{p.title}</span>
