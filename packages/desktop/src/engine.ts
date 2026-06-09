@@ -342,6 +342,15 @@ export interface SessionComparison {
 export const compareSessions = (a: { id: string; dir: string }, b: { id: string; dir: string }) =>
   engineRpc<SessionComparison>("compareSessions", { a, b });
 
+export interface ResumeBriefing {
+  recap: string;
+  suggestedNext: string;
+}
+
+/** A short recap + suggested next step for reopening a session (Epic E §3.5). */
+export const resumeBriefing = (id: string, dir: string) =>
+  engineRpc<ResumeBriefing>("resumeBriefing", { id, dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

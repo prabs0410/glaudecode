@@ -805,6 +805,39 @@ body,
   overflow: auto;
 }
 
+/* Resume briefing banner (Epic E) */
+.resume-banner {
+  position: relative;
+  padding: 8px 24px 8px 10px;
+  background: #11161d;
+  border-bottom: 1px solid #1f2630;
+  font: 11px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+.resume-recap {
+  color: #c9d1d9;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 84px;
+  overflow: auto;
+}
+.resume-next {
+  color: #79c0ff;
+  margin-top: 4px;
+}
+.resume-x {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: #6e7681;
+  cursor: pointer;
+  font-size: 11px;
+}
+.resume-x:hover {
+  color: #c9d1d9;
+}
+
 /* Session compare panel (Epic E) */
 .compare-panel {
   padding: 8px;

@@ -85,6 +85,8 @@ export { GitManager, parseGitStatus, parseUnifiedDiff, buildHunkPatch } from "./
 export type { DiffHunk, FileDiff, GitState, GitStatusEntry } from "./gitManager";
 export { compareSessions } from "./compare";
 export type { SessionComparison, SessionView, SetDiff } from "./compare";
+export { buildResumeBriefing } from "./resume";
+export type { ResumeBriefing, ResumeOptions } from "./resume";
 export type {
   ContentBlock,
   ForkResult,

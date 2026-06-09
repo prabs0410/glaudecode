@@ -25,6 +25,7 @@ import { MemoryStore, parseLoadedContext } from "./memory";
 import { GraphManager } from "./graph";
 import { GitManager } from "./gitManager";
 import { compareSessions, type SessionView } from "./compare";
+import { buildResumeBriefing } from "./resume";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -75,7 +76,8 @@ export type RpcMethod =
   | "gitDiff"
   | "gitRestore"
   | "gitRevertHunk"
-  | "compareSessions";
+  | "compareSessions"
+  | "resumeBriefing";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -121,6 +123,7 @@ const METHODS = new Set<RpcMethod>([
   "gitRestore",
   "gitRevertHunk",
   "compareSessions",
+  "resumeBriefing",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -391,6 +394,15 @@ export async function dispatch(
       const b = req(p.b, "b") as { id: string; dir: string };
       const [va, vb] = await Promise.all([buildSessionView(adapter, a), buildSessionView(adapter, b)]);
       return compareSessions(va, vb);
+    }
+    case "resumeBriefing": {
+      const dir = req(p.dir, "dir");
+      const id = req(p.id, "id");
+      const [msgs, info] = await Promise.all([
+        adapter.getSessionMessages(id, { dir }),
+        adapter.getSessionInfo(id, { dir }),
+      ]);
+      return buildResumeBriefing(msgs, { summary: info?.summary, changedFiles: buildChanges(msgs).length });
     }
   }
 }
