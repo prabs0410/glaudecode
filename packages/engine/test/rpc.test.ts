@@ -229,15 +229,32 @@ describe("createRpcHandler", () => {
     expect(res.status).toBe(404);
   });
 
-  test("CORS: preflight + headers so the cross-origin WebView fetch works", async () => {
+  test("CORS: echoes an allowlisted WebView origin, never '*'", async () => {
     const h = createRpcHandler(stubAdapter(), TOKEN);
-    const pre = await h(new Request("http://127.0.0.1/rpc", { method: "OPTIONS" }));
+    const withOrigin = (init: RequestInit) =>
+      new Request("http://127.0.0.1/rpc", { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost:1420" } });
+
+    const pre = await h(withOrigin({ method: "OPTIONS" }));
     expect(pre.status).toBe(204);
-    expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+    expect(pre.headers.get("access-control-allow-origin")).toBe("http://localhost:1420");
     expect(pre.headers.get("access-control-allow-headers")).toContain("authorization");
 
-    const res = await rpc(h, { method: "listSessions", params: { dir: "/r" } });
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const ok = await h(
+      withOrigin({
+        method: "POST",
+        headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", origin: "http://localhost:1420" },
+        body: JSON.stringify({ method: "listSessions", params: { dir: "/r" } }),
+      }),
+    );
+    expect(ok.headers.get("access-control-allow-origin")).toBe("http://localhost:1420");
+  });
+
+  test("CORS: a non-allowlisted origin gets no allow-origin header", async () => {
+    const h = createRpcHandler(stubAdapter(), TOKEN);
+    const res = await h(
+      new Request("http://127.0.0.1/rpc", { method: "OPTIONS", headers: { origin: "http://evil.example" } }),
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 

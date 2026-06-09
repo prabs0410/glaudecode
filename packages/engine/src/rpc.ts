@@ -603,16 +603,30 @@ function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" 
   return level === "view" || level === "steer"; // required === "view"
 }
 
-// The desktop WebView is a different origin (dev: http://localhost:1420) from the engine
+// The desktop WebView is a different origin (dev: http://localhost:1420; prod Tauri webviews:
+// tauri://localhost on macOS/iOS, http://tauri.localhost on Windows/Linux) from the engine
 // (http://127.0.0.1:<port>), so its fetch()es are cross-origin and need CORS — including a
-// preflight for the Authorization + JSON content-type headers. Safe here because the bearer
-// token is the real auth boundary, not the origin; localhost-only by default.
-const CORS_HEADERS: Record<string, string> = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "authorization, content-type",
-  "access-control-max-age": "600",
-};
+// preflight for the Authorization + JSON content-type headers. We ECHO only an allowlisted
+// WebView origin (never "*"), so an arbitrary web page the user visits can't read engine
+// responses even though the bearer token is the real auth boundary. The cockpit talks to the
+// engine same-origin (served from /app), so it never needs CORS.
+const ALLOWED_ORIGINS = new Set<string>([
+  "http://localhost:1420",
+  "tauri://localhost",
+  "http://tauri.localhost",
+]);
+
+function corsHeaders(request: Request): Record<string, string> {
+  const headers: Record<string, string> = {
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
+    "access-control-max-age": "600",
+    vary: "origin",
+  };
+  const origin = request.headers.get("origin");
+  if (origin && ALLOWED_ORIGINS.has(origin)) headers["access-control-allow-origin"] = origin;
+  return headers;
+}
 
 export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps: RpcHandlerDeps = {}) {
   const respond = async (request: Request): Promise<Response> => {
@@ -676,10 +690,11 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
   };
 
   return async (request: Request): Promise<Response> => {
+    const cors = corsHeaders(request);
     // CORS preflight — the WebView sends OPTIONS before the authed POST.
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     const res = await respond(request);
-    for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v);
+    for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
     return res;
   };
 }
