@@ -9,6 +9,7 @@ import { CommandPalette, type Command } from "./CommandPalette";
 import { KeybindingsModal } from "./KeybindingsModal";
 import { PromptsModal } from "./PromptsModal";
 import { NotificationService } from "./NotificationService";
+import { PairingModal } from "./PairingModal";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
@@ -26,6 +27,7 @@ export default function App() {
   const [keybindingsOpen, setKeybindingsOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [quiet, setQuiet] = useState(() => localStorage.getItem("glaude.quiet") === "1");
+  const [pairingOpen, setPairingOpen] = useState(false);
   const [keymap, setKeymap] = useState<Keybinding[]>([]);
   const commandsRef = useRef<Command[]>([]);
 
@@ -151,6 +153,7 @@ export default function App() {
       },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
+      { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
       {
         id: "notifications.quiet",
         title: quiet ? "Notifications: unmute" : "Notifications: quiet mode",
@@ -231,6 +234,7 @@ export default function App() {
           onInsert={(text) => void invoke("pty_write", { paneId: activePaneId, data: text })}
         />
       )}
+      {pairingOpen && <PairingModal onClose={() => setPairingOpen(false)} />}
       <StatusBar
         dir={inspect?.dir ?? null}
         selectedId={inspect?.sessionId ?? null}

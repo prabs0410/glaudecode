@@ -98,7 +98,8 @@ export type RpcMethod =
   | "listSlashCommands"
   | "createPairCode"
   | "listDevices"
-  | "revokeDevice";
+  | "revokeDevice"
+  | "defaultDir";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -161,6 +162,7 @@ const METHODS = new Set<RpcMethod>([
   "createPairCode",
   "listDevices",
   "revokeDevice",
+  "defaultDir",
 ]);
 
 // Remote-access scope policy (Epic G §6). FAIL-SAFE: only read-only methods are "view";
@@ -172,7 +174,7 @@ const VIEW_METHODS = new Set<string>([
   "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
   "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
   "listPrompts", "readPrompt", "listSlashCommands", "getKeybindings", "metaObservations",
-  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus",
+  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus", "defaultDir",
 ]);
 const LOCAL_ONLY_METHODS = new Set<string>(["createPairCode", "listDevices", "revokeDevice"]);
 
@@ -530,6 +532,10 @@ export async function dispatch(
       return deps.pairing?.listDevices() ?? [];
     case "revokeDevice":
       return { ok: deps.pairing?.revoke(req(p.deviceId, "deviceId")) ?? false };
+    case "defaultDir":
+      // The engine sidecar runs in the project directory — the cockpit uses this to list
+      // that project's sessions without Tauri.
+      return { dir: process.cwd() };
   }
 }
 

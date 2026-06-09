@@ -421,6 +421,30 @@ export const buildSlashCommand = (dir: string, name: string, body: string) =>
   engineRpc<{ command: string }>("buildSlashCommand", { dir, name, body });
 export const listSlashCommands = (dir: string) => engineRpc<string[]>("listSlashCommands", { dir });
 
+// ---------- Pairing / remote cockpit (Epic G §3.2) ----------
+
+export type TokenScope = "view" | "steer";
+export interface PairCode {
+  code: string;
+  scope: TokenScope;
+  expiresAt: string;
+}
+export interface PairedDevice {
+  id: string;
+  name: string;
+  scope: TokenScope;
+  pairedAt: string;
+  expiresAt: string;
+  lastSeen?: string;
+}
+
+export const createPairCode = (scope: TokenScope) => engineRpc<PairCode>("createPairCode", { scope });
+export const listDevices = () => engineRpc<PairedDevice[]>("listDevices", {});
+export const revokeDevice = (deviceId: string) => engineRpc<{ ok: boolean }>("revokeDevice", { deviceId });
+
+/** The engine's localhost endpoint (port + token), for building the cockpit URL. */
+export const engineEndpoint = () => invoke<{ port: number; token: string }>("engine_endpoint");
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

@@ -655,6 +655,48 @@ body,
   font-size: 11px;
 }
 
+/* Pairing modal (Epic G) */
+.pair-modal {
+  width: 460px;
+  max-width: 92vw;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  padding: 12px;
+}
+.pair-gen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+.pair-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #9db4d0;
+}
+.pair-code-box {
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.pair-code {
+  font: 700 28px/1.2 ui-monospace, Menlo, monospace;
+  letter-spacing: 4px;
+  color: #79c0ff;
+}
+.muted-note {
+  color: #6e7681;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
 /* Keybindings modal (Epic F) */
 .keys-modal {
   width: 480px;
