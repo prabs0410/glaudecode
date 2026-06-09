@@ -404,6 +404,23 @@ export const setKeybinding = (command: string, keys: string | null) =>
 
 export const resetKeybindings = () => engineRpc<Keymap>("resetKeybindings", {});
 
+// ---------- Prompt library + slash commands (Epic F §3.3) ----------
+
+export interface PromptInfo {
+  id: string;
+  name: string;
+  variables: string[];
+}
+
+export const listPrompts = () => engineRpc<PromptInfo[]>("listPrompts", {});
+export const readPrompt = (id: string) => engineRpc<{ body: string }>("readPrompt", { id });
+export const savePrompt = (id: string, body: string) => engineRpc<{ id: string }>("savePrompt", { id, body });
+export const deletePrompt = (id: string) => engineRpc<{ ok: true }>("deletePrompt", { id });
+
+export const buildSlashCommand = (dir: string, name: string, body: string) =>
+  engineRpc<{ command: string }>("buildSlashCommand", { dir, name, body });
+export const listSlashCommands = (dir: string) => engineRpc<string[]>("listSlashCommands", { dir });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

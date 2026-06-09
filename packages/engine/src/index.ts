@@ -104,6 +104,8 @@ export {
   validateKeys,
 } from "./keybindings";
 export type { Keybinding, KeyEventLike } from "./keybindings";
+export { PromptStore, SlashCommandWriter, extractVariables, fillTemplate } from "./prompt";
+export type { PromptInfo } from "./prompt";
 export type {
   ContentBlock,
   ForkResult,

@@ -29,6 +29,7 @@ import { buildResumeBriefing } from "./resume";
 import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
 import { KeybindingStore, validateKeys } from "./keybindings";
+import { PromptStore, SlashCommandWriter } from "./prompt";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -87,7 +88,13 @@ export type RpcMethod =
   | "removeBookmark"
   | "getKeybindings"
   | "setKeybinding"
-  | "resetKeybindings";
+  | "resetKeybindings"
+  | "listPrompts"
+  | "readPrompt"
+  | "savePrompt"
+  | "deletePrompt"
+  | "buildSlashCommand"
+  | "listSlashCommands";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -141,6 +148,12 @@ const METHODS = new Set<RpcMethod>([
   "getKeybindings",
   "setKeybinding",
   "resetKeybindings",
+  "listPrompts",
+  "readPrompt",
+  "savePrompt",
+  "deletePrompt",
+  "buildSlashCommand",
+  "listSlashCommands",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -151,6 +164,8 @@ const defaultGraphManager = new GraphManager();
 const defaultGitManager = new GitManager();
 const defaultBookmarkStore = new BookmarkStore();
 const defaultKeybindingStore = new KeybindingStore();
+const defaultPromptStore = new PromptStore();
+const defaultSlashWriter = new SlashCommandWriter();
 
 // The search index is a single on-disk db; create it lazily so importing this module
 // has no filesystem side effects (tests inject their own in-memory index).
@@ -196,6 +211,9 @@ export interface DispatchDeps {
   bookmarkStore?: BookmarkStore;
   /** Keybinding persistence (injectable for tests). */
   keybindingStore?: KeybindingStore;
+  /** Prompt library + slash-command writer (injectable for tests). */
+  promptStore?: PromptStore;
+  slashWriter?: SlashCommandWriter;
 }
 
 /** Make an absolute path repo-relative so it matches `git status` output. */
@@ -464,6 +482,19 @@ export async function dispatch(
     case "resetKeybindings":
       await (deps.keybindingStore ?? defaultKeybindingStore).reset();
       return (deps.keybindingStore ?? defaultKeybindingStore).effective();
+    case "listPrompts":
+      return (deps.promptStore ?? defaultPromptStore).list();
+    case "readPrompt":
+      return { body: await (deps.promptStore ?? defaultPromptStore).read(req(p.id, "id")) };
+    case "savePrompt":
+      return { id: await (deps.promptStore ?? defaultPromptStore).save(req(p.id, "id"), req(p.body, "body")) };
+    case "deletePrompt":
+      await (deps.promptStore ?? defaultPromptStore).remove(req(p.id, "id"));
+      return { ok: true };
+    case "buildSlashCommand":
+      return { command: await (deps.slashWriter ?? defaultSlashWriter).write(req(p.dir, "dir"), req(p.name, "name"), req(p.body, "body")) };
+    case "listSlashCommands":
+      return (deps.slashWriter ?? defaultSlashWriter).list(req(p.dir, "dir"));
   }
 }
 

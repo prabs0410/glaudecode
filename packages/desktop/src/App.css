@@ -578,6 +578,83 @@ body,
   background: #0d1117;
 }
 
+/* Prompts modal (Epic F) */
+.prompts-modal {
+  width: 640px;
+  max-width: 92vw;
+  height: 60vh;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.prompts-cols {
+  display: flex;
+  height: 100%;
+}
+.prompts-list {
+  width: 180px;
+  border-right: 1px solid #1f2630;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+}
+.prompts-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 12px;
+  cursor: pointer;
+}
+.prompts-item:hover {
+  background: #11161d;
+}
+.prompts-item.active {
+  background: #1f2937;
+  box-shadow: inset 2px 0 0 #2f81f7;
+}
+.prompts-varcount {
+  background: #15233a;
+  color: #79c0ff;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+.prompts-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prompts-edit .memory-editor {
+  flex: 1;
+}
+.prompts-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.prompts-vars .commit-input {
+  flex: 1 1 120px;
+}
+.prompts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.prompts-status {
+  color: #79c0ff;
+  font-size: 11px;
+}
+
 /* Keybindings modal (Epic F) */
 .keys-modal {
   width: 480px;

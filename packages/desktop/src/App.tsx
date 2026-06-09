@@ -7,6 +7,7 @@ import { Workspace, type Pane } from "./Workspace";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { KeybindingsModal } from "./KeybindingsModal";
+import { PromptsModal } from "./PromptsModal";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
@@ -22,6 +23,7 @@ export default function App() {
   const [inspect, setInspect] = useState<{ sessionId: string; dir: string } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [keybindingsOpen, setKeybindingsOpen] = useState(false);
+  const [promptsOpen, setPromptsOpen] = useState(false);
   const [keymap, setKeymap] = useState<Keybinding[]>([]);
   const commandsRef = useRef<Command[]>([]);
 
@@ -146,6 +148,7 @@ export default function App() {
         },
       },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
+      { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
     ],
     [panes, activePaneId, dir],
   );
@@ -200,6 +203,13 @@ export default function App() {
           commands={commands.map((c) => ({ id: c.id, title: c.title }))}
           onClose={() => setKeybindingsOpen(false)}
           onChanged={(km) => setKeymap(km)}
+        />
+      )}
+      {promptsOpen && (
+        <PromptsModal
+          dir={dir}
+          onClose={() => setPromptsOpen(false)}
+          onInsert={(text) => void invoke("pty_write", { paneId: activePaneId, data: text })}
         />
       )}
       <StatusBar
