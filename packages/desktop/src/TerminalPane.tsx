@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 
@@ -59,6 +61,8 @@ export function TerminalPane({ paneId, cwd, cmd, args, fontSize = 13 }: Terminal
     } catch {
       // WebGL unavailable → xterm falls back to canvas. Fine.
     }
+    // Clickable URLs → open in the system browser (not inside the WebView).
+    term.loadAddon(new WebLinksAddon((_e, uri) => void openUrl(uri)));
     fit.fit();
     term.focus();
 
