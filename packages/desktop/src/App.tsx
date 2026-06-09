@@ -146,6 +146,10 @@ export default function App() {
   };
 
   const closePane = (paneId: string) => {
+    const target = panes.find((p) => p.paneId === paneId);
+    if (target?.kind === "claude" && !confirm(`Close "${target.title}"? Its Claude session will be terminated.`)) {
+      return;
+    }
     setPanes((ps) => {
       const next = ps.filter((p) => p.paneId !== paneId);
       if (paneId === activePaneId) {
