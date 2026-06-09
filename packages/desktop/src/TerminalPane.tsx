@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
@@ -115,6 +116,9 @@ export function TerminalPane({
     const search = new SearchAddon();
     term.loadAddon(search);
     searchRef.current = search;
+    // Unicode 11 widths so emoji / wide CJK chars don't desync the cursor.
+    term.loadAddon(new Unicode11Addon());
+    term.unicode.activeVersion = "11";
 
     // Copy/paste: Cmd/Ctrl-C copies the selection (Ctrl-C with no selection still goes to
     // the PTY as SIGINT); Cmd/Ctrl-V pastes via bracketed paste so multiline content arrives
