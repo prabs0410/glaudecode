@@ -166,9 +166,11 @@ rollups ✅ (pure aggregate/evaluate + CostStore + budgetStatus RPC + BudgetChip
 alerts deferred to Epic F), C4 model suggestion ✅ (suggestModel heuristic + review-first Haiku chip).
 **Epic D — Memory & knowledge COMPLETE** (branch `feat/v2-d-memory-knowledge`): D1 memory + AGENTS.md
 editor + loaded-context view ✅, D2 graphify graph (optional, degrades) ✅, D3 global FTS5 search ✅.
-Resume at **Epic E — Session tooling** (`docs/design/epic-e-session-tooling.md`): E1 GitManager,
-E2 git-in-changes ⭐, E3 inline diff editor, E4 session compare ⭐, E5 semantic resume, E6 replay/share
-⭐, E7 bookmarks.
+**Epic E — Session tooling COMPLETE** (branch `feat/v2-e-session-tooling`): E1 GitManager ✅, E2
+git-in-changes ✅, E3 inline diff per-hunk revert ✅, E4 session compare ✅, E5 semantic resume ✅,
+E6 replay/share + redaction ✅, E7 bookmarks ✅. Resume at **Epic F — Terminal UX**
+(`docs/design/epic-f-terminal-ux.md`): F1 command palette, F2 keybindings, F3 prompt library +
+slash-command builder ⭐, F4 desktop notifications ⭐.
 
 ---
 

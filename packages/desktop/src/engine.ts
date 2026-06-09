@@ -368,6 +368,24 @@ export interface ReplayBundle {
 export const buildReplay = (id: string, dir: string, redact = true) =>
   engineRpc<ReplayBundle>("buildReplay", { id, dir, redact });
 
+// ---------- Bookmarks (Epic E §3.7) ----------
+
+export interface Bookmark {
+  sessionId: string;
+  messageId: string;
+  note?: string;
+  at: string;
+}
+
+export const listBookmarks = (sessionId: string) =>
+  engineRpc<Bookmark[]>("listBookmarks", { sessionId });
+
+export const addBookmark = (sessionId: string, messageId: string, note?: string) =>
+  engineRpc<Bookmark[]>("addBookmark", { sessionId, messageId, note });
+
+export const removeBookmark = (sessionId: string, messageId: string) =>
+  engineRpc<Bookmark[]>("removeBookmark", { sessionId, messageId });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

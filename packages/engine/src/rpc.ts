@@ -27,6 +27,7 @@ import { GitManager } from "./gitManager";
 import { compareSessions, type SessionView } from "./compare";
 import { buildResumeBriefing } from "./resume";
 import { buildReplayBundle } from "./replay";
+import { BookmarkStore } from "./bookmarks";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -79,7 +80,10 @@ export type RpcMethod =
   | "gitRevertHunk"
   | "compareSessions"
   | "resumeBriefing"
-  | "buildReplay";
+  | "buildReplay"
+  | "listBookmarks"
+  | "addBookmark"
+  | "removeBookmark";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -127,6 +131,9 @@ const METHODS = new Set<RpcMethod>([
   "compareSessions",
   "resumeBriefing",
   "buildReplay",
+  "listBookmarks",
+  "addBookmark",
+  "removeBookmark",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -135,6 +142,7 @@ const defaultCostStore = new CostStore();
 const defaultMemoryStore = new MemoryStore();
 const defaultGraphManager = new GraphManager();
 const defaultGitManager = new GitManager();
+const defaultBookmarkStore = new BookmarkStore();
 
 // The search index is a single on-disk db; create it lazily so importing this module
 // has no filesystem side effects (tests inject their own in-memory index).
@@ -176,6 +184,8 @@ export interface DispatchDeps {
   searchIndex?: SearchIndex;
   /** Git wrapper (injectable for tests). */
   gitManager?: GitManager;
+  /** Bookmark persistence (injectable for tests). */
+  bookmarkStore?: BookmarkStore;
 }
 
 /** Make an absolute path repo-relative so it matches `git status` output. */
@@ -214,6 +224,7 @@ export async function dispatch(
     case "deleteSession":
       await adapter.deleteSession(req(p.id, "id"), { dir: req(p.dir, "dir") });
       getSearchIndex(deps).evict(req(p.id, "id")); // keep the search index consistent (§5)
+      await (deps.bookmarkStore ?? defaultBookmarkStore).prune(req(p.id, "id")); // prune bookmarks (E §5)
       return { ok: true };
     case "agentState": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
@@ -417,6 +428,17 @@ export async function dispatch(
       const meta = { title: info?.title, summary: info?.summary, gitBranch: info?.gitBranch, createdAt: info?.createdAt };
       return buildReplayBundle(id, msgs, meta, { redact: p.redact !== false });
     }
+    case "listBookmarks":
+      return (deps.bookmarkStore ?? defaultBookmarkStore).list(req(p.sessionId, "sessionId"));
+    case "addBookmark":
+      return (deps.bookmarkStore ?? defaultBookmarkStore).add(
+        req(p.sessionId, "sessionId"),
+        req(p.messageId, "messageId"),
+        p.note ?? undefined,
+        new Date().toISOString(),
+      );
+    case "removeBookmark":
+      return (deps.bookmarkStore ?? defaultBookmarkStore).remove(req(p.sessionId, "sessionId"), req(p.messageId, "messageId"));
   }
 }
 

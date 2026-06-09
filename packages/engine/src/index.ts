@@ -89,6 +89,8 @@ export { buildResumeBriefing } from "./resume";
 export type { ResumeBriefing, ResumeOptions } from "./resume";
 export { buildReplayBundle, redactText } from "./replay";
 export type { ReplayBundle } from "./replay";
+export { BookmarkStore } from "./bookmarks";
+export type { Bookmark } from "./bookmarks";
 export type {
   ContentBlock,
   ForkResult,
