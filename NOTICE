@@ -19,3 +19,9 @@ zsh-autosuggestions (v0.7.0) — packages/desktop/src-tauri/resources/shell/
   Copyright (c) 2013 Thiago de Arruda
   Copyright (c) 2016-2021 Eric Freese
   Licensed under the MIT License.
+
+zsh-syntax-highlighting (v0.8.0) — packages/desktop/src-tauri/resources/shell/zsh-syntax-highlighting/
+  Fish-like syntax highlighting for zsh (loader + main highlighter).
+  https://github.com/zsh-users/zsh-syntax-highlighting
+  Copyright (c) 2010-2021 zsh-syntax-highlighting contributors
+  Licensed under the BSD 3-Clause License.

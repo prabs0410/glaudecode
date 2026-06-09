@@ -40,6 +40,14 @@ struct PtyRegistry {
 // Vendored fish-like autosuggestions plugin (MIT — see NOTICE), embedded in the binary so
 // it ships without resource-path plumbing and works in dev + prod alike.
 const ZSH_AUTOSUGGESTIONS: &str = include_str!("../resources/shell/zsh-autosuggestions.zsh");
+// zsh-syntax-highlighting (BSD — see NOTICE): loader + the default "main" highlighter. The
+// loader resolves highlighters relative to itself and reads .version/.revision-hash, which we
+// write at runtime.
+const ZSH_SYNTAX_LOADER: &str =
+    include_str!("../resources/shell/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh");
+const ZSH_SYNTAX_MAIN: &str =
+    include_str!("../resources/shell/zsh-syntax-highlighting/highlighters/main/main-highlighter.zsh");
+const ZSH_SYNTAX_VERSION: &str = "0.8.0";
 
 /// Write a ZDOTDIR wrapper under ~/.glaudecode/shell that sources the user's real zsh config
 /// and then our autosuggestions plugin. Returns (wrapper_dir, real_zdotdir) on success.
@@ -55,6 +63,19 @@ fn setup_zsh_autosuggestions() -> Option<(String, String)> {
     std::fs::write(&plugin, ZSH_AUTOSUGGESTIONS).ok()?;
     let wrapper_str = wrapper.to_string_lossy().into_owned();
     let plugin_str = plugin.to_string_lossy().into_owned();
+
+    // zsh-syntax-highlighting: write the loader + main highlighter + version files.
+    let syntax_dir = base.join("zsh-syntax-highlighting");
+    std::fs::create_dir_all(syntax_dir.join("highlighters").join("main")).ok();
+    std::fs::write(syntax_dir.join("zsh-syntax-highlighting.zsh"), ZSH_SYNTAX_LOADER).ok();
+    std::fs::write(
+        syntax_dir.join("highlighters").join("main").join("main-highlighter.zsh"),
+        ZSH_SYNTAX_MAIN,
+    )
+    .ok();
+    std::fs::write(syntax_dir.join(".version"), ZSH_SYNTAX_VERSION).ok();
+    std::fs::write(syntax_dir.join(".revision-hash"), ZSH_SYNTAX_VERSION).ok();
+    let syntax_str = syntax_dir.join("zsh-syntax-highlighting.zsh").to_string_lossy().into_owned();
 
     // Each wrapper file: point ZDOTDIR at the real dir, source the real counterpart, then
     // restore ZDOTDIR to the wrapper so zsh reads our next file too.
@@ -85,9 +106,12 @@ typeset -g _GLAUDE_ORIG_TAB="${$(bindkey '^I')##* }"
 _glaude_smart_tab() { if [[ -n "$POSTDISPLAY" ]]; then zle autosuggest-accept; else zle "$_GLAUDE_ORIG_TAB"; fi }
 zle -N _glaude_smart_tab
 bindkey '^I' _glaude_smart_tab
+# Syntax highlighting must be sourced LAST so it wraps the final set of widgets.
+source "__GLAUDE_SYNTAX__"
 ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
 "#
-    .replace("__GLAUDE_PLUGIN__", &plugin_str);
+    .replace("__GLAUDE_PLUGIN__", &plugin_str)
+    .replace("__GLAUDE_SYNTAX__", &syntax_str);
     std::fs::write(wrapper.join(".zshrc"), zshrc).ok()?;
 
     let real = std::env::var("ZDOTDIR").unwrap_or(home);
