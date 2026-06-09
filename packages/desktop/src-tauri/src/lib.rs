@@ -74,6 +74,9 @@ fn setup_zsh_autosuggestions() -> Option<(String, String)> {
     // from a raw-string template (with the plugin path substituted) to keep the zsh legible.
     let zshrc = r#"ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
 [[ -f "$ZDOTDIR/.zshrc" ]] && source "$ZDOTDIR/.zshrc"
+# Ensure shell history is loaded into the session so autosuggestions have data.
+[[ -z "$HISTFILE" ]] && HISTFILE="${_GLAUDE_REAL_ZDOTDIR:-$HOME}/.zsh_history"
+fc -R "$HISTFILE" 2>/dev/null || true
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
 source "__GLAUDE_PLUGIN__"
 # GlaudeCode smart Tab: accept the autosuggestion if shown, else the prior Tab behavior.
