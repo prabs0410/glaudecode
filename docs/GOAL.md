@@ -187,6 +187,63 @@ client, EventBus push stream (cockpit polls for now), terminal pixel-mirroring.
 
 ---
 
+## V3 — Terminal Polish & Feel
+
+> Quality-of-life polish that makes GlaudeCode "the terminal you live in." Smaller than the V2
+> epics: most items are self-contained and need NO design doc — implement directly, test, commit.
+> The 🏗 items (V3-E) DO get a short `docs/design/` note first (split panes + OSC 133 shell
+> integration are non-trivial). Same guardrails apply (branch+PR, tests gate, prabs0410 identity,
+> ClaudeCodeAdapter for CC access, no "namesake" work). **Definition of done per item:** acceptance
+> met + pure logic unit-tested in `@glaudecode/engine` where applicable + desktop tsc/vite build
+> clean + Rust builds.
+
+**Already shipped (branch `feat/shell-autosuggestions`):** zsh history autosuggestions (ghost text,
+ZDOTDIR-injected so dotfiles are untouched) ✅ · smart Tab (accept the suggestion, else complete) ✅ ·
+resizable + remembered panels ✅. Plus the engine CORS fix (WebView↔engine RPC) and the approval-hook /
+CORS security hardening.
+
+**Build order: A → B → C → D → E.**
+
+### V3-A — Branding & window (⚡)
+- **A1 Rename "desktop" → GlaudeCode** — `tauri.conf.json` productName + window title (it's literally in the titlebar today).
+- **A2 Window title reflects context** — active session title / cwd.
+- **A3 Remember window size & position** across launches.
+- **A4 App icon** — real GlaudeCode icon set.
+
+### V3-B — Terminal feel / xterm.js (⚡ unless noted)
+- **B1 Font zoom** — Cmd +/−/0, persisted, applied to all panes.
+- **B2 Clickable web links** in output (`@xterm/addon-web-links`).
+- **B3 In-terminal search** — Cmd-F (`@xterm/addon-search`), next/prev/highlight.
+- **B4 Copy/paste polish** — Cmd-C/Cmd-V, optional copy-on-select, multiline-paste guard.
+- **B5 Cursor style** (block/bar/underline) + blink toggle, persisted.
+- **B6 Theme / ANSI palette + a light mode** 🔨 — a couple of built-in schemes, persisted.
+- **B7 Ligatures + correct emoji width** 🔨 (`addon-ligatures`, `addon-unicode11`).
+- **B8 Configurable scrollback + visual bell.**
+
+### V3-C — Shell feel (⚡/🔨)
+- **C1 `fc -R` history safety net** ⚡ — load the real `$HISTFILE` in the ZDOTDIR wrapper so autosuggestions always have data.
+- **C2 zsh-syntax-highlighting** 🔨 — vendor + inject via the same ZDOTDIR wrapper (MIT; commands go green/red as you type, attributed in NOTICE).
+- **C3 Directory-scoped suggestions** 🔨 — prefer commands previously run in the current cwd.
+- **C4 Clickable file paths** in output → reveal/open the file (ties into Epic E git/changes).
+
+### V3-D — Layout & tabs (⚡/🔨)
+- **D1 Collapsible sidebar + dock** — toggle (palette command + keybinding) / double-click a divider; persisted alongside the widths.
+- **D2 Keyboard tab switching** — Cmd-1..9 jump panes, Cmd-W close (through the F2 keymap).
+- **D3 Close-confirm** for a running Claude session (don't kill a live agent by accident).
+- **D4 Drag to reorder tabs** 🔨.
+- **D5 Zen mode** — hide all chrome (sidebar + dock + status), terminal only; toggle.
+
+### V3-E — The big ones (🏗 — short design note first)
+- **E1 Split panes** — two+ terminals side-by-side in one workspace (not just tabs), resizable; reuse the multi-PTY registry (Epic A).
+- **E2 OSC 133 shell integration** — ship a zsh/bash hook emitting prompt/command/exit markers; surface command **duration + exit-code** badges and unlock the app-owned-prediction path (the "Path 2" from the autosuggestion discussion). The marker parser is pure → unit-tested in the engine.
+
+**Differentiation note (Principle II):** most of V3 is table-stakes polish done well (fine, and the
+point of "live in it"). The genuinely differentiated bits are **C2/C3** (shell feel), **E2** (shell
+integration → duration/exit-code + the future AI-prediction path), and wiring **C4** file paths into
+the session tooling — lean into those.
+
+---
+
 ## Autonomous-Build Guardrails (an automated agent MUST obey ALL of these)
 
 1. **Branch + PR only.** Never commit directly to `main`. Each work item → a feature branch → a PR.
@@ -216,11 +273,14 @@ client, EventBus push stream (cockpit polls for now), terminal pixel-mirroring.
 ---
 
 ## How this gets executed (the loop)
-V2 is fully specified: this index + the seven `docs/design/` epic docs. The autonomous loop reads
-the current epic's design doc, implements the next item against it (design-doc-first + TDD), commits
-on a feature branch under the guardrails, and continues in epic order A→G. V1 is complete; resume at
-**Epic A, item A1 (WorktreeManager)** on branch `feat/v2-a-orchestration` — the porcelain parser +
-git exec wrappers are written; finish its tests, then A2 onward.
+**V1 and V2 (epics A–G) are COMPLETE.** The active backlog is now **V3 — Terminal Polish & Feel**
+(above). The autonomous loop implements the next V3 item in order (A→E), TDD where there's pure
+logic, writing a short `docs/design/` note first ONLY for the 🏗 items (V3-E1 split panes, V3-E2 OSC
+133), and commits per-item on a feature branch under the guardrails. **Resume at V3-A1 (rename
+"desktop" → GlaudeCode).** Items already shipped on `feat/shell-autosuggestions` (autosuggestions,
+smart Tab, resizable panels) must NOT be redone.
+
+Guardrail #5 note: "epic order A→G" now reads as **V3 item order A→E** (the V2 epics are done).
 
 PRs are currently blocked on `prabs0410` GitHub auth (commits land on the branch correctly as
 prabs0410; opening PRs needs `gh auth login` as prabs0410 — see memory). Until then the loop commits
