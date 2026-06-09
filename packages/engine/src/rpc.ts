@@ -603,8 +603,19 @@ function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" 
   return level === "view" || level === "steer"; // required === "view"
 }
 
+// The desktop WebView is a different origin (dev: http://localhost:1420) from the engine
+// (http://127.0.0.1:<port>), so its fetch()es are cross-origin and need CORS — including a
+// preflight for the Authorization + JSON content-type headers. Safe here because the bearer
+// token is the real auth boundary, not the origin; localhost-only by default.
+const CORS_HEADERS: Record<string, string> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-max-age": "600",
+};
+
 export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps: RpcHandlerDeps = {}) {
-  return async (request: Request): Promise<Response> => {
+  const respond = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ ok: true });
@@ -662,6 +673,14 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
     } catch (e: any) {
       return Response.json({ error: String(e?.message ?? e) }, { status: 400 });
     }
+  };
+
+  return async (request: Request): Promise<Response> => {
+    // CORS preflight — the WebView sends OPTIONS before the authed POST.
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+    const res = await respond(request);
+    for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v);
+    return res;
   };
 }
 

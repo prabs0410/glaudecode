@@ -228,6 +228,17 @@ describe("createRpcHandler", () => {
     const res = await h(new Request("http://127.0.0.1/other"));
     expect(res.status).toBe(404);
   });
+
+  test("CORS: preflight + headers so the cross-origin WebView fetch works", async () => {
+    const h = createRpcHandler(stubAdapter(), TOKEN);
+    const pre = await h(new Request("http://127.0.0.1/rpc", { method: "OPTIONS" }));
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+    expect(pre.headers.get("access-control-allow-headers")).toContain("authorization");
+
+    const res = await rpc(h, { method: "listSessions", params: { dir: "/r" } });
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
 });
 
 describe("remote scope enforcement (Epic G)", () => {
