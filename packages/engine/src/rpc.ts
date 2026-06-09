@@ -23,6 +23,7 @@ import type { ApprovalQueue, FinalDecision } from "./approvalQueue";
 import { CostStore, evaluateBudget, type Budget } from "./budget";
 import { MemoryStore, parseLoadedContext } from "./memory";
 import { GraphManager } from "./graph";
+import { GitManager } from "./gitManager";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -66,7 +67,12 @@ export type RpcMethod =
   | "loadedContext"
   | "buildGraph"
   | "reindex"
-  | "search";
+  | "search"
+  | "sessionChangesGit"
+  | "gitStage"
+  | "gitCommit"
+  | "gitDiff"
+  | "gitRestore";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -105,6 +111,11 @@ const METHODS = new Set<RpcMethod>([
   "buildGraph",
   "reindex",
   "search",
+  "sessionChangesGit",
+  "gitStage",
+  "gitCommit",
+  "gitDiff",
+  "gitRestore",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -112,6 +123,7 @@ const defaultWorktrees = new WorktreeManager();
 const defaultCostStore = new CostStore();
 const defaultMemoryStore = new MemoryStore();
 const defaultGraphManager = new GraphManager();
+const defaultGitManager = new GitManager();
 
 // The search index is a single on-disk db; create it lazily so importing this module
 // has no filesystem side effects (tests inject their own in-memory index).
@@ -151,6 +163,15 @@ export interface DispatchDeps {
   memoryStore?: MemoryStore;
   /** Global search index (injectable for tests). */
   searchIndex?: SearchIndex;
+  /** Git wrapper (injectable for tests). */
+  gitManager?: GitManager;
+}
+
+/** Make an absolute path repo-relative so it matches `git status` output. */
+function relativize(p: string, dir: string): string {
+  if (p === dir) return "";
+  const base = dir.endsWith("/") ? dir : dir + "/";
+  return p.startsWith(base) ? p.slice(base.length) : p;
 }
 
 export async function dispatch(
@@ -331,7 +352,38 @@ export async function dispatch(
     }
     case "search":
       return getSearchIndex(deps).search(req(p.query, "query"), typeof p.limit === "number" ? p.limit : 20);
+    case "sessionChangesGit": {
+      // Join the files the agent touched (buildChanges) with their live git status so the
+      // panel can stage/commit/diff them.
+      const dir = req(p.dir, "dir");
+      const gm = deps.gitManager ?? defaultGitManager;
+      const changes = buildChanges(await adapter.getSessionMessages(req(p.id, "id"), { dir }));
+      if (!(await gm.isRepo(dir))) {
+        return { isRepo: false, files: changes.map((c) => ({ ...c, rel: relativize(c.path, dir), gitState: null })) };
+      }
+      const byPath = new Map((await gm.status(dir)).map((s) => [s.path, s.state]));
+      const files = changes.map((c) => {
+        const rel = relativize(c.path, dir);
+        return { ...c, rel, gitState: byPath.get(rel) ?? null };
+      });
+      return { isRepo: true, files };
+    }
+    case "gitStage":
+      await (deps.gitManager ?? defaultGitManager).stage(req(p.dir, "dir"), reqArray(p.paths, "paths"));
+      return { ok: true };
+    case "gitCommit":
+      return { output: await (deps.gitManager ?? defaultGitManager).commit(req(p.dir, "dir"), req(p.message, "message")) };
+    case "gitDiff":
+      return (deps.gitManager ?? defaultGitManager).diff(req(p.dir, "dir"), p.path ?? undefined);
+    case "gitRestore":
+      await (deps.gitManager ?? defaultGitManager).restore(req(p.dir, "dir"), reqArray(p.paths, "paths"));
+      return { ok: true };
   }
+}
+
+function reqArray(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`missing required array param: ${name}`);
+  return value.map(String);
 }
 
 export interface RpcHandlerDeps {

@@ -8,6 +8,7 @@ import type { WorktreeManager } from "../src/worktree";
 import { ApprovalQueue } from "../src/approvalQueue";
 import { CostStore } from "../src/budget";
 import { SearchIndex } from "../src/searchIndex";
+import type { GitManager } from "../src/gitManager";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -323,5 +324,44 @@ describe("search RPCs", () => {
     await dispatch(a, "deleteSession", { id: "s1", dir: "/repo" }, { searchIndex });
     expect(await dispatch(a, "search", { query: "worktree" }, { searchIndex })).toEqual([]);
     searchIndex.close();
+  });
+});
+
+describe("git-in-changes RPCs", () => {
+  test("sessionChangesGit joins agent changes with git status", async () => {
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [{ id: "m", role: "assistant", blocks: [{ kind: "tool_use", name: "Write", input: { file_path: "/repo/src/x.ts" } }] }] as any,
+    });
+    const gitManager = {
+      isRepo: async () => true,
+      status: async () => [{ path: "src/x.ts", code: " M", state: "modified" }],
+    } as unknown as GitManager;
+
+    const out: any = await dispatch(a, "sessionChangesGit", { id: "s1", dir: "/repo" }, { gitManager });
+    expect(out.isRepo).toBe(true);
+    expect(out.files[0]).toMatchObject({ path: "/repo/src/x.ts", rel: "src/x.ts", gitState: "modified" });
+  });
+
+  test("sessionChangesGit degrades when not a repo", async () => {
+    const a = stubAdapter({
+      getSessionMessages: async () =>
+        [{ id: "m", role: "assistant", blocks: [{ kind: "tool_use", name: "Edit", input: { file_path: "/x/y.ts" } }] }] as any,
+    });
+    const gitManager = { isRepo: async () => false } as unknown as GitManager;
+    const out: any = await dispatch(a, "sessionChangesGit", { id: "s1", dir: "/x" }, { gitManager });
+    expect(out.isRepo).toBe(false);
+    expect(out.files[0].gitState).toBeNull();
+  });
+
+  test("gitStage/gitCommit route to the manager", async () => {
+    const calls: any[] = [];
+    const gitManager = {
+      stage: async (dir: string, paths: string[]) => void calls.push(["stage", dir, paths]),
+      commit: async (dir: string, msg: string) => (calls.push(["commit", dir, msg]), "[main abc] done"),
+    } as unknown as GitManager;
+    expect(await dispatch(stubAdapter(), "gitStage", { dir: "/r", paths: ["a.ts"] }, { gitManager })).toEqual({ ok: true });
+    expect(await dispatch(stubAdapter(), "gitCommit", { dir: "/r", message: "msg" }, { gitManager })).toEqual({ output: "[main abc] done" });
+    expect(calls).toEqual([["stage", "/r", ["a.ts"]], ["commit", "/r", "msg"]]);
   });
 });

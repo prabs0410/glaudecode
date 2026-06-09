@@ -282,6 +282,42 @@ export const search = (query: string, limit?: number) =>
 /** (Re)index a project's sessions into the global search index. */
 export const reindex = (dir: string) => engineRpc<{ indexed: number }>("reindex", { dir });
 
+// ---------- Git in changes (Epic E §3.2) ----------
+
+export type GitState = "modified" | "staged" | "untracked" | "deleted";
+
+export interface GitChangeFile {
+  path: string;
+  rel: string;
+  edits: number;
+  lastTool: string;
+  gitState: GitState | null;
+}
+
+export interface SessionChangesGit {
+  isRepo: boolean;
+  files: GitChangeFile[];
+}
+
+export const sessionChangesGit = (id: string, dir: string) =>
+  engineRpc<SessionChangesGit>("sessionChangesGit", { id, dir });
+
+export const gitStage = (dir: string, paths: string[]) =>
+  engineRpc<{ ok: true }>("gitStage", { dir, paths });
+
+export const gitCommit = (dir: string, message: string) =>
+  engineRpc<{ output: string }>("gitCommit", { dir, message });
+
+export interface FileDiff {
+  path: string;
+  hunks: { header: string; lines: string[] }[];
+}
+
+export const gitDiff = (dir: string, path: string) => engineRpc<FileDiff[]>("gitDiff", { dir, path });
+
+export const gitRestore = (dir: string, paths: string[]) =>
+  engineRpc<{ ok: true }>("gitRestore", { dir, paths });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

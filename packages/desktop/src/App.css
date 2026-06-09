@@ -862,33 +862,133 @@ body,
   text-overflow: ellipsis;
 }
 
-/* Changes list */
+/* Changes panel (V1-5 + Epic E git) */
+.changes-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.changes-status {
+  padding: 4px 8px;
+  color: #3fb950;
+  font-size: 11px;
+}
 .changes-list {
   list-style: none;
   margin: 0;
   padding: 6px;
+  overflow: auto;
 }
-.change-item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 8px;
+.change-row {
   border-radius: 6px;
-  cursor: pointer;
 }
-.change-item:hover {
+.change-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.change-line:hover {
   background: #11161d;
 }
+.git-state {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.git-state.modified {
+  background: #43391a;
+  color: #e3b341;
+}
+.git-state.staged {
+  background: #122c1a;
+  color: #3fb950;
+}
+.git-state.untracked {
+  background: #1c2c47;
+  color: #79c0ff;
+}
+.git-state.deleted {
+  background: #3d1a1a;
+  color: #f85149;
+}
 .change-path {
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+}
+.change-path:hover {
+  color: #fff;
+  text-decoration: underline;
 }
 .change-meta {
   color: #6e7681;
   font-size: 11px;
   flex-shrink: 0;
+}
+.act.mini {
+  padding: 0 5px;
+  font-size: 12px;
+}
+.changes-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-top: 1px solid #1f2630;
+}
+.commit-input {
+  flex: 1;
+  min-width: 0;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 4px 6px;
+  outline: none;
+}
+.commit-input:focus {
+  border-color: #2f81f7;
+}
+.diff-view {
+  margin: 2px 0 6px 22px;
+}
+.diff-hunk {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 6px;
+  font: 11px/1.45 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 280px;
+}
+.diff-header {
+  color: #79c0ff;
+}
+.diff-add {
+  color: #3fb950;
+}
+.diff-del {
+  color: #f85149;
+}
+.diff-ctx {
+  color: #9db4d0;
+}
+.diff-empty,
+.diff-empty {
+  color: #6e7681;
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
 .timeline-list {
