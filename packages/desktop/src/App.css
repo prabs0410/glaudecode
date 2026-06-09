@@ -972,6 +972,13 @@ body,
   overflow: auto;
   max-height: 280px;
 }
+.diff-hunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
 .diff-header {
   color: #79c0ff;
 }

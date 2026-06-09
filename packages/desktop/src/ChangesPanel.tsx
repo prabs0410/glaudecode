@@ -3,6 +3,7 @@ import {
   gitCommit,
   gitDiff,
   gitRestore,
+  gitRevertHunk,
   gitStage,
   sessionChangesGit,
   type FileDiff,
@@ -102,6 +103,20 @@ export function ChangesPanel({ dir, selectedId }: { dir: string | null; selected
     }
   };
 
+  const revertHunk = async (rel: string, hunk: { header: string; lines: string[] }) => {
+    if (!dir) return;
+    try {
+      await gitRevertHunk(dir, rel, hunk);
+      setStatus("Reverted hunk");
+      // Re-diff so the view reflects the new state (refuses + re-diffs on conflict).
+      const fresh = await gitDiff(dir, rel);
+      setOpenDiff(fresh.some((f) => f.hunks.length) ? { rel, diff: fresh } : null);
+      await reload();
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+  };
+
   if (!selectedId) return <div className="dock-empty">Select a session to see its changes</div>;
   if (error) return <div className="dock-error">{error}</div>;
 
@@ -133,7 +148,9 @@ export function ChangesPanel({ dir, selectedId }: { dir: string | null; selected
                 </button>
               )}
             </div>
-            {openDiff?.rel === f.rel && <DiffView diff={openDiff.diff} />}
+            {openDiff?.rel === f.rel && (
+              <DiffView diff={openDiff.diff} onRevertHunk={(h) => void revertHunk(f.rel, h)} />
+            )}
           </li>
         ))}
         {files.length === 0 && <li className="dock-empty">No file changes yet</li>}
@@ -160,14 +177,25 @@ export function ChangesPanel({ dir, selectedId }: { dir: string | null; selected
   );
 }
 
-function DiffView({ diff }: { diff: FileDiff[] }) {
+function DiffView({
+  diff,
+  onRevertHunk,
+}: {
+  diff: FileDiff[];
+  onRevertHunk: (hunk: { header: string; lines: string[] }) => void;
+}) {
   if (diff.length === 0) return <div className="diff-empty">No diff vs HEAD.</div>;
   return (
     <div className="diff-view">
       {diff.flatMap((f) =>
         f.hunks.map((h, i) => (
           <pre key={i} className="diff-hunk">
-            <div className="diff-header">{h.header}</div>
+            <div className="diff-hunk-head">
+              <span className="diff-header">{h.header}</span>
+              <button className="act mini" title="Revert this hunk" onClick={() => onRevertHunk(h)}>
+                ⟲ hunk
+              </button>
+            </div>
             {h.lines.map((l, j) => (
               <div key={j} className={diffLineClass(l)}>
                 {l}

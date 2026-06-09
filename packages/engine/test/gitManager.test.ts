@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitManager, parseGitStatus, parseUnifiedDiff } from "../src/gitManager";
+import { GitManager, buildHunkPatch, parseGitStatus, parseUnifiedDiff } from "../src/gitManager";
 
 describe("parseGitStatus", () => {
   test("classifies untracked, modified, staged, deleted", () => {
@@ -111,5 +111,28 @@ describe("GitManager (real repo)", () => {
     const dir = await mkdtemp(join(tmpdir(), "glaude-norepo-"));
     tmpDirs.push(dir);
     expect(await new GitManager().isRepo(dir)).toBe(false);
+  });
+
+  test("revertHunk restores a single hunk to HEAD", async () => {
+    const dir = await initRepo();
+    const gm = new GitManager();
+    // seed.txt is "seed\n" at HEAD; add a line.
+    await writeFile(join(dir, "seed.txt"), "seed\nADDED\n");
+    const diff = await gm.diff(dir, "seed.txt");
+    expect(diff[0].hunks).toHaveLength(1);
+
+    await gm.revertHunk(dir, "seed.txt", diff[0].hunks[0]);
+    // worktree back to HEAD → clean
+    expect(await gm.status(dir)).toEqual([]);
+  });
+});
+
+describe("buildHunkPatch", () => {
+  test("emits a valid one-file one-hunk patch", () => {
+    const patch = buildHunkPatch("foo.ts", { header: "@@ -1 +1,2 @@", lines: [" a", "+b"] });
+    expect(patch).toContain("diff --git a/foo.ts b/foo.ts");
+    expect(patch).toContain("+++ b/foo.ts");
+    expect(patch).toContain("@@ -1 +1,2 @@");
+    expect(patch.endsWith("\n")).toBe(true);
   });
 });

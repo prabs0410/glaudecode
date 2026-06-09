@@ -72,7 +72,8 @@ export type RpcMethod =
   | "gitStage"
   | "gitCommit"
   | "gitDiff"
-  | "gitRestore";
+  | "gitRestore"
+  | "gitRevertHunk";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -116,6 +117,7 @@ const METHODS = new Set<RpcMethod>([
   "gitCommit",
   "gitDiff",
   "gitRestore",
+  "gitRevertHunk",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -377,6 +379,9 @@ export async function dispatch(
       return (deps.gitManager ?? defaultGitManager).diff(req(p.dir, "dir"), p.path ?? undefined);
     case "gitRestore":
       await (deps.gitManager ?? defaultGitManager).restore(req(p.dir, "dir"), reqArray(p.paths, "paths"));
+      return { ok: true };
+    case "gitRevertHunk":
+      await (deps.gitManager ?? defaultGitManager).revertHunk(req(p.dir, "dir"), req(p.path, "path"), req(p.hunk, "hunk"));
       return { ok: true };
   }
 }

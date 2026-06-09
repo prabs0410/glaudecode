@@ -63,17 +63,30 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
     } else if (line.startsWith("@@")) {
       hunk = { header: line, lines: [] };
       cur?.hunks.push(hunk);
-    } else if (hunk && cur) {
+    } else if (hunk && cur && isHunkLine(line)) {
+      // Only real hunk-body lines (context/+/-/no-newline marker). This excludes the
+      // trailing empty string from split() and any stray blank that would corrupt a
+      // reconstructed patch.
       hunk.lines.push(line);
     }
   }
   return files;
 }
 
+function isHunkLine(line: string): boolean {
+  const c = line[0];
+  return c === " " || c === "+" || c === "-" || c === "\\";
+}
+
 function pathFromDiffHeader(line: string): string {
   // "diff --git a/foo b/foo" → "foo"
   const m = line.match(/ b\/(.+)$/);
   return m ? m[1] : line.replace("diff --git ", "");
+}
+
+/** Build a minimal one-file, one-hunk unified patch (for per-hunk revert). Pure. */
+export function buildHunkPatch(rel: string, hunk: DiffHunk): string {
+  return [`diff --git a/${rel} b/${rel}`, `--- a/${rel}`, `+++ b/${rel}`, hunk.header, ...hunk.lines, ""].join("\n");
 }
 
 // ---------- exec ----------
@@ -123,5 +136,21 @@ export class GitManager {
   async restore(dir: string, paths: string[]): Promise<void> {
     if (paths.length === 0) return;
     await git(["restore", "--", ...paths], dir);
+  }
+
+  /** Revert a single hunk (worktree → HEAD for that hunk) by reverse-applying its patch.
+   *  Refuses (throws) rather than corrupt if the file changed and the patch won't apply. */
+  async revertHunk(dir: string, rel: string, hunk: DiffHunk): Promise<void> {
+    const patch = buildHunkPatch(rel, hunk);
+    const proc = Bun.spawn(["git", "apply", "--reverse", "--recount", "-"], {
+      cwd: dir,
+      stdin: new TextEncoder().encode(patch),
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    if (code !== 0) {
+      throw new Error(`could not revert this hunk (the file may have changed) — re-diff and retry: ${stderr.trim()}`);
+    }
   }
 }

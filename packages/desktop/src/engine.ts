@@ -318,6 +318,10 @@ export const gitDiff = (dir: string, path: string) => engineRpc<FileDiff[]>("git
 export const gitRestore = (dir: string, paths: string[]) =>
   engineRpc<{ ok: true }>("gitRestore", { dir, paths });
 
+/** Revert a single hunk to HEAD (refuses on conflict; Epic E §3.3). */
+export const gitRevertHunk = (dir: string, path: string, hunk: { header: string; lines: string[] }) =>
+  engineRpc<{ ok: true }>("gitRevertHunk", { dir, path, hunk });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

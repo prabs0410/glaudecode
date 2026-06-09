@@ -81,7 +81,7 @@ export { GraphManager, mapGraphJson } from "./graph";
 export type { GraphEdge, GraphNode, GraphResult } from "./graph";
 export { SearchIndex } from "./searchIndex";
 export type { SearchHit } from "./searchIndex";
-export { GitManager, parseGitStatus, parseUnifiedDiff } from "./gitManager";
+export { GitManager, parseGitStatus, parseUnifiedDiff, buildHunkPatch } from "./gitManager";
 export type { DiffHunk, FileDiff, GitState, GitStatusEntry } from "./gitManager";
 export type {
   ContentBlock,
