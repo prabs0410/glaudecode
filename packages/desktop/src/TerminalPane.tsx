@@ -28,6 +28,8 @@ export interface TerminalPaneProps {
   onCloseSearch?: () => void;
   /** Auto-copy the selection to the clipboard when you select text. */
   copyOnSelect?: boolean;
+  cursorStyle?: "block" | "bar" | "underline";
+  cursorBlink?: boolean;
 }
 
 // One xterm.js terminal bound to one Rust-side PTY (Epic A). Spawn parameters are
@@ -43,6 +45,8 @@ export function TerminalPane({
   searchActive = false,
   onCloseSearch,
   copyOnSelect = false,
+  cursorStyle = "block",
+  cursorBlink = true,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
@@ -61,6 +65,14 @@ export function TerminalPane({
     void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols });
   }, [fontSize, paneId]);
 
+  // Apply cursor style / blink live.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.cursorStyle = cursorStyle;
+    term.options.cursorBlink = cursorBlink;
+  }, [cursorStyle, cursorBlink]);
+
   useEffect(() => {
     if (!hostRef.current || startedRef.current) return;
     startedRef.current = true;
@@ -68,7 +80,8 @@ export function TerminalPane({
     const term = new Terminal({
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       fontSize,
-      cursorBlink: true,
+      cursorBlink,
+      cursorStyle,
       theme: { background: "#0d1117", foreground: "#c9d1d9" },
       allowProposedApi: true,
     });

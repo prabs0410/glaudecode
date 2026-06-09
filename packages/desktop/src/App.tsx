@@ -43,6 +43,12 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [copyOnSelect, setCopyOnSelect] = useState(() => localStorage.getItem("glaude.copyOnSelect") === "1");
   useEffect(() => localStorage.setItem("glaude.copyOnSelect", copyOnSelect ? "1" : "0"), [copyOnSelect]);
+  const [cursorStyle, setCursorStyle] = useState<"block" | "bar" | "underline">(
+    () => (localStorage.getItem("glaude.cursorStyle") as any) || "block",
+  );
+  const [cursorBlink, setCursorBlink] = useState(() => localStorage.getItem("glaude.cursorBlink") !== "0");
+  useEffect(() => localStorage.setItem("glaude.cursorStyle", cursorStyle), [cursorStyle]);
+  useEffect(() => localStorage.setItem("glaude.cursorBlink", cursorBlink ? "1" : "0"), [cursorBlink]);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
 
@@ -188,6 +194,17 @@ export default function App() {
         keywords: "clipboard selection",
         run: () => setCopyOnSelect((c) => !c),
       },
+      {
+        id: "terminal.cursor-style",
+        title: `Cursor style: ${cursorStyle} →`,
+        keywords: "block bar underline",
+        run: () => setCursorStyle((s) => (s === "block" ? "bar" : s === "bar" ? "underline" : "block")),
+      },
+      {
+        id: "terminal.cursor-blink",
+        title: cursorBlink ? "Cursor blink: off" : "Cursor blink: on",
+        run: () => setCursorBlink((b) => !b),
+      },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -203,7 +220,7 @@ export default function App() {
           }),
       },
     ],
-    [panes, activePaneId, dir, quiet, copyOnSelect],
+    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink],
   );
   commandsRef.current = commands;
 
@@ -246,6 +263,8 @@ export default function App() {
           searchOpen={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
           copyOnSelect={copyOnSelect}
+          cursorStyle={cursorStyle}
+          cursorBlink={cursorBlink}
         />
         <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />
