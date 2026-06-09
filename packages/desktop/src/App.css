@@ -578,6 +578,67 @@ body,
   background: #0d1117;
 }
 
+/* Keybindings modal (Epic F) */
+.keys-modal {
+  width: 480px;
+  max-width: 90vw;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  padding: 12px;
+}
+.keys-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #c9d1d9;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.keys-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.keys-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+.keys-row:hover {
+  background: #11161d;
+}
+.keys-cmd {
+  flex: 1;
+  color: #c9d1d9;
+  font-size: 12px;
+}
+.keys-chord {
+  font: 11px ui-monospace, Menlo, monospace;
+  color: #9db4d0;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.keys-chord.conflict {
+  color: #f85149;
+  border-color: #5c2a2a;
+}
+.keys-warn {
+  color: #e3b341;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.keys-hint {
+  color: #6e7681;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
 /* Command palette (Epic F) */
 .palette-backdrop {
   position: absolute;

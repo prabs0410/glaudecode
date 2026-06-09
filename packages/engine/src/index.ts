@@ -93,6 +93,17 @@ export { BookmarkStore } from "./bookmarks";
 export type { Bookmark } from "./bookmarks";
 export { fuzzyScore, fuzzyRank } from "./fuzzy";
 export type { FuzzyResult } from "./fuzzy";
+export {
+  DEFAULT_KEYBINDINGS,
+  KeybindingStore,
+  chordFromEvent,
+  detectConflicts as detectKeyConflicts,
+  matchEvent,
+  mergeKeymap,
+  normalizeKeys,
+  validateKeys,
+} from "./keybindings";
+export type { Keybinding, KeyEventLike } from "./keybindings";
 export type {
   ContentBlock,
   ForkResult,

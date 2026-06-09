@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -6,7 +6,9 @@ import { RightDock } from "./RightDock";
 import { Workspace, type Pane } from "./Workspace";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
-import { createWorktree, handoff, projectDir, reindex } from "./engine";
+import { KeybindingsModal } from "./KeybindingsModal";
+import { matchEvent } from "./keybindings";
+import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
 
 const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
@@ -19,24 +21,32 @@ export default function App() {
   // session clicked in the sidebar. Last focus wins.
   const [inspect, setInspect] = useState<{ sessionId: string; dir: string } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [keybindingsOpen, setKeybindingsOpen] = useState(false);
+  const [keymap, setKeymap] = useState<Keybinding[]>([]);
+  const commandsRef = useRef<Command[]>([]);
 
   useEffect(() => {
     projectDir()
       .then(setDir)
       .catch(() => setDir(null));
+    getKeybindings()
+      .then((k) => setKeymap(k.bindings))
+      .catch(() => setKeymap([]));
   }, []);
 
-  // Cmd-K / Ctrl-K toggles the command palette (Epic F §3.1).
+  // Global keybinding dispatch (Epic F §3.2): match the chord against the effective keymap
+  // and run the bound command. Only modifier chords match, so plain terminal typing is
+  // untouched. The command closures live in a ref so the listener stays stable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
+      const cmdId = matchEvent(e, keymap);
+      if (!cmdId) return;
+      e.preventDefault();
+      void commandsRef.current.find((c) => c.id === cmdId)?.run();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [keymap]);
 
   const liveSessionIds = useMemo(
     () => new Set(panes.filter((p) => p.kind === "claude" && p.sessionId).map((p) => p.sessionId!)),
@@ -111,30 +121,35 @@ export default function App() {
     });
   };
 
-  // App actions exposed in the Cmd-K palette (Epic F §3.1). Extensions could append here.
+  // App actions exposed in the palette + bound to keys (ids match DEFAULT_KEYBINDINGS).
+  // Extensions could append here.
   const commands: Command[] = useMemo(
     () => [
-      { id: "new-shell", title: "New shell pane", hint: "terminal", run: newShell },
-      { id: "next-pane", title: "Next pane", run: () => cyclePane(1) },
-      { id: "prev-pane", title: "Previous pane", run: () => cyclePane(-1) },
+      { id: "palette.toggle", title: "Toggle command palette", run: () => setPaletteOpen((o) => !o) },
+      { id: "pane.new-shell", title: "New shell pane", hint: "mod+t", run: newShell },
+      { id: "pane.next", title: "Next pane", hint: "mod+]", run: () => cyclePane(1) },
+      { id: "pane.prev", title: "Previous pane", hint: "mod+[", run: () => cyclePane(-1) },
       {
-        id: "close-pane",
+        id: "pane.close",
         title: "Close active pane",
+        hint: "mod+w",
         run: () => {
           if (panes.length > 1) closePane(activePaneId);
         },
       },
       {
-        id: "reindex",
+        id: "search.reindex",
         title: "Reindex this project for search",
         keywords: "search index",
         run: () => {
           if (dir) void reindex(dir);
         },
       },
+      { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
     ],
     [panes, activePaneId, dir],
   );
+  commandsRef.current = commands;
 
   // Hand the source pane's session context into the target pane. We fetch a digest
   // (server-side, tested) and paste it into the target's PTY via bracketed paste so
@@ -180,6 +195,13 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         onSelectSession={selectSession}
       />
+      {keybindingsOpen && (
+        <KeybindingsModal
+          commands={commands.map((c) => ({ id: c.id, title: c.title }))}
+          onClose={() => setKeybindingsOpen(false)}
+          onChanged={(km) => setKeymap(km)}
+        />
+      )}
       <StatusBar
         dir={inspect?.dir ?? null}
         selectedId={inspect?.sessionId ?? null}

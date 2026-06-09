@@ -28,6 +28,7 @@ import { compareSessions, type SessionView } from "./compare";
 import { buildResumeBriefing } from "./resume";
 import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
+import { KeybindingStore, validateKeys } from "./keybindings";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -83,7 +84,10 @@ export type RpcMethod =
   | "buildReplay"
   | "listBookmarks"
   | "addBookmark"
-  | "removeBookmark";
+  | "removeBookmark"
+  | "getKeybindings"
+  | "setKeybinding"
+  | "resetKeybindings";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -134,6 +138,9 @@ const METHODS = new Set<RpcMethod>([
   "listBookmarks",
   "addBookmark",
   "removeBookmark",
+  "getKeybindings",
+  "setKeybinding",
+  "resetKeybindings",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -143,6 +150,7 @@ const defaultMemoryStore = new MemoryStore();
 const defaultGraphManager = new GraphManager();
 const defaultGitManager = new GitManager();
 const defaultBookmarkStore = new BookmarkStore();
+const defaultKeybindingStore = new KeybindingStore();
 
 // The search index is a single on-disk db; create it lazily so importing this module
 // has no filesystem side effects (tests inject their own in-memory index).
@@ -186,6 +194,8 @@ export interface DispatchDeps {
   gitManager?: GitManager;
   /** Bookmark persistence (injectable for tests). */
   bookmarkStore?: BookmarkStore;
+  /** Keybinding persistence (injectable for tests). */
+  keybindingStore?: KeybindingStore;
 }
 
 /** Make an absolute path repo-relative so it matches `git status` output. */
@@ -439,6 +449,21 @@ export async function dispatch(
       );
     case "removeBookmark":
       return (deps.bookmarkStore ?? defaultBookmarkStore).remove(req(p.sessionId, "sessionId"), req(p.messageId, "messageId"));
+    case "getKeybindings":
+      return (deps.keybindingStore ?? defaultKeybindingStore).effective();
+    case "setKeybinding": {
+      const command = req(p.command, "command");
+      const keys = p.keys ?? null;
+      if (keys !== null) {
+        const v = validateKeys(keys);
+        if (!v.ok) throw new Error(v.reason);
+      }
+      await (deps.keybindingStore ?? defaultKeybindingStore).setOverride(command, keys);
+      return (deps.keybindingStore ?? defaultKeybindingStore).effective();
+    }
+    case "resetKeybindings":
+      await (deps.keybindingStore ?? defaultKeybindingStore).reset();
+      return (deps.keybindingStore ?? defaultKeybindingStore).effective();
   }
 }
 

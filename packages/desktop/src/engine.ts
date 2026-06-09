@@ -386,6 +386,24 @@ export const addBookmark = (sessionId: string, messageId: string, note?: string)
 export const removeBookmark = (sessionId: string, messageId: string) =>
   engineRpc<Bookmark[]>("removeBookmark", { sessionId, messageId });
 
+// ---------- Keybindings (Epic F §3.2) ----------
+
+export interface Keybinding {
+  command: string;
+  keys: string;
+}
+export interface Keymap {
+  bindings: Keybinding[];
+  conflicts: Array<{ keys: string; commands: string[] }>;
+}
+
+export const getKeybindings = () => engineRpc<Keymap>("getKeybindings", {});
+
+export const setKeybinding = (command: string, keys: string | null) =>
+  engineRpc<Keymap>("setKeybinding", { command, keys });
+
+export const resetKeybindings = () => engineRpc<Keymap>("resetKeybindings", {});
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.
