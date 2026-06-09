@@ -254,6 +254,10 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("deleteSession")).toBe("steer");
     expect(methodScope("resolveApproval")).toBe("steer");
     expect(methodScope("createPairCode")).toBe("local");
+    // Managing approval hooks rewrites settings.json + a shell command → local-only.
+    expect(methodScope("installApprovalHook")).toBe("local");
+    expect(methodScope("uninstallApprovalHook")).toBe("local");
+    expect(methodScope("approvalHookStatus")).toBe("local");
     expect(methodScope("someBrandNewMethod")).toBe("steer"); // fail-safe default
   });
 

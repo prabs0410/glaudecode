@@ -176,7 +176,18 @@ const VIEW_METHODS = new Set<string>([
   "listPrompts", "readPrompt", "listSlashCommands", "getKeybindings", "metaObservations",
   "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus", "defaultDir",
 ]);
-const LOCAL_ONLY_METHODS = new Set<string>(["createPairCode", "listDevices", "revokeDevice"]);
+const LOCAL_ONLY_METHODS = new Set<string>([
+  "createPairCode", "listDevices", "revokeDevice",
+  // Managing the project's PreToolUse hooks rewrites .claude/settings.json and a shell
+  // command — never reachable by a remote device, only the local desktop bearer.
+  "installApprovalHook", "uninstallApprovalHook", "approvalHookStatus",
+]);
+
+/** POSIX shell-quote a path so metacharacters/spaces in it can't break or inject into the
+ *  hook command we write into settings.json. */
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
 
 export function methodScope(method: string): "view" | "steer" | "local" {
   if (LOCAL_ONLY_METHODS.has(method)) return "local";
@@ -366,7 +377,10 @@ export async function dispatch(
       await writeFile(endpointFile, JSON.stringify(deps.endpoint), "utf8");
       const binPath = join(import.meta.dir, "..", "bin", "approval-hook.ts");
       await new ApprovalHookInstaller().install(dir, {
-        command: `bun ${binPath} ${endpointFile}`,
+        // Shell-quote the paths: the hook command is run via the shell, and `dir` (hence
+        // endpointFile) may legitimately contain spaces — and must never carry shell
+        // metacharacters into the command line.
+        command: `bun ${shQuote(binPath)} ${shQuote(endpointFile)}`,
         timeoutSec: 300,
       });
       return { ok: true };
