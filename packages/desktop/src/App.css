@@ -688,6 +688,10 @@ body,
 .dock-tabs {
   display: flex;
   border-bottom: 1px solid #1f2630;
+  overflow-x: auto;
+}
+.dock-tabs::-webkit-scrollbar {
+  height: 0;
 }
 .dock-tab {
   flex: 1;
@@ -803,6 +807,85 @@ body,
   word-break: break-word;
   max-height: 320px;
   overflow: auto;
+}
+
+/* Replay panel (Epic E) */
+.replay-panel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.replay-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.replay-redact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #9db4d0;
+}
+.replay-import {
+  cursor: pointer;
+}
+.replay-warn {
+  background: #2a1f12;
+  border: 1px solid #6b4a1d;
+  border-radius: 6px;
+  color: #e3b341;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 6px 8px;
+}
+.replay-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #6e7681;
+}
+.replay-buttons {
+  display: flex;
+  gap: 4px;
+}
+.replay-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 360px;
+  overflow: auto;
+}
+.replay-entry {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.replay-entry:hover {
+  background: #11161d;
+}
+.replay-role {
+  flex-shrink: 0;
+  width: 60px;
+  color: #6e7681;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.replay-role.user {
+  color: #79c0ff;
+}
+.replay-role.assistant {
+  color: #3fb950;
+}
+.replay-text {
+  color: #c9d1d9;
+  word-break: break-word;
 }
 
 /* Resume briefing banner (Epic E) */

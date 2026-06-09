@@ -351,6 +351,23 @@ export interface ResumeBriefing {
 export const resumeBriefing = (id: string, dir: string) =>
   engineRpc<ResumeBriefing>("resumeBriefing", { id, dir });
 
+export interface ReplayEntry {
+  id: string;
+  role: string;
+  blocks: Array<{ kind: string; text?: string; name?: string }>;
+}
+export interface ReplayBundle {
+  version: 1;
+  sessionId: string;
+  entries: ReplayEntry[];
+  meta: Record<string, unknown>;
+  redacted: boolean;
+}
+
+/** Build a portable replay bundle (redacted by default; Epic E §3.6). */
+export const buildReplay = (id: string, dir: string, redact = true) =>
+  engineRpc<ReplayBundle>("buildReplay", { id, dir, redact });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

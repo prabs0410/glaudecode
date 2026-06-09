@@ -87,6 +87,8 @@ export { compareSessions } from "./compare";
 export type { SessionComparison, SessionView, SetDiff } from "./compare";
 export { buildResumeBriefing } from "./resume";
 export type { ResumeBriefing, ResumeOptions } from "./resume";
+export { buildReplayBundle, redactText } from "./replay";
+export type { ReplayBundle } from "./replay";
 export type {
   ContentBlock,
   ForkResult,

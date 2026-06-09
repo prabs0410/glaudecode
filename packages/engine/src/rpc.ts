@@ -26,6 +26,7 @@ import { GraphManager } from "./graph";
 import { GitManager } from "./gitManager";
 import { compareSessions, type SessionView } from "./compare";
 import { buildResumeBriefing } from "./resume";
+import { buildReplayBundle } from "./replay";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -77,7 +78,8 @@ export type RpcMethod =
   | "gitRestore"
   | "gitRevertHunk"
   | "compareSessions"
-  | "resumeBriefing";
+  | "resumeBriefing"
+  | "buildReplay";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -124,6 +126,7 @@ const METHODS = new Set<RpcMethod>([
   "gitRevertHunk",
   "compareSessions",
   "resumeBriefing",
+  "buildReplay",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -403,6 +406,16 @@ export async function dispatch(
         adapter.getSessionInfo(id, { dir }),
       ]);
       return buildResumeBriefing(msgs, { summary: info?.summary, changedFiles: buildChanges(msgs).length });
+    }
+    case "buildReplay": {
+      const dir = req(p.dir, "dir");
+      const id = req(p.id, "id");
+      const [msgs, info] = await Promise.all([
+        adapter.getSessionMessages(id, { dir }, { includeSystemMessages: false }),
+        adapter.getSessionInfo(id, { dir }),
+      ]);
+      const meta = { title: info?.title, summary: info?.summary, gitBranch: info?.gitBranch, createdAt: info?.createdAt };
+      return buildReplayBundle(id, msgs, meta, { redact: p.redact !== false });
     }
   }
 }

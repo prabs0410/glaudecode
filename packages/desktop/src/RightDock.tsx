@@ -5,11 +5,12 @@ import { MemoryPanel } from "./MemoryPanel";
 import { GraphPanel } from "./GraphPanel";
 import { ComparePanel } from "./ComparePanel";
 import { ResumeBanner } from "./ResumeBanner";
+import { ReplayPanel } from "./ReplayPanel";
 
 // Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), Memory + Graph (Epic D), and
 // Compare (Epic E) for the selected session / project.
 
-type Tab = "timeline" | "changes" | "memory" | "graph" | "compare";
+type Tab = "timeline" | "changes" | "memory" | "graph" | "compare" | "replay";
 
 export function RightDock({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -48,6 +49,12 @@ export function RightDock({ dir, selectedId }: { dir: string | null; selectedId:
         >
           Compare
         </button>
+        <button
+          className={`dock-tab${tab === "replay" ? " active" : ""}`}
+          onClick={() => setTab("replay")}
+        >
+          Replay
+        </button>
       </div>
       <div className="dock-body">
         {tab === "timeline" && <TimelinePanel dir={dir} selectedId={selectedId} />}
@@ -55,6 +62,7 @@ export function RightDock({ dir, selectedId }: { dir: string | null; selectedId:
         {tab === "memory" && <MemoryPanel dir={dir} selectedId={selectedId} />}
         {tab === "graph" && <GraphPanel dir={dir} />}
         {tab === "compare" && <ComparePanel dir={dir} selectedId={selectedId} />}
+        {tab === "replay" && <ReplayPanel dir={dir} selectedId={selectedId} />}
       </div>
     </section>
   );
