@@ -38,6 +38,8 @@ export default function App() {
   // Resizable panel widths, remembered across launches.
   const [sidebarW, setSidebarW] = useState(() => num(localStorage.getItem("glaude.sidebarW"), 260));
   const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
+  const [fontSize, setFontSize] = useState(() => num(localStorage.getItem("glaude.fontSize"), 13));
+  useEffect(() => localStorage.setItem("glaude.fontSize", String(fontSize)), [fontSize]);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
 
@@ -173,6 +175,9 @@ export default function App() {
           if (dir) void reindex(dir);
         },
       },
+      { id: "view.zoom-in", title: "Zoom in", hint: "mod+=", run: () => setFontSize((s) => Math.min(28, s + 1)) },
+      { id: "view.zoom-out", title: "Zoom out", hint: "mod+-", run: () => setFontSize((s) => Math.max(8, s - 1)) },
+      { id: "view.zoom-reset", title: "Reset zoom", hint: "mod+0", run: () => setFontSize(13) },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -227,6 +232,7 @@ export default function App() {
           onNewClaude={newClaude}
           onHandoff={onHandoff}
           canCreateSession={!!dir}
+          fontSize={fontSize}
         />
         <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />

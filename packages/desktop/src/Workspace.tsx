@@ -27,6 +27,8 @@ interface Props {
   onHandoff: (fromPaneId: string, toPaneId: string) => Promise<void>;
   /** Worktree creation needs a known project dir; disable the control until then. */
   canCreateSession: boolean;
+  /** Shared terminal font size (px). */
+  fontSize: number;
 }
 
 // The workspace: a tab bar over N panes plus the "new session" flow. All panes stay
@@ -40,6 +42,7 @@ export function Workspace({
   onNewClaude,
   onHandoff,
   canCreateSession,
+  fontSize,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
@@ -205,7 +208,7 @@ export function Workspace({
             className="pane-mount"
             style={{ display: p.paneId === activePaneId ? "block" : "none" }}
           >
-            <TerminalPane paneId={p.paneId} cwd={p.cwd} cmd={p.cmd} args={p.args} />
+            <TerminalPane paneId={p.paneId} cwd={p.cwd} cmd={p.cmd} args={p.args} fontSize={fontSize} />
           </div>
         ))}
       </div>

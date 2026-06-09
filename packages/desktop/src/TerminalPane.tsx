@@ -15,15 +15,28 @@ export interface TerminalPaneProps {
   cmd?: string;
   /** Arguments for `cmd` (e.g. ["--session-id", uuid] for a Claude pane). */
   args?: string[];
+  /** Shared font size (px); changes apply live and refit the pane. */
+  fontSize?: number;
 }
 
 // One xterm.js terminal bound to one Rust-side PTY (Epic A). Spawn parameters are
 // fixed for a pane's lifetime, so the effect runs once per paneId; on unmount it
 // kills the PTY. Many of these mount at once (one per tab) — only the active one is
 // visible, but all keep buffering their own `pty-output:{paneId}` stream.
-export function TerminalPane({ paneId, cwd, cmd, args }: TerminalPaneProps) {
+export function TerminalPane({ paneId, cwd, cmd, args, fontSize = 13 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
+  const termRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+
+  // Apply font-size changes live and tell the PTY the new dimensions.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontSize = fontSize;
+    fitRef.current?.fit();
+    void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols });
+  }, [fontSize, paneId]);
 
   useEffect(() => {
     if (!hostRef.current || startedRef.current) return;
@@ -31,12 +44,14 @@ export function TerminalPane({ paneId, cwd, cmd, args }: TerminalPaneProps) {
 
     const term = new Terminal({
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      fontSize: 13,
+      fontSize,
       cursorBlink: true,
       theme: { background: "#0d1117", foreground: "#c9d1d9" },
       allowProposedApi: true,
     });
+    termRef.current = term;
     const fit = new FitAddon();
+    fitRef.current = fit;
     term.loadAddon(fit);
     term.open(hostRef.current);
     try {
@@ -71,6 +86,8 @@ export function TerminalPane({ paneId, cwd, cmd, args }: TerminalPaneProps) {
       unlistenExit.then((f) => f());
       void invoke("pty_kill", { paneId });
       term.dispose();
+      termRef.current = null;
+      fitRef.current = null;
     };
     // Spawn params are fixed per pane; only paneId identifies the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
