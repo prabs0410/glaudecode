@@ -6,12 +6,24 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+
+/** Resolve a path matched in terminal output and open it in the OS default app. */
+function openFilePath(raw: string, cwd?: string) {
+  const path = raw.replace(/:\d+(?::\d+)?$/, ""); // strip :line:col
+  let abs = path;
+  if (path.startsWith("~/")) abs = path; // leave ~ for the OS to expand? skip — treat as-is
+  else if (!path.startsWith("/")) {
+    if (!cwd) return; // can't resolve a relative path without a cwd
+    abs = `${cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "")}`;
+  }
+  void openPath(abs).catch(() => {});
+}
 
 export interface TerminalPaneProps {
   /** Opaque id binding this xterm instance to one PTY in the Rust registry. */
@@ -120,6 +132,26 @@ export function TerminalPane({
     // Unicode 11 widths so emoji / wide CJK chars don't desync the cursor.
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
+
+    // Clickable file paths → open in the OS default app. Absolute paths are exact; relative
+    // ones resolve against the pane's cwd (best-effort — exact live-cwd tracking is OSC 7, E2).
+    term.registerLinkProvider({
+      provideLinks(lineNumber, callback) {
+        const line = term.buffer.active.getLine(lineNumber - 1)?.translateToString(true) ?? "";
+        const links: any[] = [];
+        const re = /(?:[\w.~@+-]*\/)+[\w.+-]+\.\w+(?::\d+(?::\d+)?)?/g;
+        for (let m = re.exec(line); m; m = re.exec(line)) {
+          const raw = m[0];
+          const start = m.index;
+          links.push({
+            range: { start: { x: start + 1, y: lineNumber }, end: { x: start + raw.length, y: lineNumber } },
+            text: raw,
+            activate: () => openFilePath(raw, cwd),
+          });
+        }
+        callback(links.length ? links : undefined);
+      },
+    });
 
     // Copy/paste: Cmd/Ctrl-C copies the selection (Ctrl-C with no selection still goes to
     // the PTY as SIGINT); Cmd/Ctrl-V pastes via bracketed paste so multiline content arrives
