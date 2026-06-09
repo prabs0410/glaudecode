@@ -76,6 +76,7 @@ fn setup_zsh_autosuggestions() -> Option<(String, String)> {
     std::fs::write(syntax_dir.join(".version"), ZSH_SYNTAX_VERSION).ok();
     std::fs::write(syntax_dir.join(".revision-hash"), ZSH_SYNTAX_VERSION).ok();
     let syntax_str = syntax_dir.join("zsh-syntax-highlighting.zsh").to_string_lossy().into_owned();
+    let dirhist_str = base.join("dirhist").to_string_lossy().into_owned();
 
     // Each wrapper file: point ZDOTDIR at the real dir, source the real counterpart, then
     // restore ZDOTDIR to the wrapper so zsh reads our next file too.
@@ -100,6 +101,20 @@ fn setup_zsh_autosuggestions() -> Option<(String, String)> {
 fc -R "$HISTFILE" 2>/dev/null || true
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
 source "__GLAUDE_PLUGIN__"
+# Directory-scoped suggestions: record cmd+cwd, and prefer this dir's history then global.
+_GLAUDE_DIRHIST="__GLAUDE_DIRHIST__"
+autoload -Uz add-zsh-hook
+_glaude_record_dirhist() { print -r -- "${PWD}"$'\t'"$1" >> "$_GLAUDE_DIRHIST" 2>/dev/null }
+add-zsh-hook preexec _glaude_record_dirhist
+_zsh_autosuggest_strategy_glaude_dir() {
+  emulate -L zsh
+  local prefix="$1"
+  [[ -z "$prefix" || ! -r "$_GLAUDE_DIRHIST" ]] && return
+  local m
+  m=$(tail -n 4000 "$_GLAUDE_DIRHIST" 2>/dev/null | awk -F'\t' -v d="$PWD" -v p="$prefix" '$1==d && index($2,p)==1 {last=$2} END {if (last!="") print last}')
+  [[ -n "$m" ]] && typeset -g suggestion="$m"
+}
+ZSH_AUTOSUGGEST_STRATEGY=(glaude_dir history)
 # GlaudeCode smart Tab: accept the autosuggestion if shown, else the prior Tab behavior.
 typeset -g _GLAUDE_ORIG_TAB="${$(bindkey '^I')##* }"
 [[ -z "$_GLAUDE_ORIG_TAB" || "$_GLAUDE_ORIG_TAB" == "undefined-key" ]] && _GLAUDE_ORIG_TAB=expand-or-complete
@@ -111,7 +126,8 @@ source "__GLAUDE_SYNTAX__"
 ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
 "#
     .replace("__GLAUDE_PLUGIN__", &plugin_str)
-    .replace("__GLAUDE_SYNTAX__", &syntax_str);
+    .replace("__GLAUDE_SYNTAX__", &syntax_str)
+    .replace("__GLAUDE_DIRHIST__", &dirhist_str);
     std::fs::write(wrapper.join(".zshrc"), zshrc).ok()?;
 
     let real = std::env::var("ZDOTDIR").unwrap_or(home);
