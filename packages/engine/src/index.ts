@@ -93,6 +93,8 @@ export { BookmarkStore } from "./bookmarks";
 export type { Bookmark } from "./bookmarks";
 export { fuzzyScore, fuzzyRank } from "./fuzzy";
 export type { FuzzyResult } from "./fuzzy";
+export { parseOsc133, parseOsc7 } from "./osc";
+export type { Osc133Event } from "./osc";
 export {
   DEFAULT_KEYBINDINGS,
   KeybindingStore,

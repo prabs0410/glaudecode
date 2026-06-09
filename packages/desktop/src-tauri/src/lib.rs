@@ -115,6 +115,12 @@ _zsh_autosuggest_strategy_glaude_dir() {
   [[ -n "$m" ]] && typeset -g suggestion="$m"
 }
 ZSH_AUTOSUGGEST_STRATEGY=(glaude_dir history)
+# OSC 133/7 shell integration: command markers (duration + exit code) and cwd, emitted with no
+# visible output. The WebView parses these (V3-E2).
+_glaude_osc_preexec() { print -n "\e]133;C\e\\" }
+_glaude_osc_precmd() { local ec=$?; print -n "\e]133;D;${ec}\e\\"; print -n "\e]133;A\e\\"; print -n "\e]7;file://${HOST}${PWD}\e\\" }
+add-zsh-hook preexec _glaude_osc_preexec
+add-zsh-hook precmd _glaude_osc_precmd
 # GlaudeCode smart Tab: accept the autosuggestion if shown, else the prior Tab behavior.
 typeset -g _GLAUDE_ORIG_TAB="${$(bindkey '^I')##* }"
 [[ -z "$_GLAUDE_ORIG_TAB" || "$_GLAUDE_ORIG_TAB" == "undefined-key" ]] && _GLAUDE_ORIG_TAB=expand-or-complete

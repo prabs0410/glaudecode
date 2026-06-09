@@ -73,6 +73,7 @@ data model, edge cases, security, test plan, acceptance, open questions.
 - `epic-a-orchestration.md` … `epic-g-cockpit.md` (A orchestration, B extensibility, C cost&control,
   D memory&knowledge, E session-tooling, F terminal-UX, G cockpit)
 - `v3-e1-split-panes.md` — V3 split-panes design note (the 🏗 V3 items get a short note first)
+- `v3-e2-shell-integration.md` — V3 OSC 133/7 shell-integration design note (duration/exit badges + live cwd)
 - README: [design/README.md](design/README.md)
 
 ### `docs/research/` — Investigation outputs

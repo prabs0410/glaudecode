@@ -7,6 +7,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { parseOsc133, parseOsc7 } from "./osc";
 import { listen } from "@tauri-apps/api/event";
 import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -25,6 +26,13 @@ const SAFE_OPEN_EXTS = new Set([
   "c", "h", "cpp", "cc", "hpp", "cs", "php", "lua", "sql", "graphql", "proto",
   "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "pdf",
 ]);
+
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+  const m = Math.floor(ms / 60000);
+  return `${m}m ${Math.round((ms % 60000) / 1000)}s`;
+}
 
 /** Resolve a path matched in terminal output and open it SAFELY (allowlisted extensions
  *  open in the default app; everything else is only revealed, never executed). */
@@ -88,6 +96,10 @@ export function TerminalPane({
   const searchRef = useRef<SearchAddon | null>(null);
   const copyOnSelectRef = useRef(copyOnSelect);
   copyOnSelectRef.current = copyOnSelect;
+  // Shell-integration (OSC 133/7) state: last command's timing/exit + the live cwd.
+  const cmdStartRef = useRef<number | null>(null);
+  const liveCwdRef = useRef<string | undefined>(cwd);
+  const [lastCmd, setLastCmd] = useState<{ ms: number; exit?: number } | null>(null);
 
   // Apply font-size changes live and tell the PTY the new dimensions.
   useEffect(() => {
@@ -161,7 +173,7 @@ export function TerminalPane({
           links.push({
             range: { start: { x: start + 1, y: lineNumber }, end: { x: start + raw.length, y: lineNumber } },
             text: raw,
-            activate: () => openFilePath(raw, cwd),
+            activate: () => openFilePath(raw, liveCwdRef.current),
           });
         }
         callback(links.length ? links : undefined);
@@ -192,6 +204,22 @@ export function TerminalPane({
         void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
       }
     });
+    // Shell integration: command markers (duration + exit code) and live cwd (V3-E2).
+    term.parser.registerOscHandler(133, (data) => {
+      const ev = parseOsc133(data);
+      if (ev.kind === "pre-exec") cmdStartRef.current = Date.now();
+      else if (ev.kind === "command-done" && cmdStartRef.current !== null) {
+        setLastCmd({ ms: Date.now() - cmdStartRef.current, exit: ev.exitCode });
+        cmdStartRef.current = null;
+      }
+      return true;
+    });
+    term.parser.registerOscHandler(7, (data) => {
+      const p = parseOsc7(data);
+      if (p) liveCwdRef.current = p;
+      return true;
+    });
+
     // Visual bell: flash the pane on BEL instead of an audible beep.
     term.onBell(() => {
       const el = hostRef.current;
@@ -236,6 +264,12 @@ export function TerminalPane({
   return (
     <div className="terminal-pane">
       <div ref={hostRef} className="terminal-host" />
+      {lastCmd && (
+        <div className={`cmd-badge${lastCmd.exit ? " fail" : ""}`} title="Last command (duration · exit)">
+          {lastCmd.exit ? "✗" : "✓"} {formatMs(lastCmd.ms)}
+          {lastCmd.exit ? ` · exit ${lastCmd.exit}` : ""}
+        </div>
+      )}
       {searchActive && (
         <TerminalSearchBar
           onFind={(q, prev) => {
