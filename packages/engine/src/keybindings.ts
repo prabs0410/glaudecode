@@ -16,6 +16,7 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { command: "pane.prev", keys: "mod+[" },
   { command: "pane.close", keys: "mod+w" },
   { command: "search.reindex", keys: "mod+shift+r" },
+  { command: "terminal.search", keys: "mod+f" },
   { command: "view.zoom-in", keys: "mod+=" },
   { command: "view.zoom-out", keys: "mod+-" },
   { command: "view.zoom-reset", keys: "mod+0" },

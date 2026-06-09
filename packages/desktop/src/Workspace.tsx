@@ -29,6 +29,9 @@ interface Props {
   canCreateSession: boolean;
   /** Shared terminal font size (px). */
   fontSize: number;
+  /** Whether the in-terminal search bar is open (shown on the active pane). */
+  searchOpen: boolean;
+  onCloseSearch: () => void;
 }
 
 // The workspace: a tab bar over N panes plus the "new session" flow. All panes stay
@@ -43,6 +46,8 @@ export function Workspace({
   onHandoff,
   canCreateSession,
   fontSize,
+  searchOpen,
+  onCloseSearch,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
@@ -208,7 +213,15 @@ export function Workspace({
             className="pane-mount"
             style={{ display: p.paneId === activePaneId ? "block" : "none" }}
           >
-            <TerminalPane paneId={p.paneId} cwd={p.cwd} cmd={p.cmd} args={p.args} fontSize={fontSize} />
+            <TerminalPane
+              paneId={p.paneId}
+              cwd={p.cwd}
+              cmd={p.cmd}
+              args={p.args}
+              fontSize={fontSize}
+              searchActive={searchOpen && p.paneId === activePaneId}
+              onCloseSearch={onCloseSearch}
+            />
           </div>
         ))}
       </div>

@@ -40,6 +40,7 @@ export default function App() {
   const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
   const [fontSize, setFontSize] = useState(() => num(localStorage.getItem("glaude.fontSize"), 13));
   useEffect(() => localStorage.setItem("glaude.fontSize", String(fontSize)), [fontSize]);
+  const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
 
@@ -178,6 +179,7 @@ export default function App() {
       { id: "view.zoom-in", title: "Zoom in", hint: "mod+=", run: () => setFontSize((s) => Math.min(28, s + 1)) },
       { id: "view.zoom-out", title: "Zoom out", hint: "mod+-", run: () => setFontSize((s) => Math.max(8, s - 1)) },
       { id: "view.zoom-reset", title: "Reset zoom", hint: "mod+0", run: () => setFontSize(13) },
+      { id: "terminal.search", title: "Find in terminal", hint: "mod+f", run: () => setSearchOpen(true) },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -233,6 +235,8 @@ export default function App() {
           onHandoff={onHandoff}
           canCreateSession={!!dir}
           fontSize={fontSize}
+          searchOpen={searchOpen}
+          onCloseSearch={() => setSearchOpen(false)}
         />
         <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
@@ -19,17 +20,30 @@ export interface TerminalPaneProps {
   args?: string[];
   /** Shared font size (px); changes apply live and refit the pane. */
   fontSize?: number;
+  /** Show the in-terminal search bar (only the active pane, when search is toggled). */
+  searchActive?: boolean;
+  /** Called when the user closes the search bar (Esc / ✕). */
+  onCloseSearch?: () => void;
 }
 
 // One xterm.js terminal bound to one Rust-side PTY (Epic A). Spawn parameters are
 // fixed for a pane's lifetime, so the effect runs once per paneId; on unmount it
 // kills the PTY. Many of these mount at once (one per tab) — only the active one is
 // visible, but all keep buffering their own `pty-output:{paneId}` stream.
-export function TerminalPane({ paneId, cwd, cmd, args, fontSize = 13 }: TerminalPaneProps) {
+export function TerminalPane({
+  paneId,
+  cwd,
+  cmd,
+  args,
+  fontSize = 13,
+  searchActive = false,
+  onCloseSearch,
+}: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
 
   // Apply font-size changes live and tell the PTY the new dimensions.
   useEffect(() => {
@@ -63,6 +77,9 @@ export function TerminalPane({ paneId, cwd, cmd, args, fontSize = 13 }: Terminal
     }
     // Clickable URLs → open in the system browser (not inside the WebView).
     term.loadAddon(new WebLinksAddon((_e, uri) => void openUrl(uri)));
+    const search = new SearchAddon();
+    term.loadAddon(search);
+    searchRef.current = search;
     fit.fit();
     term.focus();
 
@@ -97,5 +114,56 @@ export function TerminalPane({ paneId, cwd, cmd, args, fontSize = 13 }: Terminal
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneId]);
 
-  return <div ref={hostRef} className="terminal-host" />;
+  return (
+    <div className="terminal-pane">
+      <div ref={hostRef} className="terminal-host" />
+      {searchActive && (
+        <TerminalSearchBar
+          onFind={(q, prev) => {
+            const opts = { decorations: { matchOverviewRuler: "#d29922", activeMatchColorOverviewRuler: "#e3b341" } } as any;
+            if (prev) searchRef.current?.findPrevious(q, opts);
+            else searchRef.current?.findNext(q, opts);
+          }}
+          onClose={() => {
+            searchRef.current?.clearDecorations();
+            onCloseSearch?.();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TerminalSearchBar({
+  onFind,
+  onClose,
+}: {
+  onFind: (query: string, prev: boolean) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+  return (
+    <div className="term-search">
+      <input
+        ref={inputRef}
+        className="term-search-input"
+        placeholder="Find in terminal…"
+        value={q}
+        onChange={(e) => {
+          setQ(e.currentTarget.value);
+          onFind(e.currentTarget.value, false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onFind(q, e.shiftKey);
+          if (e.key === "Escape") onClose();
+        }}
+        spellCheck={false}
+      />
+      <button className="act mini" title="Previous (Shift+Enter)" onClick={() => onFind(q, true)}>↑</button>
+      <button className="act mini" title="Next (Enter)" onClick={() => onFind(q, false)}>↓</button>
+      <button className="act mini" title="Close (Esc)" onClick={onClose}>✕</button>
+    </div>
+  );
 }

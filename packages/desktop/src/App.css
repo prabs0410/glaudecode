@@ -583,6 +583,11 @@ body,
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+.terminal-pane {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
 .terminal-host {
   flex: 1;
   min-width: 0;
@@ -590,6 +595,34 @@ body,
   padding: 8px;
   box-sizing: border-box;
   background: #0d1117;
+}
+/* In-terminal search bar (Epic V3-B3) */
+.term-search {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.term-search-input {
+  width: 200px;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 3px 6px;
+  outline: none;
+}
+.term-search-input:focus {
+  border-color: #2f81f7;
 }
 
 /* Prompts modal (Epic F) */
