@@ -108,6 +108,9 @@ export { PromptStore, SlashCommandWriter, extractVariables, fillTemplate } from 
 export type { PromptInfo } from "./prompt";
 export { coalesceNotifications } from "./notify";
 export type { AppNotification, NotificationKind } from "./notify";
+export { PairingService } from "./pairing";
+export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
+export { methodScope } from "./rpc";
 export type {
   ContentBlock,
   ForkResult,

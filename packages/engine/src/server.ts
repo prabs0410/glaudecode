@@ -9,11 +9,13 @@
 import { ClaudeCodeAdapter } from "./adapter";
 import { createRpcHandler } from "./rpc";
 import { ApprovalQueue } from "./approvalQueue";
+import { PairingService } from "./pairing";
 
 export interface EngineServer {
   port: number;
   token: string;
   approvals: ApprovalQueue;
+  pairing: PairingService;
   stop: () => void;
 }
 
@@ -28,11 +30,18 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   const token = opts.token ?? crypto.randomUUID();
   const adapter = new ClaudeCodeAdapter();
   const approvals = new ApprovalQueue();
+  // Pairing for the remote cockpit (Epic G): short human-typable codes, opaque tokens,
+  // both random + held in memory only (no token at rest).
+  const pairing = new PairingService({
+    now: () => Date.now(),
+    genCode: () => crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase(),
+    genToken: () => crypto.randomUUID() + crypto.randomUUID().replace(/-/g, ""),
+  });
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds. The handler closes over this object, so filling
   // in `port` below is visible to later requests.
   const endpoint = { port: 0, token };
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint });
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing });
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -52,6 +61,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     port: server.port,
     token,
     approvals,
+    pairing,
     stop: () => {
       approvals.clear();
       server.stop(true);

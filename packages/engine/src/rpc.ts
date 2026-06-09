@@ -30,6 +30,7 @@ import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
 import { KeybindingStore, validateKeys } from "./keybindings";
 import { PromptStore, SlashCommandWriter } from "./prompt";
+import type { PairingService, TokenScope } from "./pairing";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -94,7 +95,10 @@ export type RpcMethod =
   | "savePrompt"
   | "deletePrompt"
   | "buildSlashCommand"
-  | "listSlashCommands";
+  | "listSlashCommands"
+  | "createPairCode"
+  | "listDevices"
+  | "revokeDevice";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -154,7 +158,29 @@ const METHODS = new Set<RpcMethod>([
   "deletePrompt",
   "buildSlashCommand",
   "listSlashCommands",
+  "createPairCode",
+  "listDevices",
+  "revokeDevice",
 ]);
+
+// Remote-access scope policy (Epic G §6). FAIL-SAFE: only read-only methods are "view";
+// pairing admin is "local" (desktop bearer only); EVERYTHING ELSE defaults to "steer", so a
+// new mutating method is never accidentally exposed to a view-only remote token.
+const VIEW_METHODS = new Set<string>([
+  "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "timeline", "sessionCost",
+  "sessionChanges", "conflicts", "contextUsage", "pendingApprovals", "listMemory", "readMemory",
+  "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
+  "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
+  "listPrompts", "readPrompt", "listSlashCommands", "getKeybindings", "metaObservations",
+  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus",
+]);
+const LOCAL_ONLY_METHODS = new Set<string>(["createPairCode", "listDevices", "revokeDevice"]);
+
+export function methodScope(method: string): "view" | "steer" | "local" {
+  if (LOCAL_ONLY_METHODS.has(method)) return "local";
+  if (VIEW_METHODS.has(method)) return "view";
+  return "steer";
+}
 
 // Stateless wrappers; one instance each is fine to share across requests.
 const defaultWorktrees = new WorktreeManager();
@@ -214,6 +240,8 @@ export interface DispatchDeps {
   /** Prompt library + slash-command writer (injectable for tests). */
   promptStore?: PromptStore;
   slashWriter?: SlashCommandWriter;
+  /** Pairing service for remote cockpit tokens (Epic G). */
+  pairing?: PairingService;
 }
 
 /** Make an absolute path repo-relative so it matches `git status` output. */
@@ -495,6 +523,13 @@ export async function dispatch(
       return { command: await (deps.slashWriter ?? defaultSlashWriter).write(req(p.dir, "dir"), req(p.name, "name"), req(p.body, "body")) };
     case "listSlashCommands":
       return (deps.slashWriter ?? defaultSlashWriter).list(req(p.dir, "dir"));
+    case "createPairCode":
+      if (!deps.pairing) throw new Error("pairing unavailable");
+      return deps.pairing.createPairCode((p.scope as TokenScope) ?? "steer");
+    case "listDevices":
+      return deps.pairing?.listDevices() ?? [];
+    case "revokeDevice":
+      return { ok: deps.pairing?.revoke(req(p.deviceId, "deviceId")) ?? false };
   }
 }
 
@@ -522,21 +557,46 @@ export interface RpcHandlerDeps {
   approvals?: ApprovalQueue;
   /** Mutable holder — the server fills in `port` after it binds. */
   endpoint?: { port: number; token: string };
+  /** Pairing service; when present, remote scoped tokens are accepted (Epic G). */
+  pairing?: PairingService;
+  /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
+  dispatchDeps?: DispatchDeps;
+}
+
+/** What a presented token is allowed to do: the local bearer is "local" (everything);
+ *  a paired token is "view" or "steer"; anything else is null (unauthenticated). */
+function tokenLevel(authHeader: string | null, engineToken: string, pairing?: PairingService): "local" | TokenScope | null {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  const presented = authHeader.slice("Bearer ".length);
+  if (presented === engineToken) return "local";
+  if (pairing) {
+    const v = pairing.verify(presented);
+    if (v.ok && v.scope) return v.scope;
+  }
+  return null;
+}
+
+function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" | "local"): boolean {
+  if (level === "local") return true;
+  if (required === "local") return false;
+  if (required === "steer") return level === "steer";
+  return level === "view" || level === "steer"; // required === "view"
 }
 
 export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps: RpcHandlerDeps = {}) {
-  const authed = (request: Request) => request.headers.get("authorization") === `Bearer ${token}`;
-
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ ok: true });
     }
 
+    const level = tokenLevel(request.headers.get("authorization"), token, deps.pairing);
+
     // The PreToolUse hook POSTs pending tool calls here and blocks on the decision.
+    // Local-only: the hook authenticates with the engine bearer token.
     if (url.pathname === "/approval") {
       if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-      if (!authed(request)) return new Response("unauthorized", { status: 401 });
+      if (level !== "local") return new Response("unauthorized", { status: 401 });
       if (!deps.approvals) return Response.json({ decision: "deny", reason: "approvals unavailable" });
       let body: any;
       try {
@@ -556,7 +616,7 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
 
     if (url.pathname !== "/rpc") return new Response("not found", { status: 404 });
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-    if (!authed(request)) return new Response("unauthorized", { status: 401 });
+    if (!level) return new Response("unauthorized", { status: 401 });
 
     let body: any;
     try {
@@ -565,10 +625,18 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
       return Response.json({ error: "invalid JSON body" }, { status: 400 });
     }
 
+    // Scope enforcement: a remote token may only call methods its scope permits.
+    const required = methodScope(String(body?.method ?? ""));
+    if (!levelSatisfies(level, required)) {
+      return Response.json({ error: `forbidden: '${body?.method}' requires ${required} scope` }, { status: 403 });
+    }
+
     try {
       const result = await dispatch(adapter, body?.method, body?.params, {
         approvals: deps.approvals,
         endpoint: deps.endpoint,
+        pairing: deps.pairing,
+        ...deps.dispatchDeps,
       });
       return Response.json({ result });
     } catch (e: any) {

@@ -9,6 +9,8 @@ import { ApprovalQueue } from "../src/approvalQueue";
 import { CostStore } from "../src/budget";
 import { SearchIndex } from "../src/searchIndex";
 import type { GitManager } from "../src/gitManager";
+import { PairingService } from "../src/pairing";
+import { methodScope } from "../src/rpc";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -225,6 +227,59 @@ describe("createRpcHandler", () => {
     const h = createRpcHandler(stubAdapter(), TOKEN);
     const res = await h(new Request("http://127.0.0.1/other"));
     expect(res.status).toBe(404);
+  });
+});
+
+describe("remote scope enforcement (Epic G)", () => {
+  function pairedHandler() {
+    let t = 0;
+    let n = 0;
+    const pairing = new PairingService({ now: () => t, genCode: () => `c${n++}`, genToken: () => `tok${n++}` });
+    const h = createRpcHandler(stubAdapter(), TOKEN, { pairing });
+    const mkToken = (scope: "view" | "steer") => pairing.redeem(pairing.createPairCode(scope).code, "dev")!.token;
+    return { h, mkToken };
+  }
+  const call = (h: any, method: string, bearer: string) =>
+    h(
+      new Request("http://127.0.0.1/rpc", {
+        method: "POST",
+        headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: JSON.stringify({ method, params: { dir: "/r", id: "s1" } }),
+      }),
+    );
+
+  test("methodScope: reads are view, mutations are steer, pairing is local", () => {
+    expect(methodScope("listSessions")).toBe("view");
+    expect(methodScope("agentState")).toBe("view");
+    expect(methodScope("deleteSession")).toBe("steer");
+    expect(methodScope("resolveApproval")).toBe("steer");
+    expect(methodScope("createPairCode")).toBe("local");
+    expect(methodScope("someBrandNewMethod")).toBe("steer"); // fail-safe default
+  });
+
+  test("a view token may read but not mutate", async () => {
+    const { h, mkToken } = pairedHandler();
+    const view = mkToken("view");
+    expect((await call(h, "listSessions", view)).status).toBe(200);
+    expect((await call(h, "deleteSession", view)).status).toBe(403);
+  });
+
+  test("a steer token may read and mutate, but not pairing admin", async () => {
+    const { h, mkToken } = pairedHandler();
+    const steer = mkToken("steer");
+    expect((await call(h, "agentState", steer)).status).toBe(200);
+    expect((await call(h, "resolveApproval", steer)).status).not.toBe(403);
+    expect((await call(h, "createPairCode", steer)).status).toBe(403); // local-only
+  });
+
+  test("the local bearer token can do everything", async () => {
+    const { h } = pairedHandler();
+    expect((await call(h, "createPairCode", TOKEN)).status).toBe(200);
+  });
+
+  test("an unknown token is rejected", async () => {
+    const { h } = pairedHandler();
+    expect((await call(h, "listSessions", "garbage")).status).toBe(401);
   });
 });
 
