@@ -168,9 +168,11 @@ alerts deferred to Epic F), C4 model suggestion ✅ (suggestModel heuristic + re
 editor + loaded-context view ✅, D2 graphify graph (optional, degrades) ✅, D3 global FTS5 search ✅.
 **Epic E — Session tooling COMPLETE** (branch `feat/v2-e-session-tooling`): E1 GitManager ✅, E2
 git-in-changes ✅, E3 inline diff per-hunk revert ✅, E4 session compare ✅, E5 semantic resume ✅,
-E6 replay/share + redaction ✅, E7 bookmarks ✅. Resume at **Epic F — Terminal UX**
-(`docs/design/epic-f-terminal-ux.md`): F1 command palette, F2 keybindings, F3 prompt library +
-slash-command builder ⭐, F4 desktop notifications ⭐.
+E6 replay/share + redaction ✅, E7 bookmarks ✅. **Epic F — Terminal UX COMPLETE** (branch `feat/v2-f-terminal-ux`): F1 command palette (Cmd-K) ✅,
+F2 keybindings ✅, F3 prompt library + slash-command builder ✅, F4 desktop notifications ✅.
+Resume at **Epic G — Cockpit** (`docs/design/epic-g-cockpit.md`, the LAST epic): G1 RemoteServer +
+WS event stream, G2 pairing + scoped/expiring tokens (security-critical), G3 `packages/ui` extraction
++ web/PWA client, G4 mobile view+steer + remote approvals ⭐.
 
 ---
 

@@ -8,6 +8,7 @@ import { ApprovalPanel } from "./ApprovalPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { KeybindingsModal } from "./KeybindingsModal";
 import { PromptsModal } from "./PromptsModal";
+import { NotificationService } from "./NotificationService";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
@@ -24,6 +25,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [keybindingsOpen, setKeybindingsOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
+  const [quiet, setQuiet] = useState(() => localStorage.getItem("glaude.quiet") === "1");
   const [keymap, setKeymap] = useState<Keybinding[]>([]);
   const commandsRef = useRef<Command[]>([]);
 
@@ -149,8 +151,19 @@ export default function App() {
       },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
+      {
+        id: "notifications.quiet",
+        title: quiet ? "Notifications: unmute" : "Notifications: quiet mode",
+        keywords: "mute notifications",
+        run: () =>
+          setQuiet((q) => {
+            const next = !q;
+            localStorage.setItem("glaude.quiet", next ? "1" : "0");
+            return next;
+          }),
+      },
     ],
-    [panes, activePaneId, dir],
+    [panes, activePaneId, dir, quiet],
   );
   commandsRef.current = commands;
 
@@ -191,6 +204,12 @@ export default function App() {
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
       </div>
       <ApprovalPanel dir={dir} />
+      <NotificationService
+        liveSessions={liveSessions}
+        projectDir={dir}
+        quiet={quiet}
+        onSelectSession={selectSession}
+      />
       <CommandPalette
         open={paletteOpen}
         commands={commands}

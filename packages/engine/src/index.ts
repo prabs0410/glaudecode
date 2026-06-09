@@ -106,6 +106,8 @@ export {
 export type { Keybinding, KeyEventLike } from "./keybindings";
 export { PromptStore, SlashCommandWriter, extractVariables, fillTemplate } from "./prompt";
 export type { PromptInfo } from "./prompt";
+export { coalesceNotifications } from "./notify";
+export type { AppNotification, NotificationKind } from "./notify";
 export type {
   ContentBlock,
   ForkResult,

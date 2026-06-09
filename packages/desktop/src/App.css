@@ -716,6 +716,55 @@ body,
   margin-top: 6px;
 }
 
+/* Notification toasts (Epic F) */
+.toast-stack {
+  position: absolute;
+  right: 14px;
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 60;
+  max-width: 320px;
+}
+.toast {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left: 3px solid #2f81f7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: toast-in 0.18s ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+.toast.approval {
+  border-left-color: #d29922;
+}
+.toast.budget {
+  border-left-color: #f85149;
+}
+.toast.finished {
+  border-left-color: #3fb950;
+}
+.toast-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+.toast-text {
+  font-size: 11px;
+  color: #9db4d0;
+}
+
 /* Command palette (Epic F) */
 .palette-backdrop {
   position: absolute;
