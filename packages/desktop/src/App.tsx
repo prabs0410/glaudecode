@@ -12,6 +12,7 @@ import { PromptsModal } from "./PromptsModal";
 import { NotificationService } from "./NotificationService";
 import { PairingModal } from "./PairingModal";
 import { Splitter } from "./Splitter";
+import { TERMINAL_THEMES, THEME_NAMES, DEFAULT_THEME } from "./terminalThemes";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
@@ -49,6 +50,11 @@ export default function App() {
   const [cursorBlink, setCursorBlink] = useState(() => localStorage.getItem("glaude.cursorBlink") !== "0");
   useEffect(() => localStorage.setItem("glaude.cursorStyle", cursorStyle), [cursorStyle]);
   useEffect(() => localStorage.setItem("glaude.cursorBlink", cursorBlink ? "1" : "0"), [cursorBlink]);
+  const [themeName, setThemeName] = useState(() => {
+    const saved = localStorage.getItem("glaude.theme");
+    return saved && THEME_NAMES.includes(saved) ? saved : DEFAULT_THEME;
+  });
+  useEffect(() => localStorage.setItem("glaude.theme", themeName), [themeName]);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
 
@@ -205,6 +211,12 @@ export default function App() {
         title: cursorBlink ? "Cursor blink: off" : "Cursor blink: on",
         run: () => setCursorBlink((b) => !b),
       },
+      {
+        id: "terminal.theme",
+        title: `Terminal theme: ${themeName} →`,
+        keywords: "color scheme light dark solarized",
+        run: () => setThemeName((t) => THEME_NAMES[(THEME_NAMES.indexOf(t) + 1) % THEME_NAMES.length]),
+      },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
@@ -220,7 +232,7 @@ export default function App() {
           }),
       },
     ],
-    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink],
+    [panes, activePaneId, dir, quiet, copyOnSelect, cursorStyle, cursorBlink, themeName],
   );
   commandsRef.current = commands;
 
@@ -265,6 +277,7 @@ export default function App() {
           copyOnSelect={copyOnSelect}
           cursorStyle={cursorStyle}
           cursorBlink={cursorBlink}
+          theme={TERMINAL_THEMES[themeName]}
         />
         <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />

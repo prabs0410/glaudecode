@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ITheme } from "@xterm/xterm";
 import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
 import { MetaAgentPanel } from "./MetaAgentPanel";
@@ -35,6 +36,7 @@ interface Props {
   copyOnSelect: boolean;
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
+  theme: ITheme;
 }
 
 // The workspace: a tab bar over N panes plus the "new session" flow. All panes stay
@@ -54,6 +56,7 @@ export function Workspace({
   copyOnSelect,
   cursorStyle,
   cursorBlink,
+  theme,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
@@ -230,6 +233,7 @@ export function Workspace({
               copyOnSelect={copyOnSelect}
               cursorStyle={cursorStyle}
               cursorBlink={cursorBlink}
+              theme={theme}
             />
           </div>
         ))}

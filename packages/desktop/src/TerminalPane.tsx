@@ -7,6 +7,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
+import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
@@ -30,7 +31,10 @@ export interface TerminalPaneProps {
   copyOnSelect?: boolean;
   cursorStyle?: "block" | "bar" | "underline";
   cursorBlink?: boolean;
+  theme?: ITheme;
 }
+
+const DARK_BG = "#0d1117";
 
 // One xterm.js terminal bound to one Rust-side PTY (Epic A). Spawn parameters are
 // fixed for a pane's lifetime, so the effect runs once per paneId; on unmount it
@@ -47,6 +51,7 @@ export function TerminalPane({
   copyOnSelect = false,
   cursorStyle = "block",
   cursorBlink = true,
+  theme,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
@@ -73,6 +78,15 @@ export function TerminalPane({
     term.options.cursorBlink = cursorBlink;
   }, [cursorStyle, cursorBlink]);
 
+  // Apply theme live; keep the host padding background in sync (so light themes don't
+  // show a dark border).
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !theme) return;
+    term.options.theme = theme;
+    if (hostRef.current) hostRef.current.style.background = theme.background ?? DARK_BG;
+  }, [theme]);
+
   useEffect(() => {
     if (!hostRef.current || startedRef.current) return;
     startedRef.current = true;
@@ -82,9 +96,10 @@ export function TerminalPane({
       fontSize,
       cursorBlink,
       cursorStyle,
-      theme: { background: "#0d1117", foreground: "#c9d1d9" },
+      theme: theme ?? { background: DARK_BG, foreground: "#c9d1d9" },
       allowProposedApi: true,
     });
+    if (hostRef.current && theme?.background) hostRef.current.style.background = theme.background;
     termRef.current = term;
     const fit = new FitAddon();
     fitRef.current = fit;
