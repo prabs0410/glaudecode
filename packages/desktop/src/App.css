@@ -596,6 +596,9 @@ body,
   box-sizing: border-box;
   background: #0d1117;
 }
+.terminal-host.bell-flash {
+  box-shadow: inset 0 0 0 2000px rgba(210, 153, 34, 0.1);
+}
 /* In-terminal search bar (Epic V3-B3) */
 .term-search {
   position: absolute;

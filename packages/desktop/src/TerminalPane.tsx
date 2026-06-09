@@ -97,6 +97,7 @@ export function TerminalPane({
       fontSize,
       cursorBlink,
       cursorStyle,
+      scrollback: 5000,
       theme: theme ?? { background: DARK_BG, foreground: "#c9d1d9" },
       allowProposedApi: true,
     });
@@ -143,6 +144,13 @@ export function TerminalPane({
       if (copyOnSelectRef.current && term.hasSelection()) {
         void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
       }
+    });
+    // Visual bell: flash the pane on BEL instead of an audible beep.
+    term.onBell(() => {
+      const el = hostRef.current;
+      if (!el) return;
+      el.classList.add("bell-flash");
+      setTimeout(() => el.classList.remove("bell-flash"), 130);
     });
     fit.fit();
     term.focus();
