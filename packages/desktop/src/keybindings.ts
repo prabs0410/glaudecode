@@ -27,9 +27,14 @@ export function normalizeKeys(keys: string): string {
   return [...order, key].filter(Boolean).join("+");
 }
 
+// "mod" is the platform's APP modifier: Cmd on macOS, Ctrl elsewhere. Crucially, on macOS
+// Ctrl is NOT an app modifier — Ctrl-key combos (Ctrl-C/W/K/F/…) must reach the terminal,
+// so they don't map to "mod" and won't match app bindings.
+const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+
 export function chordFromEvent(e: KeyboardEvent): string {
   const parts: string[] = [];
-  if (e.metaKey || e.ctrlKey) parts.push("mod");
+  if (IS_MAC ? e.metaKey : e.ctrlKey) parts.push("mod");
   if (e.altKey) parts.push("alt");
   if (e.shiftKey) parts.push("shift");
   parts.push(e.key);
