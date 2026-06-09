@@ -578,6 +578,85 @@ body,
   background: #0d1117;
 }
 
+/* Command palette (Epic F) */
+.palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 50;
+}
+.palette {
+  width: 560px;
+  max-width: 90vw;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1f2630;
+  color: #c9d1d9;
+  font: 14px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 12px 14px;
+  outline: none;
+}
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.palette-group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6e7681;
+  padding: 6px 8px 2px;
+}
+.palette-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette-row.active {
+  background: #1f2937;
+  box-shadow: inset 2px 0 0 #2f81f7;
+}
+.palette-title {
+  color: #c9d1d9;
+  font-size: 13px;
+}
+.palette-snippet {
+  color: #9db4d0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-hint {
+  color: #6e7681;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.palette-empty {
+  color: #6e7681;
+  padding: 10px 12px;
+}
+
 /* Smart-approval layer: floating, over the terminal area, clear of the right dock */
 .approval-layer {
   position: absolute;

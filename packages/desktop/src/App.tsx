@@ -5,7 +5,8 @@ import { StatusBar } from "./StatusBar";
 import { RightDock } from "./RightDock";
 import { Workspace, type Pane } from "./Workspace";
 import { ApprovalPanel } from "./ApprovalPanel";
-import { createWorktree, handoff, projectDir } from "./engine";
+import { CommandPalette, type Command } from "./CommandPalette";
+import { createWorktree, handoff, projectDir, reindex } from "./engine";
 import "./App.css";
 
 const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
@@ -17,11 +18,24 @@ export default function App() {
   // What the right dock + status bar inspect: the active Claude pane's session, or a
   // session clicked in the sidebar. Last focus wins.
   const [inspect, setInspect] = useState<{ sessionId: string; dir: string } | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     projectDir()
       .then(setDir)
       .catch(() => setDir(null));
+  }, []);
+
+  // Cmd-K / Ctrl-K toggles the command palette (Epic F §3.1).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const liveSessionIds = useMemo(
@@ -87,6 +101,41 @@ export default function App() {
     if (dir) setInspect({ sessionId: id, dir });
   };
 
+  const cyclePane = (delta: number) => {
+    setPanes((ps) => {
+      if (ps.length < 2) return ps;
+      const idx = ps.findIndex((p) => p.paneId === activePaneId);
+      const next = ps[(idx + delta + ps.length) % ps.length];
+      if (next) selectPane(next.paneId);
+      return ps;
+    });
+  };
+
+  // App actions exposed in the Cmd-K palette (Epic F §3.1). Extensions could append here.
+  const commands: Command[] = useMemo(
+    () => [
+      { id: "new-shell", title: "New shell pane", hint: "terminal", run: newShell },
+      { id: "next-pane", title: "Next pane", run: () => cyclePane(1) },
+      { id: "prev-pane", title: "Previous pane", run: () => cyclePane(-1) },
+      {
+        id: "close-pane",
+        title: "Close active pane",
+        run: () => {
+          if (panes.length > 1) closePane(activePaneId);
+        },
+      },
+      {
+        id: "reindex",
+        title: "Reindex this project for search",
+        keywords: "search index",
+        run: () => {
+          if (dir) void reindex(dir);
+        },
+      },
+    ],
+    [panes, activePaneId, dir],
+  );
+
   // Hand the source pane's session context into the target pane. We fetch a digest
   // (server-side, tested) and paste it into the target's PTY via bracketed paste so
   // multi-line text arrives as one block for the user to review and send — there is
@@ -124,6 +173,13 @@ export default function App() {
         <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
       </div>
       <ApprovalPanel dir={dir} />
+      <CommandPalette
+        open={paletteOpen}
+        commands={commands}
+        dir={dir}
+        onClose={() => setPaletteOpen(false)}
+        onSelectSession={selectSession}
+      />
       <StatusBar
         dir={inspect?.dir ?? null}
         selectedId={inspect?.sessionId ?? null}

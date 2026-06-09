@@ -91,6 +91,8 @@ export { buildReplayBundle, redactText } from "./replay";
 export type { ReplayBundle } from "./replay";
 export { BookmarkStore } from "./bookmarks";
 export type { Bookmark } from "./bookmarks";
+export { fuzzyScore, fuzzyRank } from "./fuzzy";
+export type { FuzzyResult } from "./fuzzy";
 export type {
   ContentBlock,
   ForkResult,
