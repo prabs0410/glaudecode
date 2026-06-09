@@ -322,6 +322,26 @@ export const gitRestore = (dir: string, paths: string[]) =>
 export const gitRevertHunk = (dir: string, path: string, hunk: { header: string; lines: string[] }) =>
   engineRpc<{ ok: true }>("gitRevertHunk", { dir, path, hunk });
 
+// ---------- Session compare (Epic E §3.4) ----------
+
+export interface SetDiff {
+  onlyA: string[];
+  onlyB: string[];
+  both: string[];
+}
+
+export interface SessionComparison {
+  a: string;
+  b: string;
+  tools: SetDiff;
+  files: SetDiff;
+  costDeltaUsd: number;
+  tokenDelta: number;
+}
+
+export const compareSessions = (a: { id: string; dir: string }, b: { id: string; dir: string }) =>
+  engineRpc<SessionComparison>("compareSessions", { a, b });
+
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
 // importing the engine package (which pulls the Node-only Agent SDK) into the bundle.

@@ -24,6 +24,7 @@ import { CostStore, evaluateBudget, type Budget } from "./budget";
 import { MemoryStore, parseLoadedContext } from "./memory";
 import { GraphManager } from "./graph";
 import { GitManager } from "./gitManager";
+import { compareSessions, type SessionView } from "./compare";
 import { SearchIndex } from "./searchIndex";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -73,7 +74,8 @@ export type RpcMethod =
   | "gitCommit"
   | "gitDiff"
   | "gitRestore"
-  | "gitRevertHunk";
+  | "gitRevertHunk"
+  | "compareSessions";
 
 const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -118,6 +120,7 @@ const METHODS = new Set<RpcMethod>([
   "gitDiff",
   "gitRestore",
   "gitRevertHunk",
+  "compareSessions",
 ]);
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -383,7 +386,28 @@ export async function dispatch(
     case "gitRevertHunk":
       await (deps.gitManager ?? defaultGitManager).revertHunk(req(p.dir, "dir"), req(p.path, "path"), req(p.hunk, "hunk"));
       return { ok: true };
+    case "compareSessions": {
+      const a = req(p.a, "a") as { id: string; dir: string };
+      const b = req(p.b, "b") as { id: string; dir: string };
+      const [va, vb] = await Promise.all([buildSessionView(adapter, a), buildSessionView(adapter, b)]);
+      return compareSessions(va, vb);
+    }
   }
+}
+
+/** Build a session's comparison view (tools, files, cost) from its computed views. */
+async function buildSessionView(adapter: ClaudeCodeAdapter, ref: { id: string; dir: string }): Promise<SessionView> {
+  const msgs = await adapter.getSessionMessages(ref.id, { dir: ref.dir });
+  const tools = new Set<string>();
+  for (const m of msgs) for (const b of m.blocks) if (b.kind === "tool_use") tools.add(b.name);
+  const cost = computeSessionCost(msgs);
+  return {
+    sessionId: ref.id,
+    tools: [...tools],
+    files: buildChanges(msgs).map((c) => c.path),
+    usd: cost.usd,
+    tokens: cost.totalTokens,
+  };
 }
 
 function reqArray(value: unknown, name: string): string[] {

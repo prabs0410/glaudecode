@@ -3,11 +3,12 @@ import { TimelinePanel } from "./TimelinePanel";
 import { ChangesPanel } from "./ChangesPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { GraphPanel } from "./GraphPanel";
+import { ComparePanel } from "./ComparePanel";
 
-// Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), Memory + Graph (Epic D) for the
-// selected session / project.
+// Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), Memory + Graph (Epic D), and
+// Compare (Epic E) for the selected session / project.
 
-type Tab = "timeline" | "changes" | "memory" | "graph";
+type Tab = "timeline" | "changes" | "memory" | "graph" | "compare";
 
 export function RightDock({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -39,12 +40,19 @@ export function RightDock({ dir, selectedId }: { dir: string | null; selectedId:
         >
           Graph
         </button>
+        <button
+          className={`dock-tab${tab === "compare" ? " active" : ""}`}
+          onClick={() => setTab("compare")}
+        >
+          Compare
+        </button>
       </div>
       <div className="dock-body">
         {tab === "timeline" && <TimelinePanel dir={dir} selectedId={selectedId} />}
         {tab === "changes" && <ChangesPanel dir={dir} selectedId={selectedId} />}
         {tab === "memory" && <MemoryPanel dir={dir} selectedId={selectedId} />}
         {tab === "graph" && <GraphPanel dir={dir} />}
+        {tab === "compare" && <ComparePanel dir={dir} selectedId={selectedId} />}
       </div>
     </section>
   );

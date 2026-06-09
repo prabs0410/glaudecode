@@ -691,13 +691,15 @@ body,
 }
 .dock-tab {
   flex: 1;
-  padding: 8px 10px;
+  padding: 8px 6px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: #6e7681;
   font: inherit;
+  font-size: 11px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .dock-tab:hover {
   color: #c9d1d9;
@@ -801,6 +803,91 @@ body,
   word-break: break-word;
   max-height: 320px;
   overflow: auto;
+}
+
+/* Session compare panel (Epic E) */
+.compare-panel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.compare-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #9db4d0;
+}
+.compare-a {
+  color: #79c0ff;
+}
+.compare-select {
+  flex: 1;
+  min-width: 0;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 3px 4px;
+}
+.compare-metric {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #9db4d0;
+  font-variant-numeric: tabular-nums;
+}
+.compare-metric .neg {
+  color: #f85149;
+}
+.compare-metric .pos {
+  color: #3fb950;
+}
+.compare-set-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c9d1d9;
+  margin-bottom: 4px;
+}
+.compare-cols {
+  display: flex;
+  gap: 6px;
+}
+.compare-col {
+  flex: 1;
+  min-width: 0;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+.compare-col-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 3px;
+}
+.compare-col.only-a .compare-col-label {
+  color: #e3b341;
+}
+.compare-col.only-b .compare-col-label {
+  color: #79c0ff;
+}
+.compare-col.both .compare-col-label {
+  color: #6e7681;
+}
+.compare-item {
+  font-size: 11px;
+  color: #c9d1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compare-none {
+  color: #3a414b;
+  font-size: 11px;
 }
 
 /* Knowledge graph panel (Epic D) */
