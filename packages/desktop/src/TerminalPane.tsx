@@ -6,23 +6,38 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl, openPath } from "@tauri-apps/plugin-opener";
+import { openUrl, openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
 
-/** Resolve a path matched in terminal output and open it in the OS default app. */
+// Terminal output is UNTRUSTED — a process can print a path to an executable/script/bundle
+// (.app/.command/.sh/.exe/…). Only OS-open files whose extension is on this safe allowlist
+// (which never executes); anything else is merely revealed in the file manager.
+const SAFE_OPEN_EXTS = new Set([
+  "txt", "md", "markdown", "log", "json", "jsonc", "yaml", "yml", "toml", "ini", "cfg", "conf",
+  "csv", "tsv", "xml", "html", "htm", "css", "scss", "less", "svg",
+  // Source files — opened in an editor, not executed. Deliberately NO script/executable
+  // types (.sh/.command/.ps1/.bat/.app/.exe/.jar/…): those are never auto-opened.
+  "ts", "tsx", "js", "jsx", "mjs", "cjs", "rs", "go", "py", "rb", "java", "kt", "kts", "swift",
+  "c", "h", "cpp", "cc", "hpp", "cs", "php", "lua", "sql", "graphql", "proto",
+  "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "pdf",
+]);
+
+/** Resolve a path matched in terminal output and open it SAFELY (allowlisted extensions
+ *  open in the default app; everything else is only revealed, never executed). */
 function openFilePath(raw: string, cwd?: string) {
   const path = raw.replace(/:\d+(?::\d+)?$/, ""); // strip :line:col
   let abs = path;
-  if (path.startsWith("~/")) abs = path; // leave ~ for the OS to expand? skip — treat as-is
-  else if (!path.startsWith("/")) {
+  if (!path.startsWith("/") && !path.startsWith("~/")) {
     if (!cwd) return; // can't resolve a relative path without a cwd
     abs = `${cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "")}`;
   }
-  void openPath(abs).catch(() => {});
+  const ext = (abs.split("/").pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
+  if (SAFE_OPEN_EXTS.has(ext)) void openPath(abs).catch(() => {});
+  else void revealItemInDir(abs).catch(() => {}); // never auto-execute an unknown/executable type
 }
 
 export interface TerminalPaneProps {
