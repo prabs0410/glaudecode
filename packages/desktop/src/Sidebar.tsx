@@ -12,7 +12,8 @@ import {
 interface Props {
   dir: string | null;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  /** Open a session (switch to its pane if live, else resume it). */
+  onSelect: (id: string, cwd?: string, title?: string) => void;
   /** Sessions with a live pane running right now — shown with a "live" dot. */
   liveSessionIds?: Set<string>;
   /** Pixel width (overrides the CSS default) when the panel is resizable. */
@@ -118,7 +119,7 @@ export function Sidebar({ dir, selectedId, onSelect, liveSessionIds, width }: Pr
               <li
                 key={s.id}
                 className={`session-item${isSelected ? " selected" : ""}`}
-                onClick={() => onSelect(s.id)}
+                onClick={() => onSelect(s.id, s.cwd, s.title || s.firstPrompt)}
               >
                 {isEditing ? (
                   <input

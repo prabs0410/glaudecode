@@ -30,9 +30,9 @@ export default function App() {
   const [activePaneId, setActivePaneId] = useState<string>("main");
   // Second pane shown side-by-side with the active one (V3-E1). null = single (tabs).
   const [splitPaneId, setSplitPaneId] = useState<string | null>(null);
-  // What the right dock + status bar inspect: the active Claude pane's session, or a
-  // session clicked in the sidebar. Last focus wins.
-  const [inspect, setInspect] = useState<{ sessionId: string; dir: string } | null>(null);
+  // The right dock + status bar reflect ONLY the active pane: a Claude pane → its live
+  // session; a Shell pane → nothing. Sidebar/search clicks switch to (or resume) a session
+  // as a real pane — they never repurpose the dock over stale historical data.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [keybindingsOpen, setKeybindingsOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
@@ -112,13 +112,14 @@ export default function App() {
     [panes],
   );
 
-  const selectPane = (paneId: string) => {
-    setActivePaneId(paneId);
-    const p = panes.find((x) => x.paneId === paneId);
-    if (p?.kind === "claude" && p.sessionId) {
-      setInspect({ sessionId: p.sessionId, dir: p.cwd ?? dir ?? "" });
-    }
-  };
+  // The dock + status bar reflect ONLY the active pane. A Claude pane → its live session;
+  // a Shell pane → null (the dock shows its empty/guide state, never stale history).
+  const inspected = useMemo(() => {
+    const p = panes.find((x) => x.paneId === activePaneId);
+    return p?.kind === "claude" && p.sessionId ? { sessionId: p.sessionId, dir: p.cwd ?? dir ?? "" } : null;
+  }, [panes, activePaneId, dir]);
+
+  const selectPane = (paneId: string) => setActivePaneId(paneId);
 
   const newShell = () => {
     const id = crypto.randomUUID();
@@ -144,7 +145,6 @@ export default function App() {
     };
     setPanes((ps) => [...ps, pane]);
     setActivePaneId(uuid);
-    setInspect({ sessionId: uuid, dir: path });
   };
 
   const closePane = (paneId: string) => {
@@ -164,8 +164,28 @@ export default function App() {
     });
   };
 
-  const selectSession = (id: string) => {
-    if (dir) setInspect({ sessionId: id, dir });
+  // Clicking a session in the sidebar/search switches to its live pane if one is open,
+  // otherwise resumes it as a new Claude pane (`claude --resume <id>`) in its own cwd. The
+  // dock then binds to that active pane — clicks never just repurpose the dock.
+  const openSession = (id: string, cwd?: string, title?: string) => {
+    const live = panes.find((p) => p.kind === "claude" && p.sessionId === id);
+    if (live) {
+      setActivePaneId(live.paneId);
+      return;
+    }
+    const paneCwd = cwd || dir || undefined;
+    const pane: Pane = {
+      paneId: id,
+      kind: "claude",
+      title: title || id.slice(0, 8),
+      cwd: paneCwd,
+      worktreePath: paneCwd,
+      cmd: "claude",
+      args: ["--resume", id],
+      sessionId: id,
+    };
+    setPanes((ps) => (ps.some((p) => p.paneId === id) ? ps : [...ps, pane]));
+    setActivePaneId(id);
   };
 
   // Toggle a 2-pane side-by-side split (V3-E1). Secondary = next pane, or a fresh shell.
@@ -313,8 +333,6 @@ export default function App() {
     const bracketed = `\x1b[200~${prompt}\x1b[201~`;
     await invoke("pty_write", { paneId: toPaneId, data: bracketed });
     setActivePaneId(toPaneId);
-    const to = panes.find((p) => p.paneId === toPaneId);
-    if (to?.sessionId) setInspect({ sessionId: to.sessionId, dir: to.cwd ?? dir ?? "" });
   };
 
   return (
@@ -323,8 +341,8 @@ export default function App() {
         {!zen && !sidebarCollapsed && (
           <Sidebar
             dir={dir}
-            selectedId={inspect?.sessionId ?? null}
-            onSelect={selectSession}
+            selectedId={inspected?.sessionId ?? null}
+            onSelect={openSession}
             liveSessionIds={liveSessionIds}
             width={sidebarW}
           />
@@ -369,7 +387,7 @@ export default function App() {
           />
         )}
         {!zen && !dockCollapsed && (
-          <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />
+          <RightDock dir={inspected?.dir ?? null} selectedId={inspected?.sessionId ?? null} width={dockW} />
         )}
       </div>
       <ApprovalPanel dir={dir} />
@@ -377,14 +395,14 @@ export default function App() {
         liveSessions={liveSessions}
         projectDir={dir}
         quiet={quiet}
-        onSelectSession={selectSession}
+        onSelectSession={(id) => openSession(id)}
       />
       <CommandPalette
         open={paletteOpen}
         commands={commands}
         dir={dir}
         onClose={() => setPaletteOpen(false)}
-        onSelectSession={selectSession}
+        onSelectSession={(id) => openSession(id)}
       />
       {keybindingsOpen && (
         <KeybindingsModal
@@ -403,8 +421,8 @@ export default function App() {
       {pairingOpen && <PairingModal onClose={() => setPairingOpen(false)} />}
       {!zen && (
         <StatusBar
-          dir={inspect?.dir ?? null}
-          selectedId={inspect?.sessionId ?? null}
+          dir={inspected?.dir ?? null}
+          selectedId={inspected?.sessionId ?? null}
           projectDir={dir}
           liveSessions={liveSessions}
         />
