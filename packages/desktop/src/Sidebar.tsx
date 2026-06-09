@@ -15,13 +15,15 @@ interface Props {
   onSelect: (id: string) => void;
   /** Sessions with a live pane running right now — shown with a "live" dot. */
   liveSessionIds?: Set<string>;
+  /** Pixel width (overrides the CSS default) when the panel is resizable. */
+  width?: number;
 }
 
 // Sessions sidebar (V1-1): lists the project's real sessions with live search,
 // selection, inline rename + tag, and delete-with-confirm. All mutations go
 // through the engine RPC and reload the list.
 
-export function Sidebar({ dir, selectedId, onSelect, liveSessionIds }: Props) {
+export function Sidebar({ dir, selectedId, onSelect, liveSessionIds, width }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export function Sidebar({ dir, selectedId, onSelect, liveSessionIds }: Props) {
   };
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={width ? { width, minWidth: width } : undefined}>
       <div className="sidebar-header">
         Sessions{!loading && !error ? ` · ${visible.length}` : ""}
       </div>

@@ -10,11 +10,17 @@ import { KeybindingsModal } from "./KeybindingsModal";
 import { PromptsModal } from "./PromptsModal";
 import { NotificationService } from "./NotificationService";
 import { PairingModal } from "./PairingModal";
+import { Splitter } from "./Splitter";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
 import "./App.css";
 
 const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
+
+const num = (v: string | null, fallback: number) => {
+  const n = v ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : fallback;
+};
 
 export default function App() {
   const [dir, setDir] = useState<string | null>(null);
@@ -28,6 +34,11 @@ export default function App() {
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [quiet, setQuiet] = useState(() => localStorage.getItem("glaude.quiet") === "1");
   const [pairingOpen, setPairingOpen] = useState(false);
+  // Resizable panel widths, remembered across launches.
+  const [sidebarW, setSidebarW] = useState(() => num(localStorage.getItem("glaude.sidebarW"), 260));
+  const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
+  useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
+  useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
   const [keymap, setKeymap] = useState<Keybinding[]>([]);
   const commandsRef = useRef<Command[]>([]);
 
@@ -193,7 +204,9 @@ export default function App() {
           selectedId={inspect?.sessionId ?? null}
           onSelect={selectSession}
           liveSessionIds={liveSessionIds}
+          width={sidebarW}
         />
+        <Splitter value={sidebarW} min={180} max={520} sign={1} onChange={setSidebarW} />
         <Workspace
           panes={panes}
           activePaneId={activePaneId}
@@ -204,7 +217,8 @@ export default function App() {
           onHandoff={onHandoff}
           canCreateSession={!!dir}
         />
-        <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} />
+        <Splitter value={dockW} min={240} max={600} sign={-1} onChange={setDockW} />
+        <RightDock dir={inspect?.dir ?? null} selectedId={inspect?.sessionId ?? null} width={dockW} />
       </div>
       <ApprovalPanel dir={dir} />
       <NotificationService

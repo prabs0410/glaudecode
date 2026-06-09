@@ -22,6 +22,20 @@ body,
   overflow: hidden;
 }
 
+/* Draggable dividers between panels */
+.splitter {
+  flex: 0 0 5px;
+  width: 5px;
+  margin: 0 -2px; /* widen the hit area without shifting layout */
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s;
+}
+.splitter:hover {
+  background: #2f81f7;
+}
+
 .statusbar {
   display: flex;
   align-items: center;

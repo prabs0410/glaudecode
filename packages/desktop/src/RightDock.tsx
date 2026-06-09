@@ -12,11 +12,19 @@ import { ReplayPanel } from "./ReplayPanel";
 
 type Tab = "timeline" | "changes" | "memory" | "graph" | "compare" | "replay";
 
-export function RightDock({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
+export function RightDock({
+  dir,
+  selectedId,
+  width,
+}: {
+  dir: string | null;
+  selectedId: string | null;
+  width?: number;
+}) {
   const [tab, setTab] = useState<Tab>("timeline");
 
   return (
-    <section className="rightdock">
+    <section className="rightdock" style={width ? { width, minWidth: width } : undefined}>
       <ResumeBanner dir={dir} selectedId={selectedId} />
       <div className="dock-tabs">
         <button
