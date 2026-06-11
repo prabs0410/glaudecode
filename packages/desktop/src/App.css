@@ -1362,18 +1362,25 @@ body,
   font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
   padding: 3px 4px;
 }
+.compare-legend {
+  font-size: 10px;
+  color: #6e7681;
+  margin-bottom: 2px;
+}
+.compare-legend .neg,
+.compare-metric .neg {
+  color: #f85149;
+}
+.compare-legend .pos,
+.compare-metric .pos {
+  color: #3fb950;
+}
 .compare-metric {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
   color: #9db4d0;
   font-variant-numeric: tabular-nums;
-}
-.compare-metric .neg {
-  color: #f85149;
-}
-.compare-metric .pos {
-  color: #3fb950;
 }
 .compare-set-title {
   font-size: 11px;

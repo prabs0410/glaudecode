@@ -78,6 +78,10 @@ export function ComparePanel({
 
       {cmp && (
         <div className="compare-body">
+          <div className="compare-legend">
+            <span className="pos">green</span> = B lower (cheaper / fewer) ·{" "}
+            <span className="neg">red</span> = B higher
+          </div>
           <div className="compare-metric">
             <span>Cost Δ (B−A)</span>
             <span className={cmp.costDeltaUsd > 0 ? "neg" : "pos"}>

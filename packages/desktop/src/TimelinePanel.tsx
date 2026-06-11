@@ -76,7 +76,8 @@ export function TimelinePanel({ dir, selectedId }: { dir: string | null; selecte
     }
   };
 
-  if (!selectedId) return <div className="dock-empty">Select a session to see its activity</div>;
+  if (!selectedId)
+    return <div className="dock-empty">Open or focus a Claude session to see its activity.</div>;
   if (error) return <div className="dock-error">{error}</div>;
 
   const shown = pinnedOnly ? entries.filter((e) => pinned.has(e.id)) : entries;

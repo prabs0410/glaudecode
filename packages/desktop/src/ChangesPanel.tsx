@@ -117,7 +117,8 @@ export function ChangesPanel({ dir, selectedId }: { dir: string | null; selected
     }
   };
 
-  if (!selectedId) return <div className="dock-empty">Select a session to see its changes</div>;
+  if (!selectedId)
+    return <div className="dock-empty">Open or focus a Claude session to see its changes.</div>;
   if (error) return <div className="dock-error">{error}</div>;
 
   return (
