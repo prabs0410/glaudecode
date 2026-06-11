@@ -8,7 +8,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { parseOsc133, parseOsc7 } from "./osc";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
@@ -208,11 +208,14 @@ export function TerminalPane({
       }
       return true;
     });
-    term.onSelectionChange(() => {
+    // Copy-on-select fires on a real pointer release, NOT on every selection change — otherwise
+    // the SearchAddon's programmatic highlight selection would clobber the clipboard (V4-E4).
+    const onMouseUp = () => {
       if (copyOnSelectRef.current && term.hasSelection()) {
         void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
       }
-    });
+    };
+    hostRef.current.addEventListener("mouseup", onMouseUp);
     // Shell integration: command markers (duration + exit code) and live cwd (V3-E2).
     term.parser.registerOscHandler(133, (data) => {
       const ev = parseOsc133(data);
@@ -243,14 +246,30 @@ export function TerminalPane({
     term.focus();
 
     const decoder = new TextDecoder();
-    const unlistenOut = listen<number[]>(`pty-output:${paneId}`, (e) => {
-      term.write(decoder.decode(new Uint8Array(e.payload), { stream: true }));
-    });
-    const unlistenExit = listen(`pty-exit:${paneId}`, () => {
-      term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
-    });
-
-    invoke("pty_spawn", { paneId, cwd, cmd, args, rows: term.rows, cols: term.cols });
+    // Attach BOTH event listeners BEFORE spawning the PTY (V4-E2). listen() is async — if we
+    // spawned first, the shell banner / a fast first command could emit before the listener
+    // attached and be lost. `disposed` guards a teardown that races the async setup.
+    let disposed = false;
+    let unlistenOut: UnlistenFn | undefined;
+    let unlistenExit: UnlistenFn | undefined;
+    void (async () => {
+      const [uo, ue] = await Promise.all([
+        listen<number[]>(`pty-output:${paneId}`, (e) => {
+          term.write(decoder.decode(new Uint8Array(e.payload), { stream: true }));
+        }),
+        listen(`pty-exit:${paneId}`, () => {
+          term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
+        }),
+      ]);
+      if (disposed) {
+        uo();
+        ue();
+        return;
+      }
+      unlistenOut = uo;
+      unlistenExit = ue;
+      await invoke("pty_spawn", { paneId, cwd, cmd, args, rows: term.rows, cols: term.cols });
+    })();
     term.onData((d) => void invoke("pty_write", { paneId, data: d }));
 
     const refit = () => {
@@ -261,9 +280,11 @@ export function TerminalPane({
     ro.observe(hostRef.current);
 
     return () => {
+      disposed = true;
       ro.disconnect();
-      unlistenOut.then((f) => f());
-      unlistenExit.then((f) => f());
+      hostRef.current?.removeEventListener("mouseup", onMouseUp);
+      unlistenOut?.();
+      unlistenExit?.();
       void invoke("pty_kill", { paneId });
       term.dispose();
       termRef.current = null;

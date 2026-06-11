@@ -99,6 +99,17 @@ export default function App() {
   // untouched. The command closures live in a ref so the listener stays stable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Don't hijack chords while the user is typing in a text field (rename box, search,
+      // commit message, etc.) — let the input handle them (V4-E1). The xterm textarea is
+      // exempt: terminal keybindings (Cmd-F, Cmd-1..9) must still work while it's focused.
+      const el = document.activeElement as HTMLElement | null;
+      if (el) {
+        const tag = el.tagName;
+        const editable =
+          tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+        const inTerminal = !!el.closest(".terminal-host");
+        if (editable && !inTerminal) return;
+      }
       const cmdId = matchEvent(e, keymap);
       if (!cmdId) return;
       e.preventDefault();
@@ -452,7 +463,12 @@ export default function App() {
         <PromptsModal
           dir={dir}
           onClose={() => setPromptsOpen(false)}
-          onInsert={(text) => void invoke("pty_write", { paneId: activePaneId, data: text })}
+          activeIsClaude={panes.find((p) => p.paneId === activePaneId)?.kind === "claude"}
+          onInsert={(text) => {
+            // Guard in case the active pane changed while the modal was open (V4-E3).
+            if (panes.find((p) => p.paneId === activePaneId)?.kind !== "claude") return;
+            void invoke("pty_write", { paneId: activePaneId, data: text });
+          }}
         />
       )}
       {pairingOpen && <PairingModal onClose={() => setPairingOpen(false)} />}

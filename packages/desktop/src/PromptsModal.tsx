@@ -35,9 +35,12 @@ interface Props {
   dir: string | null;
   onClose: () => void;
   onInsert: (text: string) => void;
+  /** Whether the active pane is a Claude session — "Use → pane" is disabled otherwise (V4-E3),
+   *  so a natural-language prompt is never typed into a shell where it would run as commands. */
+  activeIsClaude: boolean;
 }
 
-export function PromptsModal({ dir, onClose, onInsert }: Props) {
+export function PromptsModal({ dir, onClose, onInsert, activeIsClaude }: Props) {
   const [prompts, setPrompts] = useState<PromptInfo[]>([]);
   const [id, setId] = useState("");
   const [body, setBody] = useState("");
@@ -150,7 +153,12 @@ export function PromptsModal({ dir, onClose, onInsert }: Props) {
               <button className="act" disabled={!id.trim()} onClick={() => void save()}>
                 Save
               </button>
-              <button className="act" disabled={!body} onClick={use}>
+              <button
+                className="act"
+                disabled={!body || !activeIsClaude}
+                title={activeIsClaude ? "Type into the active Claude pane" : "Focus a Claude session pane first"}
+                onClick={use}
+              >
                 Use → pane
               </button>
               <button className="act" disabled={!dir || !id.trim()} onClick={() => void makeSlash()}>
