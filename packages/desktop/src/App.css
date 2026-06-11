@@ -1271,10 +1271,21 @@ body,
 /* Resume briefing banner (Epic E) */
 .resume-banner {
   position: relative;
-  padding: 8px 24px 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 32px 8px 14px;
   background: #11161d;
   border-bottom: 1px solid #1f2630;
   font: 11px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+.resume-text {
+  flex: 1;
+  min-width: 0;
+}
+.resume-go {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .resume-recap {
   color: #c9d1d9;

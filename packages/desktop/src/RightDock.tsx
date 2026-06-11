@@ -4,7 +4,6 @@ import { ChangesPanel } from "./ChangesPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { GraphPanel } from "./GraphPanel";
 import { ComparePanel } from "./ComparePanel";
-import { ResumeBanner } from "./ResumeBanner";
 import { ReplayPanel } from "./ReplayPanel";
 
 // Right-hand dock: tabbed Timeline (V1-3), Changes (V1-5), Memory + Graph (Epic D), and
@@ -28,7 +27,6 @@ export function RightDock({
 
   return (
     <section className="rightdock" style={width ? { width, minWidth: width } : undefined}>
-      <ResumeBanner dir={dir} selectedId={selectedId} />
       <div className="dock-tabs">
         <button
           className={`dock-tab${tab === "timeline" ? " active" : ""}`}

@@ -12,6 +12,7 @@ import { PromptsModal } from "./PromptsModal";
 import { NotificationService } from "./NotificationService";
 import { PairingModal } from "./PairingModal";
 import { Splitter } from "./Splitter";
+import { ResumeBanner } from "./ResumeBanner";
 import { TERMINAL_THEMES, THEME_NAMES, DEFAULT_THEME } from "./terminalThemes";
 import { matchEvent } from "./keybindings";
 import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
@@ -28,6 +29,9 @@ export default function App() {
   const [dir, setDir] = useState<string | null>(null);
   const [panes, setPanes] = useState<Pane[]>(INITIAL_PANES);
   const [activePaneId, setActivePaneId] = useState<string>("main");
+  // A stale session selected in the sidebar but not yet resumed — drives the resume preview
+  // banner (V4-A3). Cleared on resume, on switching to a live pane, or on dismiss.
+  const [preview, setPreview] = useState<{ id: string; cwd?: string; title?: string } | null>(null);
   // Second pane shown side-by-side with the active one (V3-E1). null = single (tabs).
   const [splitPaneId, setSplitPaneId] = useState<string | null>(null);
   // The right dock + status bar reflect ONLY the active pane: a Claude pane → its live
@@ -164,6 +168,19 @@ export default function App() {
     });
   };
 
+  // Selecting a stale session in the sidebar/search shows a resume PREVIEW (recap + suggested
+  // next) before spawning anything (V4-A3). If a live pane already hosts the session we just
+  // switch to it — no preview, since you're already in it.
+  const selectSession = (id: string, cwd?: string, title?: string) => {
+    const live = panes.find((p) => p.kind === "claude" && p.sessionId === id);
+    if (live) {
+      setActivePaneId(live.paneId);
+      setPreview(null);
+      return;
+    }
+    setPreview({ id, cwd, title });
+  };
+
   // Clicking a session in the sidebar/search switches to its live pane if one is open,
   // otherwise resumes it as a new Claude pane (`claude --resume <id>`) in its own cwd. The
   // dock then binds to that active pane — clicks never just repurpose the dock.
@@ -186,6 +203,7 @@ export default function App() {
     };
     setPanes((ps) => (ps.some((p) => p.paneId === id) ? ps : [...ps, pane]));
     setActivePaneId(id);
+    setPreview(null);
   };
 
   // Toggle a 2-pane side-by-side split (V3-E1). Secondary = next pane, or a fresh shell.
@@ -337,12 +355,20 @@ export default function App() {
 
   return (
     <div className="app-root">
+      {preview && (
+        <ResumeBanner
+          dir={preview.cwd ?? dir}
+          sessionId={preview.id}
+          onResume={() => openSession(preview.id, preview.cwd, preview.title)}
+          onDismiss={() => setPreview(null)}
+        />
+      )}
       <div className="app-shell">
         {!zen && !sidebarCollapsed && (
           <Sidebar
             dir={dir}
-            selectedId={inspected?.sessionId ?? null}
-            onSelect={openSession}
+            selectedId={preview?.id ?? inspected?.sessionId ?? null}
+            onSelect={selectSession}
             liveSessionIds={liveSessionIds}
             width={sidebarW}
           />
