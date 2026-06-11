@@ -50,7 +50,17 @@ export function Sidebar({ dir, selectedId, onSelect, liveSessionIds, width }: Pr
     void reload();
   }, [reload]);
 
-  const visible = useMemo(() => filterSessions(sessions, query), [sessions, query]);
+  // Filter, then order: live sessions first, then most-recently-active. listSessions returns
+  // the SDK's raw order; without this the ~99-session list has no useful top (V4-B2).
+  const visible = useMemo(() => {
+    const ts = (s: SessionSummary) => s.lastModified ?? "";
+    return filterSessions(sessions, query).slice().sort((a, b) => {
+      const aLive = liveSessionIds?.has(a.id) ? 1 : 0;
+      const bLive = liveSessionIds?.has(b.id) ? 1 : 0;
+      if (aLive !== bLive) return bLive - aLive; // live first
+      return ts(b).localeCompare(ts(a)); // newest first (ISO strings sort chronologically)
+    });
+  }, [sessions, query, liveSessionIds]);
 
   const submitRename = async (id: string) => {
     const title = draft.trim();

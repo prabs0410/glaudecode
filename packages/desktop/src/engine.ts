@@ -275,9 +275,9 @@ export interface SearchHit {
   when?: string;
 }
 
-/** Full-text search across indexed sessions (Epic D §3.3). */
-export const search = (query: string, limit?: number) =>
-  engineRpc<SearchHit[]>("search", { query, limit });
+/** Full-text search, scoped to a project `dir` when given (Epic D §3.3; V4-B1 scoping). */
+export const search = (query: string, dir?: string, limit?: number) =>
+  engineRpc<SearchHit[]>("search", { query, dir, limit });
 
 /** (Re)index a project's sessions into the global search index. */
 export const reindex = (dir: string) => engineRpc<{ indexed: number }>("reindex", { dir });

@@ -47,7 +47,7 @@ export function CommandPalette({ open, commands, dir, onClose, onSelectSession }
     let alive = true;
     const id = setTimeout(async () => {
       try {
-        const res = await search(q, 6);
+        const res = await search(q, dir ?? undefined, 6);
         if (alive) setHits(res);
       } catch {
         /* ignore */

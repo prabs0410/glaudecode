@@ -442,12 +442,17 @@ export async function dispatch(
       const sessions = await adapter.listSessions({ dir });
       for (const s of sessions) {
         const msgs = await adapter.getSessionMessages(s.id, { dir });
-        index.indexSession(s.id, sessionBody(msgs), s.lastModified ?? s.createdAt);
+        index.indexSession(s.id, sessionBody(msgs), s.lastModified ?? s.createdAt, dir);
       }
       return { indexed: sessions.length };
     }
     case "search":
-      return getSearchIndex(deps).search(req(p.query, "query"), typeof p.limit === "number" ? p.limit : 20);
+      // Scope to the caller's project dir when given (V4-B1) so hits never leak across projects.
+      return getSearchIndex(deps).search(
+        req(p.query, "query"),
+        typeof p.limit === "number" ? p.limit : 20,
+        typeof p.dir === "string" ? p.dir : undefined,
+      );
     case "sessionChangesGit": {
       // Join the files the agent touched (buildChanges) with their live git status so the
       // panel can stage/commit/diff them.

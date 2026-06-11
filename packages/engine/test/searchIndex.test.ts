@@ -56,6 +56,21 @@ describe("SearchIndex", () => {
     expect(hit.snippet.length).toBeLessThan(400);
   });
 
+  test("scopes results to a project dir (no cross-project leakage)", () => {
+    idx = new SearchIndex();
+    idx.indexSession("a1", "shared keyword in project A", "2026-06-09", "/projects/a");
+    idx.indexSession("b1", "shared keyword in project B", "2026-06-09", "/projects/b");
+
+    const aHits = idx.search("keyword", 20, "/projects/a");
+    expect(aHits.map((h) => h.sessionId)).toEqual(["a1"]);
+
+    const bHits = idx.search("keyword", 20, "/projects/b");
+    expect(bHits.map((h) => h.sessionId)).toEqual(["b1"]);
+
+    // No dir → unscoped (back-compat): both projects match.
+    expect(idx.search("keyword").map((h) => h.sessionId).sort()).toEqual(["a1", "b1"]);
+  });
+
   test("special characters in the query don't break FTS syntax", () => {
     idx = new SearchIndex();
     idx.indexSession("s1", "a path/to/file.ts was changed");

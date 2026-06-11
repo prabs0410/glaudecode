@@ -8,13 +8,14 @@ const DEBOUNCE_MS = 250;
 
 interface Props {
   dir: string | null;
-  onSelect: (sessionId: string) => void;
+  onSelect: (sessionId: string, cwd?: string, title?: string) => void;
 }
 
 export function GlobalSearch({ dir, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -25,26 +26,31 @@ export function GlobalSearch({ dir, onSelect }: Props) {
     let alive = true;
     const id = setTimeout(async () => {
       try {
-        const res = await search(q);
-        if (alive) setHits(res);
-      } catch {
-        /* ignore */
+        // Scope to the current project so hits never leak from other projects (V4-B1).
+        const res = await search(q, dir ?? undefined);
+        if (alive) {
+          setHits(res);
+          setError(null);
+        }
+      } catch (e: any) {
+        if (alive) setError(String(e?.message ?? e));
       }
     }, DEBOUNCE_MS);
     return () => {
       alive = false;
       clearTimeout(id);
     };
-  }, [query]);
+  }, [query, dir]);
 
   const doReindex = async () => {
     if (!dir) return;
     setBusy(true);
+    setError(null);
     try {
       await reindex(dir);
-      if (query.trim()) setHits(await search(query.trim()));
-    } catch {
-      /* ignore */
+      if (query.trim()) setHits(await search(query.trim(), dir ?? undefined));
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
     } finally {
       setBusy(false);
     }
@@ -65,15 +71,20 @@ export function GlobalSearch({ dir, onSelect }: Props) {
         </button>
       </div>
 
+      {error && <div className="sidebar-error">{error}</div>}
+
       {query.trim() && (
         <ul className="gsearch-results">
-          {hits.length === 0 && <li className="session-empty">No matches (try Index first).</li>}
+          {hits.length === 0 && !error && (
+            <li className="session-empty">No matches (try Index first).</li>
+          )}
           {hits.map((h) => (
             <li
               key={h.sessionId}
               className="gsearch-hit"
               onClick={() => {
-                onSelect(h.sessionId);
+                // All hits belong to the current project (scoped search), so resume in `dir`.
+                onSelect(h.sessionId, dir ?? undefined);
                 setQuery("");
               }}
               title={h.sessionId}
