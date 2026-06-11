@@ -429,9 +429,53 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
+            // Remove our PreToolUse approval hook so a closed app can never leave a hook
+            // behind that gates (and, when the engine is down, denies) tools. Defense in
+            // depth — GLAUDECODE_MANAGED scoping already spares non-managed sessions.
+            uninstall_approval_hook_on_exit();
             if let Some(mut child) = app_handle.state::<EngineState>().child.lock().unwrap().take() {
                 let _ = child.kill();
             }
         }
     });
+}
+
+/// Strip our approval hook (marked by the `glaudecode-approval` sentinel) from the project's
+/// `.claude/settings.json` on app exit. Conservative: parse-or-bail — if the file is missing,
+/// unparseable, or doesn't contain our sentinel, we touch nothing. Mirrors the engine's
+/// `removeApprovalHook` (pruning empties) so the file returns to its prior shape.
+fn uninstall_approval_hook_on_exit() {
+    const SENTINEL: &str = "glaudecode-approval";
+    let path = find_project_dir().join(".claude").join("settings.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else { return };
+    if !raw.contains(SENTINEL) {
+        return;
+    }
+    let Ok(mut root) = serde_json::from_str::<serde_json::Value>(&raw) else { return };
+    let Some(obj) = root.as_object_mut() else { return };
+    let Some(hooks) = obj.get_mut("hooks").and_then(|h| h.as_object_mut()) else { return };
+
+    if let Some(pre) = hooks.get_mut("PreToolUse").and_then(|p| p.as_array_mut()) {
+        // Drop our command from each matcher, then drop matchers left with no hooks.
+        for matcher in pre.iter_mut() {
+            if let Some(list) = matcher.get_mut("hooks").and_then(|h| h.as_array_mut()) {
+                list.retain(|h| {
+                    h.get("command").and_then(|c| c.as_str()).map_or(true, |c| !c.contains(SENTINEL))
+                });
+            }
+        }
+        pre.retain(|m| m.get("hooks").and_then(|h| h.as_array()).is_none_or(|l| !l.is_empty()));
+        if pre.is_empty() {
+            hooks.remove("PreToolUse");
+        }
+    }
+    if hooks.is_empty() {
+        obj.remove("hooks");
+    }
+
+    // Pretty-print to match the engine's writer; if serialization somehow fails, leave the
+    // file untouched rather than risk truncating the user's settings.
+    if let Ok(out) = serde_json::to_string_pretty(&root) {
+        let _ = std::fs::write(&path, out + "\n");
+    }
 }
