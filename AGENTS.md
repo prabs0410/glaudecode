@@ -17,11 +17,11 @@
 
 ## Status
 
-🚧 Pre-implementation. Bootstrapped 2026-05-14 with Spec-Kit (`.specify/`) + Anthropic-official plugins + Superpowers. Constitution v2.0.0 ratified; positioning (ADR 0003) and architecture (ADR 0004) locked. No product code yet.
+✅ V1 + V2 (epics A–G) + V3 (terminal polish A–E) all built, tested, committed on stacked `feat/*` branches (nothing pushed — PRs blocked on `prabs0410` gh auth). Full record: [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md); live status: [`docs/state.md`](docs/state.md).
 
 ## Current focus
 
-Foundation validation spike (Tauri + xterm.js + portable-pty + real `claude` + Bun-sidecar SDK reads), then re-evaluate the planned features against Principle II's felt-improvement bar. See [`docs/state.md`](docs/state.md) for live Locked/In-flight/Next.
+Polish/correctness on the running app. No active backlog in [`docs/GOAL.md`](docs/GOAL.md) (a V4 would be a new section). See [`docs/state.md`](docs/state.md).
 
 ## How to work in this repo
 
@@ -31,6 +31,23 @@ Foundation validation spike (Tauri + xterm.js + portable-pty + real `claude` + B
 - Use `Skill writing-plans` (Superpowers) for non-trivial features before implementing
 - Run `pr-review-toolkit` before opening PRs
 - Use `/commit-push-pr` to finalize
+
+## Build, test & gotchas (learned in the build)
+
+- **Verify**: `cd packages/engine && bun test` (255+ tests) · `bunx tsc --noEmit` per package · `bunx vite build` (desktop) · `cargo build` in `packages/desktop/src-tauri`. Run the app: `cd packages/desktop && bun run tauri dev`.
+- **Run `git` from the repo root** — `cd`-ing into a package then `git add packages/...` doubles the path (`pathspec did not match`).
+- **`cargo build` lies when cached** ("Finished 0.4s"); the `tauri dev` watcher already built it — `touch src/lib.rs && cargo build` to actually confirm a Rust change compiles.
+- **Engine changes need an app restart** (the Bun sidecar respawns on launch); vite HMR only reloads the WebView. Engine ships as a Bun *script* — `bun build --compile` breaks the Agent SDK (#150).
+- **Pure logic lives in `@glaudecode/engine` (tested);** a few fns are mirrored verbatim in `packages/desktop/src/{fuzzy,keybindings,osc,notify}.ts` (the WebView can't import the engine — it pulls the Node-only SDK). Change both.
+- **New engine RPC** = `RpcMethod` union + `METHODS` set + dispatch case in `rpc.ts` + classify its scope (`VIEW_METHODS` / `LOCAL_ONLY_METHODS`; unlisted defaults to `steer`) + client wrapper in `desktop/src/engine.ts` + export from `index.ts`.
+- **New Tauri plugin** = `cargo add` + `.plugin(..init())` in `lib.rs` + add the permission to `src-tauri/capabilities/default.json` (the capability is the forgettable step).
+- **Stranded agent?** Every Bash/Edit/Write denied with `engine unreachable — denied (fail-closed)` = the smart-approval `PreToolUse` hook is gating you → `rm .claude/settings.json` from a *separate* terminal (it holds only our hook).
+
+## Structure & load-bearing patterns
+
+- **`packages/engine`** — host-agnostic Bun library. Pure session-computation logic (parsers, cost, conflict/agent-state derivation, etc.) lives here and is unit-tested; exposed over a localhost HTTP/WS RPC the WebView calls. **`ClaudeCodeAdapter` is the ONLY point that touches Claude Code** (Agent SDK APIs, never raw `~/.claude` JSONL, no tight polling) — Constitution Principle XI.
+- **`packages/desktop`** — Tauri 2 app. The **Rust core owns the PTY** (`PtyRegistry`, pane-keyed) and spawns the engine as a Bun **sidecar**, reading a `{port, token}` handshake. The **React WebView only renders**; it reaches the engine over the localhost RPC, which **pins CORS to the WebView origin**.
+- Gotcha: **no React `StrictMode`** in `main.tsx` (it double-spawns PTYs).
 
 ## Documentation Index
 
@@ -91,7 +108,8 @@ If a commit ever lands as `ashinclude` on GitHub, that is a bug. Fix the local c
 
 ## Out of scope (deferred)
 
-- Web/mobile control surfaces (V2 — needs hosted tier built first)
-- Knowledge graph (integrate graphify instead of building)
 - BMad-style multi-agent role play
 - Auto-iteration loops (ralph-loop and similar)
+- Hosted/managed tunnel tier (the OSS cockpit is "view+steer" behind the user's own transport)
+
+(Note: the web/mobile **cockpit** shipped as Epic G and the **graphify** knowledge graph as Epic D — both were previously listed here as deferred.)
