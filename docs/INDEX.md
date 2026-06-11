@@ -30,7 +30,8 @@ These live at `docs/` root (not in a subfolder) because they're updated constant
 
 | File | Purpose | Update cadence |
 |---|---|---|
-| `docs/GOAL.md` | **North-star + V1 autonomous-build backlog** (acceptance criteria + guardrails). The single target an automated build loop works against. | When scope or goal changes |
+| `docs/GOAL.md` | **North-star + V1/V2/V3 autonomous-build backlog** (acceptance criteria + guardrails). The original target an automated build loop works against. | When scope or goal changes |
+| `docs/GOAL-V4.md` | **V4 backlog — dogfood quality pass** ("make every surface honest"). Standalone `/goal` target fixing audit-found disconnects (namesake panels, search scope, split panes, empty states). | When V4 scope changes |
 | `docs/state.md` | **Where we are right now.** Locked decisions, in-flight work, immediate next actions. | End of every meaningful work unit |
 | `docs/open-questions.md` | Running list of unresolved decisions with status (OPEN / DEFERRED / ANSWERED). | Whenever a question surfaces or resolves |
 | `docs/BUILD-LOG.md` | **Complete build record** — everything shipped across V1/V2/V3 + fixes, the architecture, security log, third-party, quality status, branch/PR state, and commit lineage. | When a phase completes |
