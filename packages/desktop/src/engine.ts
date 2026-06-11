@@ -79,16 +79,6 @@ export type TimelineEntry =
 export const timeline = (id: string, dir: string) =>
   engineRpc<TimelineEntry[]>("timeline", { id, dir });
 
-export interface ChangeEntry {
-  path: string;
-  edits: number;
-  lastTool: string;
-}
-
-/** Computed server-side by the engine (buildChanges, tested there). */
-export const sessionChanges = (id: string, dir: string) =>
-  engineRpc<ChangeEntry[]>("sessionChanges", { id, dir });
-
 export interface SessionCost {
   inputTokens: number;
   outputTokens: number;
@@ -117,23 +107,9 @@ export const contextUsage = (id: string, dir: string) =>
 
 // ---------- Orchestration (Epic A) ----------
 
-export interface WorktreeInfo {
-  path: string;
-  branch?: string;
-  head?: string;
-  isMain: boolean;
-  locked: boolean;
-  detached: boolean;
-}
-
-export const listWorktrees = (dir: string) => engineRpc<WorktreeInfo[]>("listWorktrees", { dir });
-
 /** Create a worktree on a new branch under <dir>/.glaudecode/worktrees/<branch>. */
 export const createWorktree = (dir: string, branch: string) =>
   engineRpc<{ path: string }>("createWorktree", { dir, branch });
-
-export const removeWorktree = (dir: string, path: string, force = false) =>
-  engineRpc<{ ok: true }>("removeWorktree", { dir, path, force });
 
 export interface ConflictWarning {
   path: string;
@@ -207,7 +183,6 @@ export interface BudgetStatus {
 export const budgetStatus = (dir: string, sessions: Array<{ id: string; dir: string }>) =>
   engineRpc<BudgetStatus>("budgetStatus", { dir, sessions });
 
-export const getBudget = (dir: string) => engineRpc<Budget | null>("getBudget", { dir });
 
 export const setBudget = (dir: string, budget: Budget) =>
   engineRpc<{ ok: true }>("setBudget", { dir, budget });
@@ -419,7 +394,6 @@ export const deletePrompt = (id: string) => engineRpc<{ ok: true }>("deletePromp
 
 export const buildSlashCommand = (dir: string, name: string, body: string) =>
   engineRpc<{ command: string }>("buildSlashCommand", { dir, name, body });
-export const listSlashCommands = (dir: string) => engineRpc<string[]>("listSlashCommands", { dir });
 
 // ---------- Pairing / remote cockpit (Epic G §3.2) ----------
 
