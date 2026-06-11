@@ -575,6 +575,11 @@ body,
 .pane-mount.split {
   border-left: 1px solid #1f2630;
 }
+/* Wrapper that places the inter-pane Splitter between the two visible panes via flex order (V4-C1). */
+.pane-splitter {
+  flex: 0 0 5px;
+  display: flex;
+}
 .session-live {
   display: inline-block;
   width: 7px;
@@ -603,6 +608,24 @@ body,
   box-shadow: inset 0 0 0 2000px rgba(210, 153, 34, 0.1);
 }
 /* Command duration + exit badge (V3-E2 shell integration) */
+.cwd-chip {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  z-index: 15;
+  background: #11161d;
+  border: 1px solid #1f2630;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: 10px/1.6 ui-monospace, Menlo, monospace;
+  color: #8b949e;
+  opacity: 0.82;
+  pointer-events: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .cmd-badge {
   position: absolute;
   bottom: 8px;

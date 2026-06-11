@@ -68,6 +68,10 @@ export default function App() {
   useEffect(() => localStorage.setItem("glaude.theme", themeName), [themeName]);
   useEffect(() => localStorage.setItem("glaude.sidebarW", String(sidebarW)), [sidebarW]);
   useEffect(() => localStorage.setItem("glaude.dockW", String(dockW)), [dockW]);
+  // Width (px) of the active/left pane when split (V4-C1/C2). The right pane flexes to fill the
+  // rest. We persist the WIDTH (a reusable preference), not splitPaneId — panes are ephemeral.
+  const [splitW, setSplitW] = useState(() => num(localStorage.getItem("glaude.splitW"), 480));
+  useEffect(() => localStorage.setItem("glaude.splitW", String(splitW)), [splitW]);
 
   // Window title reflects the active pane (a Claude session's name, or the project dir).
   useEffect(() => {
@@ -387,6 +391,8 @@ export default function App() {
           panes={panes}
           activePaneId={activePaneId}
           splitPaneId={splitPaneId}
+          splitW={splitW}
+          onSplitResize={setSplitW}
           onSelectPane={selectPane}
           onClosePane={closePane}
           onNewShell={newShell}

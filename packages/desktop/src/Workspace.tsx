@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import type { ITheme } from "@xterm/xterm";
 import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
 import { MetaAgentPanel } from "./MetaAgentPanel";
+import { Splitter } from "./Splitter";
 
 // A pane is one terminal tab: either a plain shell or a Claude Code session bound to
 // a worktree. For Claude panes `paneId === sessionId` (the uuid we mint and pass to
@@ -23,6 +24,9 @@ interface Props {
   activePaneId: string | null;
   /** Second pane shown side-by-side with the active one (V3-E1). */
   splitPaneId?: string | null;
+  /** Width (px) of the active/left pane when split; the right pane fills the rest (V4-C1). */
+  splitW?: number;
+  onSplitResize?: (next: number) => void;
   onSelectPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onNewShell: () => void;
@@ -49,6 +53,8 @@ export function Workspace({
   panes,
   activePaneId,
   splitPaneId = null,
+  splitW = 480,
+  onSplitResize,
   onSelectPane,
   onClosePane,
   onNewShell,
@@ -230,11 +236,31 @@ export function Workspace({
       <MetaAgentPanel sessions={liveSessions} />
 
       <div className="panes">
-        {panes.map((p) => (
+        {/* Splitter between the two visible panes. All panes stay mounted (display-toggled) to keep
+            their PTY state, so we can't reorder the DOM physically — CSS `order` places it between
+            the active (order 1) and split (order 3) panes regardless of array position (V4-C1). */}
+        {splitPaneId && (
+          <div className="pane-splitter" style={{ order: 2 }}>
+            <Splitter value={splitW} min={240} max={1200} sign={1} onChange={(w) => onSplitResize?.(w)} />
+          </div>
+        )}
+        {panes.map((p) => {
+          const isActive = p.paneId === activePaneId;
+          const isSplit = p.paneId === splitPaneId;
+          const visible = isActive || isSplit;
+          // When split: active pane is a fixed width (left), split pane flexes to fill (right).
+          const style: CSSProperties = splitPaneId
+            ? {
+                display: visible ? "block" : "none",
+                order: isActive ? 1 : isSplit ? 3 : 0,
+                flex: isActive ? `0 0 ${splitW}px` : isSplit ? "1 1 0" : undefined,
+              }
+            : { display: visible ? "block" : "none" };
+          return (
           <div
             key={p.paneId}
-            className={`pane-mount${p.paneId === splitPaneId ? " split" : ""}`}
-            style={{ display: p.paneId === activePaneId || p.paneId === splitPaneId ? "block" : "none" }}
+            className={`pane-mount${isSplit ? " split" : ""}`}
+            style={style}
           >
             <TerminalPane
               paneId={p.paneId}
@@ -250,7 +276,8 @@ export function Workspace({
               theme={theme}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

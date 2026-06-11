@@ -34,6 +34,12 @@ function formatMs(ms: number): string {
   return `${m}m ${Math.round((ms % 60000) / 1000)}s`;
 }
 
+/** Compact a cwd for the chip: keep the last two path segments (full path is in the tooltip). */
+function shortCwd(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length > 2 ? "…/" + parts.slice(-2).join("/") : path;
+}
+
 /** Resolve a path matched in terminal output and open it SAFELY (allowlisted extensions
  *  open in the default app; everything else is only revealed, never executed). */
 function openFilePath(raw: string, cwd?: string) {
@@ -100,6 +106,9 @@ export function TerminalPane({
   const cmdStartRef = useRef<number | null>(null);
   const liveCwdRef = useRef<string | undefined>(cwd);
   const [lastCmd, setLastCmd] = useState<{ ms: number; exit?: number } | null>(null);
+  // Live cwd from OSC 7 (V4-C3). The ref feeds the link resolver synchronously; the state drives
+  // the cwd chip. Only shells with our integration emit OSC 7, so this stays empty otherwise.
+  const [liveCwd, setLiveCwd] = useState<string | undefined>(undefined);
 
   // Apply font-size changes live and tell the PTY the new dimensions.
   useEffect(() => {
@@ -216,7 +225,10 @@ export function TerminalPane({
     });
     term.parser.registerOscHandler(7, (data) => {
       const p = parseOsc7(data);
-      if (p) liveCwdRef.current = p;
+      if (p) {
+        liveCwdRef.current = p;
+        setLiveCwd(p);
+      }
       return true;
     });
 
@@ -264,6 +276,11 @@ export function TerminalPane({
   return (
     <div className="terminal-pane">
       <div ref={hostRef} className="terminal-host" />
+      {liveCwd && (
+        <div className="cwd-chip" title={liveCwd}>
+          {shortCwd(liveCwd)}
+        </div>
+      )}
       {lastCmd && (
         <div className={`cmd-badge${lastCmd.exit ? " fail" : ""}`} title="Last command (duration · exit)">
           {lastCmd.exit ? "✗" : "✓"} {formatMs(lastCmd.ms)}
