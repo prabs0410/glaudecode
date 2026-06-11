@@ -324,9 +324,30 @@ fn spawn_engine(state: &EngineState) -> Result<(), String> {
         for _ in reader.lines() {}
     });
 
-    *state.endpoint.lock().unwrap() = Some(endpoint);
+    *state.endpoint.lock().unwrap() = Some(endpoint.clone());
     *state.child.lock().unwrap() = Some(child);
+    // Each launch gets a fresh port; if the approval hook is installed, refresh its endpoint
+    // file so it keeps working across restarts (instead of pointing at the dead old engine).
+    refresh_approval_endpoint(&endpoint);
     Ok(())
+}
+
+/// If the smart-approval hook is installed for the project, rewrite its endpoint file with this
+/// launch's {port, token}. No-op when the hook isn't installed.
+fn refresh_approval_endpoint(endpoint: &EngineEndpoint) {
+    let project = find_project_dir();
+    let installed = std::fs::read_to_string(project.join(".claude").join("settings.json"))
+        .map(|s| s.contains("glaudecode-approval"))
+        .unwrap_or(false);
+    if !installed {
+        return;
+    }
+    let endpoint_file = project.join(".glaudecode").join("approval-endpoint.json");
+    if let Some(parent) = endpoint_file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::json!({ "port": endpoint.port, "token": endpoint.token });
+    let _ = std::fs::write(&endpoint_file, json.to_string());
 }
 
 #[tauri::command]
@@ -339,22 +360,26 @@ fn engine_endpoint(state: State<EngineState>) -> Result<EngineEndpoint, String> 
         .ok_or_else(|| "engine not ready".to_string())
 }
 
-/// The project directory whose sessions the UI should list — the nearest git
-/// repo root at/above the process cwd, else the cwd itself.
-#[tauri::command]
-fn project_dir() -> String {
+/// The nearest git repo root at/above the process cwd, else the cwd itself.
+fn find_project_dir() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut dir = cwd.as_path();
     loop {
         if dir.join(".git").exists() {
-            return dir.to_string_lossy().into_owned();
+            return dir.to_path_buf();
         }
         match dir.parent() {
             Some(p) => dir = p,
             None => break,
         }
     }
-    cwd.to_string_lossy().into_owned()
+    cwd
+}
+
+/// The project directory whose sessions the UI should list.
+#[tauri::command]
+fn project_dir() -> String {
+    find_project_dir().to_string_lossy().into_owned()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
