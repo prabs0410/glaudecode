@@ -11,29 +11,44 @@ import {
 // side-by-side structural diff — tools and files each used uniquely vs in common, and the
 // cost/token delta. The "which approach was better" view.
 
-export function ComparePanel({ dir, selectedId }: { dir: string | null; selectedId: string | null }) {
+export function ComparePanel({
+  dir,
+  selectedId,
+  projectDir,
+}: {
+  dir: string | null;
+  selectedId: string | null;
+  projectDir: string | null;
+}) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [bId, setBId] = useState<string>("");
   const [cmp, setCmp] = useState<SessionComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Candidate B sessions are scoped to the PROJECT root, not session A's cwd: when A lives in a
+  // git worktree, A's cwd is the worktree path (a different SDK project scope), so listing against
+  // it would offer the wrong sessions. Fall back to A's dir only when the project root is unknown.
+  const listDir = projectDir ?? dir;
   useEffect(() => {
-    if (!dir) return;
-    listSessions(dir).then(setSessions).catch(() => setSessions([]));
-  }, [dir]);
+    if (!listDir) return;
+    listSessions(listDir).then(setSessions).catch(() => setSessions([]));
+  }, [listDir]);
 
   useEffect(() => {
     if (!dir || !selectedId || !bId || bId === selectedId) {
       setCmp(null);
       return;
     }
-    compareSessions({ id: selectedId, dir }, { id: bId, dir })
+    // Read each session from ITS OWN cwd — B may live in a different directory than A, and the
+    // SDK resolves the session's project from the dir it's read with.
+    const bDir = sessions.find((s) => s.id === bId)?.cwd ?? listDir ?? dir;
+    compareSessions({ id: selectedId, dir }, { id: bId, dir: bDir })
       .then((c) => {
         setCmp(c);
         setError(null);
       })
       .catch((e) => setError(String(e?.message ?? e)));
-  }, [dir, selectedId, bId]);
+  }, [dir, selectedId, bId, sessions, listDir]);
 
   if (!selectedId)
     return (

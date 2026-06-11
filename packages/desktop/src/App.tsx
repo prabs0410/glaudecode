@@ -387,7 +387,12 @@ export default function App() {
           />
         )}
         {!zen && !dockCollapsed && (
-          <RightDock dir={inspected?.dir ?? null} selectedId={inspected?.sessionId ?? null} width={dockW} />
+          <RightDock
+            dir={inspected?.dir ?? null}
+            selectedId={inspected?.sessionId ?? null}
+            projectDir={dir}
+            width={dockW}
+          />
         )}
       </div>
       <ApprovalPanel dir={dir} />

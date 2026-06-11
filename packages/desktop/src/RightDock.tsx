@@ -15,10 +15,13 @@ type Tab = "timeline" | "changes" | "memory" | "graph" | "compare" | "replay";
 export function RightDock({
   dir,
   selectedId,
+  projectDir,
   width,
 }: {
   dir: string | null;
   selectedId: string | null;
+  /** The project root (≠ a worktree session's cwd) — used to scope cross-session compare. */
+  projectDir: string | null;
   width?: number;
 }) {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -69,7 +72,9 @@ export function RightDock({
         {tab === "changes" && <ChangesPanel dir={dir} selectedId={selectedId} />}
         {tab === "memory" && <MemoryPanel dir={dir} selectedId={selectedId} />}
         {tab === "graph" && <GraphPanel dir={dir} />}
-        {tab === "compare" && <ComparePanel dir={dir} selectedId={selectedId} />}
+        {tab === "compare" && (
+          <ComparePanel dir={dir} selectedId={selectedId} projectDir={projectDir} />
+        )}
         {tab === "replay" && <ReplayPanel dir={dir} selectedId={selectedId} />}
       </div>
     </section>
