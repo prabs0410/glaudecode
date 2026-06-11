@@ -373,8 +373,10 @@ export async function dispatch(
       const dir = req(p.dir, "dir");
       if (!deps.endpoint) throw new Error("engine endpoint unavailable");
       const endpointFile = join(dir, ".glaudecode", "approval-endpoint.json");
-      await mkdir(dirname(endpointFile), { recursive: true });
-      await writeFile(endpointFile, JSON.stringify(deps.endpoint), "utf8");
+      // The endpoint file carries the engine's bearer token — keep it owner-only
+      // (0o700 dir, 0o600 file). mode is a no-op on Windows, which is fine.
+      await mkdir(dirname(endpointFile), { recursive: true, mode: 0o700 });
+      await writeFile(endpointFile, JSON.stringify(deps.endpoint), { encoding: "utf8", mode: 0o600 });
       const binPath = join(import.meta.dir, "..", "bin", "approval-hook.ts");
       await new ApprovalHookInstaller().install(dir, {
         // Shell-quote the paths: the hook command is run via the shell, and `dir` (hence

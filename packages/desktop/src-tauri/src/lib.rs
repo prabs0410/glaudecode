@@ -343,11 +343,31 @@ fn refresh_approval_endpoint(endpoint: &EngineEndpoint) {
         return;
     }
     let endpoint_file = project.join(".glaudecode").join("approval-endpoint.json");
-    if let Some(parent) = endpoint_file.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     let json = serde_json::json!({ "port": endpoint.port, "token": endpoint.token });
-    let _ = std::fs::write(&endpoint_file, json.to_string());
+    // The file carries the engine bearer token → restrict to the owner (0o600, dir 0o700).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        if let Some(parent) = endpoint_file.parent() {
+            let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(parent);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&endpoint_file)
+        {
+            let _ = f.write_all(json.to_string().as_bytes());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if let Some(parent) = endpoint_file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&endpoint_file, json.to_string());
+    }
 }
 
 #[tauri::command]
