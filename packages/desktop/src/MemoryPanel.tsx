@@ -90,7 +90,10 @@ export function MemoryPanel({ dir, selectedId }: Props) {
     }
   };
 
-  if (!dir) return <div className="dock-empty">No project.</div>;
+  if (!dir)
+    return (
+      <div className="dock-empty">Open or focus a Claude session to view & edit its memory.</div>
+    );
 
   return (
     <div className="memory-panel">

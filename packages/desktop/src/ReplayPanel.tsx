@@ -81,10 +81,18 @@ export function ReplayPanel({ dir, selectedId }: { dir: string | null; selectedI
         </label>
       </div>
 
-      <div className="replay-warn">
-        ⚠ Redaction is best-effort, not a guarantee. Review before sharing — transcripts may still
-        contain secrets.
-      </div>
+      {!selectedId && !bundle && (
+        <div className="dock-empty">
+          Open or focus a Claude session to export it — or open a saved bundle above.
+        </div>
+      )}
+
+      {(selectedId || bundle) && (
+        <div className="replay-warn">
+          ⚠ Redaction is best-effort, not a guarantee. Review before sharing — transcripts may still
+          contain secrets.
+        </div>
+      )}
 
       {error && <div className="dock-error">{error}</div>}
 

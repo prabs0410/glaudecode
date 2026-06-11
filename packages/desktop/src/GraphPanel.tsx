@@ -22,7 +22,8 @@ export function GraphPanel({ dir }: { dir: string | null }) {
     }
   };
 
-  if (!dir) return <div className="dock-empty">No project.</div>;
+  if (!dir)
+    return <div className="dock-empty">Open or focus a Claude session to map its history.</div>;
 
   return (
     <div className="graph-panel">

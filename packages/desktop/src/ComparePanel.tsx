@@ -35,7 +35,10 @@ export function ComparePanel({ dir, selectedId }: { dir: string | null; selected
       .catch((e) => setError(String(e?.message ?? e)));
   }, [dir, selectedId, bId]);
 
-  if (!selectedId) return <div className="dock-empty">Select a session (A) to compare.</div>;
+  if (!selectedId)
+    return (
+      <div className="dock-empty">Open or focus a Claude session to compare it (A) with another.</div>
+    );
 
   return (
     <div className="compare-panel">
