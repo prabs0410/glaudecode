@@ -1,6 +1,6 @@
 # Current State
 
-**Last updated:** 2026-06-09 (V2 + V3 COMPLETE — epics A–G + terminal polish A–E)
+**Last updated:** 2026-06-11 (V1/V2/V3 COMPLETE; dogfood audit done → V4 quality pass queued)
 **Update protocol:** Refresh the three sections below at the end of every meaningful work unit. Stale state is worse than no state — if a section is unchanged for >2 working sessions, prune it.
 
 ---
@@ -37,13 +37,13 @@ Active work. Things touched in the current or last working session.
 - **V3 — Terminal Polish & Feel COMPLETE (2026-06-09, branch `feat/v3-terminal-polish`).** A: rename→GlaudeCode + context window title + remembered geometry (window-state plugin) + app icon. B: font zoom (Cmd±/0), clickable links, Cmd-F search, copy/paste + copy-on-select, cursor style/blink, terminal themes (+light), unicode11 width, scrollback 5000 + visual bell. C: fc -R history net, vendored zsh-syntax-highlighting, directory-scoped suggestions, clickable file paths. D: collapsible sidebar/dock + zen, Cmd-1..9 switch, close-confirm, drag-reorder tabs, split panes (E1), OSC 133/7 shell integration → duration/exit badges + live cwd (E2). Fixes: keymap mod=Cmd-on-mac (was hijacking terminal Ctrl-keys); file-open code-exec vector (allowlist + reveal-only). Engine 255/255; Rust + desktop tsc/build green. **No active backlog remains.**
 - **Not yet done**: all branches unpushed/unmerged (PRs blocked on prabs0410 gh auth — see memory); V1-4 cost price table is a best-effort estimate; Epic G remote surface owes a deliberate threat-model pass before remote bind is used (memory `project-epic-g-remote-threat-model`).
 
+- **Dogfood audit + V4 queued (2026-06-11, branch `feat/v3-terminal-polish`).** Feature-by-feature audit (5 read-only auditors) found the app ~85% genuinely wired (52/61 RPCs reachable) but several surfaces fail the honesty bar. Captured as **[`docs/GOAL-V4.md`](GOAL-V4.md)** (ordered A–F, no new features) for the founder to run via `/goal`. Headline: the dock-binding fix over-corrected — project-scoped tools (Graph/Memory/Compare) go dead on a Shell pane (the namesake critique, inverted). Also security: approval-hook endpoint file now written 0o600 (`25cfc01`); approval hook auto-uninstalls on app exit (`3807247`).
+
 ## Next
 
 What comes after current work. Concrete, not aspirational.
 
-- **First real feature on the skeleton** — wire the Bun/Agent-SDK engine (proven `listSessions`/`getSessionMessages`) into a sessions sidebar beside the terminal pane, via the ClaudeCodeAdapter. This is the first vertical slice of the actual product.
-- **Push** the skeleton + spike commits to `origin/main`.
-- **Discovery research** — focused pass to find what none of opcode/Anthropic/Wave/Terax does (the felt-improvement wedge per Principle II). Can run in background.
-- **Re-evaluate the 9 features** against Principle II's felt-improvement bar; drop commoditized ones as standalone differentiators.
-- **Cosmetic** — rename window title "desktop" → GlaudeCode (`tauri.conf.json` productName).
+- **Run V4** — the dogfood quality pass (`/goal @docs/GOAL-V4.md`). A first (the namesake regression + the cluttered-sidebar complaint).
+- **`prabs0410` GitHub auth** — all ~9 feature branches are local; PRs are blocked until `gh auth login` as prabs0410. Then open per-epic PRs.
+- **Epic G remote threat-model** — owed before any remote bind is used (see memory + `docs/open-questions.md`).
 - **Open questions** — `docs/open-questions.md`.
