@@ -32,6 +32,13 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+// Only gate sessions GlaudeCode itself launched (its panes set this env var). A bare `claude`
+// run in the repo for any other reason is never gated — otherwise closing the app (engine
+// down) would fail-closed and strand it, with no way to recover from inside that session.
+if (process.env.GLAUDECODE_MANAGED !== "1") {
+  emit("allow", "not a GlaudeCode-managed session — approval hook skipped");
+}
+
 const payload = JSON.parse((await readStdin()) || "{}");
 const tool: string = payload.tool_name ?? payload.toolName ?? "";
 const input = payload.tool_input ?? payload.toolInput ?? {};

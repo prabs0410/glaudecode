@@ -197,6 +197,10 @@ fn pty_spawn(
         builder.cwd(dir);
     }
     builder.env("TERM", "xterm-256color");
+    // Mark PTYs GlaudeCode launched, so the smart-approval hook only gates *these* sessions
+    // — never a bare `claude` someone runs in the repo (which would otherwise be stranded
+    // when the app, and thus the approval engine, is closed).
+    builder.env("GLAUDECODE_MANAGED", "1");
 
     let child = pair.slave.spawn_command(builder).map_err(|e| e.to_string())?;
     drop(pair.slave);
