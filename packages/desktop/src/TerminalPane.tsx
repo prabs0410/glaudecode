@@ -74,6 +74,8 @@ export interface TerminalPaneProps {
   cursorStyle?: "block" | "bar" | "underline";
   cursorBlink?: boolean;
   theme?: ITheme;
+  /** Reports the pane's live working directory (from OSC 7) so the app can follow it. */
+  onCwd?: (cwd: string) => void;
 }
 
 const DARK_BG = "#0d1117";
@@ -94,6 +96,7 @@ export function TerminalPane({
   cursorStyle = "block",
   cursorBlink = true,
   theme,
+  onCwd,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false); // guard against double-spawn (React strict/dev)
@@ -102,6 +105,9 @@ export function TerminalPane({
   const searchRef = useRef<SearchAddon | null>(null);
   const copyOnSelectRef = useRef(copyOnSelect);
   copyOnSelectRef.current = copyOnSelect;
+  // onCwd in a ref so the once-per-pane effect always calls the latest callback.
+  const onCwdRef = useRef(onCwd);
+  onCwdRef.current = onCwd;
   // Shell-integration (OSC 133/7) state: last command's timing/exit + the live cwd.
   const cmdStartRef = useRef<number | null>(null);
   const liveCwdRef = useRef<string | undefined>(cwd);
@@ -231,6 +237,7 @@ export function TerminalPane({
       if (p) {
         liveCwdRef.current = p;
         setLiveCwd(p);
+        onCwdRef.current?.(p);
       }
       return true;
     });

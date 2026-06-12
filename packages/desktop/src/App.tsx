@@ -15,7 +15,16 @@ import { Splitter } from "./Splitter";
 import { ResumeBanner } from "./ResumeBanner";
 import { TERMINAL_THEMES, THEME_NAMES, DEFAULT_THEME } from "./terminalThemes";
 import { matchEvent } from "./keybindings";
-import { createWorktree, getKeybindings, handoff, projectDir, reindex, type Keybinding } from "./engine";
+import {
+  createWorktree,
+  getKeybindings,
+  handoff,
+  listSessions,
+  projectDir,
+  reindex,
+  type Keybinding,
+  type SessionSummary,
+} from "./engine";
 import "./App.css";
 
 const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
@@ -25,6 +34,16 @@ const num = (v: string | null, fallback: number) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+/** Normalise a session's lastModified (epoch number | Date | ISO string) to millis. */
+const sessionTs = (s: SessionSummary): number => {
+  const v: unknown = s.lastModified;
+  if (v == null) return 0;
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime();
+  const n = Date.parse(String(v));
+  return Number.isNaN(n) ? 0 : n;
+};
+
 export default function App() {
   const [dir, setDir] = useState<string | null>(null);
   const [panes, setPanes] = useState<Pane[]>(INITIAL_PANES);
@@ -32,6 +51,9 @@ export default function App() {
   // A stale session selected in the sidebar but not yet resumed — drives the resume preview
   // banner (V4-A3). Cleared on resume, on switching to a live pane, or on dismiss.
   const [preview, setPreview] = useState<{ id: string; cwd?: string; title?: string } | null>(null);
+  // Live cwd per pane, from OSC 7 — lets the sidebar/dock follow where you're actually working
+  // (e.g. you `cd` into another project in a shell). Keyed by paneId.
+  const [paneCwds, setPaneCwds] = useState<Record<string, string>>({});
   // Second pane shown side-by-side with the active one (V3-E1). null = single (tabs).
   const [splitPaneId, setSplitPaneId] = useState<string | null>(null);
   // The right dock + status bar reflect ONLY the active pane: a Claude pane → its live
@@ -137,6 +159,61 @@ export default function App() {
     const p = panes.find((x) => x.paneId === activePaneId);
     return p?.kind === "claude" && p.sessionId ? { sessionId: p.sessionId, dir: p.cwd ?? dir ?? "" } : null;
   }, [panes, activePaneId, dir]);
+
+  // The active pane's effective working directory — its live OSC-7 cwd if known, else its spawn
+  // cwd, else the launch project. The sidebar follows THIS, so `cd`-ing into another project in a
+  // shell surfaces that project's sessions instead of always the launch project's.
+  const activeCwd = useMemo(() => {
+    const p = panes.find((x) => x.paneId === activePaneId);
+    return paneCwds[activePaneId] ?? p?.cwd ?? dir;
+  }, [paneCwds, activePaneId, panes, dir]);
+
+  // Detect a Claude session running inside the active *Shell* pane (a `claude` the user started
+  // by hand, not via "+ Claude"). We can't know its id directly, so infer it: poll the active
+  // cwd's sessions and take the most-recently-modified one IF it changed in the last ~2 min
+  // (i.e. it's actively live). This binds the dock to a session GlaudeCode didn't spawn.
+  const [inferred, setInferred] = useState<{ sessionId: string; dir: string } | null>(null);
+  useEffect(() => {
+    const p = panes.find((x) => x.paneId === activePaneId);
+    // Claude panes already bind via `inspected`; only infer for non-Claude (shell) panes.
+    if (!activeCwd || p?.kind === "claude") {
+      setInferred(null);
+      return;
+    }
+    let alive = true;
+    let locked: string | null = null; // sticky: the session id we've locked onto for this cwd
+    const LIVE_WINDOW = 2 * 60 * 1000;
+    setInferred(null); // reset when (re)entering a shell pane / new cwd
+    const tick = async () => {
+      try {
+        const sessions = await listSessions(activeCwd);
+        if (!alive) return;
+        let best: { s: SessionSummary; t: number } | null = null;
+        for (const s of sessions) {
+          const t = sessionTs(s);
+          if (t > (best?.t ?? -1)) best = { s, t };
+        }
+        // Lock onto the newest session that's been live recently. Once locked, stay on it even
+        // as it idles (sticky) — only switch if a different, newer-recent session appears.
+        if (best && Date.now() - best.t < LIVE_WINDOW && best.s.id !== locked) {
+          locked = best.s.id;
+          setInferred({ sessionId: best.s.id, dir: activeCwd });
+        }
+      } catch {
+        /* leave the current inference in place on a transient read error */
+      }
+    };
+    void tick();
+    const iv = setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [activePaneId, activeCwd, panes]);
+
+  // What the dock + status bar inspect: the active Claude pane's session, else a session inferred
+  // as live in the active shell pane.
+  const docked = inspected ?? inferred;
 
   const selectPane = (paneId: string) => setActivePaneId(paneId);
 
@@ -381,7 +458,7 @@ export default function App() {
       <div className="app-shell">
         {!zen && !sidebarCollapsed && (
           <Sidebar
-            dir={dir}
+            dir={activeCwd}
             selectedId={preview?.id ?? inspected?.sessionId ?? null}
             onSelect={selectSession}
             liveSessionIds={liveSessionIds}
@@ -418,6 +495,7 @@ export default function App() {
           cursorStyle={cursorStyle}
           cursorBlink={cursorBlink}
           theme={TERMINAL_THEMES[themeName]}
+          onPaneCwd={(paneId, cwd) => setPaneCwds((m) => (m[paneId] === cwd ? m : { ...m, [paneId]: cwd }))}
         />
         {!zen && !dockCollapsed && (
           <Splitter
@@ -431,9 +509,10 @@ export default function App() {
         )}
         {!zen && !dockCollapsed && (
           <RightDock
-            dir={inspected?.dir ?? null}
-            selectedId={inspected?.sessionId ?? null}
+            dir={docked?.dir ?? null}
+            selectedId={docked?.sessionId ?? null}
             projectDir={dir}
+            inferred={!inspected && !!inferred}
             width={dockW}
           />
         )}
@@ -474,8 +553,8 @@ export default function App() {
       {pairingOpen && <PairingModal onClose={() => setPairingOpen(false)} />}
       {!zen && (
         <StatusBar
-          dir={inspected?.dir ?? null}
-          selectedId={inspected?.sessionId ?? null}
+          dir={docked?.dir ?? null}
+          selectedId={docked?.sessionId ?? null}
           projectDir={dir}
           liveSessions={liveSessions}
         />

@@ -1088,6 +1088,13 @@ body,
   flex-direction: column;
   font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
 }
+.dock-inferred {
+  padding: 4px 10px;
+  font: 10px/1.5 ui-sans-serif, system-ui, sans-serif;
+  color: #d29922;
+  background: #1c1708;
+  border-bottom: 1px solid #2d2410;
+}
 .dock-tabs {
   display: flex;
   border-bottom: 1px solid #1f2630;

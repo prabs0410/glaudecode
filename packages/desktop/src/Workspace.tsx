@@ -45,6 +45,8 @@ interface Props {
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
   theme: ITheme;
+  /** Reports a pane's live cwd (OSC 7) up to the app so the sidebar/dock can follow it. */
+  onPaneCwd?: (paneId: string, cwd: string) => void;
 }
 
 // The workspace: a tab bar over N panes plus the "new session" flow. All panes stay
@@ -69,6 +71,7 @@ export function Workspace({
   cursorStyle,
   cursorBlink,
   theme,
+  onPaneCwd,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [branch, setBranch] = useState("");
@@ -274,6 +277,7 @@ export function Workspace({
               cursorStyle={cursorStyle}
               cursorBlink={cursorBlink}
               theme={theme}
+              onCwd={(cwd) => onPaneCwd?.(p.paneId, cwd)}
             />
           </div>
           );

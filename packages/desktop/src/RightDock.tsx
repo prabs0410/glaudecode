@@ -15,18 +15,26 @@ export function RightDock({
   dir,
   selectedId,
   projectDir,
+  inferred = false,
   width,
 }: {
   dir: string | null;
   selectedId: string | null;
   /** The project root (≠ a worktree session's cwd) — used to scope cross-session compare. */
   projectDir: string | null;
+  /** True when this session was auto-detected in a shell pane (heuristic), not spawned by us. */
+  inferred?: boolean;
   width?: number;
 }) {
   const [tab, setTab] = useState<Tab>("timeline");
 
   return (
     <section className="rightdock" style={width ? { width, minWidth: width } : undefined}>
+      {inferred && selectedId && (
+        <div className="dock-inferred" title="Auto-detected from the active shell's working directory">
+          ⌁ Detected Claude session in this shell
+        </div>
+      )}
       <div className="dock-tabs">
         <button
           className={`dock-tab${tab === "timeline" ? " active" : ""}`}
