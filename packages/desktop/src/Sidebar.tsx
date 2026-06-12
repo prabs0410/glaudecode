@@ -53,12 +53,21 @@ export function Sidebar({ dir, selectedId, onSelect, liveSessionIds, width }: Pr
   // Filter, then order: live sessions first, then most-recently-active. listSessions returns
   // the SDK's raw order; without this the ~99-session list has no useful top (V4-B2).
   const visible = useMemo(() => {
-    const ts = (s: SessionSummary) => s.lastModified ?? "";
+    // lastModified is typed as string but the SDK delivers it as an epoch number (or sometimes
+    // a Date / ISO string) — normalise to a millis number so the sort never assumes a type.
+    const ts = (s: SessionSummary): number => {
+      const v: unknown = s.lastModified;
+      if (v == null) return 0;
+      if (typeof v === "number") return v;
+      if (v instanceof Date) return v.getTime();
+      const n = Date.parse(String(v));
+      return Number.isNaN(n) ? 0 : n;
+    };
     return filterSessions(sessions, query).slice().sort((a, b) => {
       const aLive = liveSessionIds?.has(a.id) ? 1 : 0;
       const bLive = liveSessionIds?.has(b.id) ? 1 : 0;
       if (aLive !== bLive) return bLive - aLive; // live first
-      return ts(b).localeCompare(ts(a)); // newest first (ISO strings sort chronologically)
+      return ts(b) - ts(a); // newest first
     });
   }, [sessions, query, liveSessionIds]);
 
