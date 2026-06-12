@@ -11,7 +11,7 @@
 // resolution (SDK #150). Ship as a Bun script run by a bundled Bun runtime.
 
 import { ClaudeCodeAdapter } from "./adapter";
-import { createRpcHandler } from "./rpc";
+import { createRpcHandler, type RemoteControl, type RemoteInfo } from "./rpc";
 import { ApprovalQueue } from "./approvalQueue";
 import { PairingService } from "./pairing";
 import { frameEvent } from "./remote";
@@ -22,6 +22,8 @@ export interface EngineServer {
   token: string;
   approvals: ApprovalQueue;
   pairing: PairingService;
+  /** Start/stop a second listener on a network interface (Tailscale) — Epic G remote. */
+  remote: RemoteControl;
   stop: () => void;
 }
 
@@ -51,27 +53,58 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds.
   const endpoint = { port: 0, token };
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing });
 
   // Live cockpit sockets; we push the approvals snapshot to them.
   const sockets = new Set<any>();
 
-  const server = Bun.serve({
-    hostname,
-    port: opts.port ?? 0,
+  // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
+  // shares EVERYTHING with the localhost listener — same handler, token, pairing, sockets — so
+  // a phone on the tailnet talks to the same engine. Enabling it is local-only (see rpc.ts).
+  let remoteServer: ReturnType<typeof Bun.serve> | null = null;
+  let remoteHost: string | null = null;
+  const remoteInfo = (): RemoteInfo => ({
+    enabled: remoteServer != null,
+    hostname: remoteHost,
+    port: endpoint.port,
+    url: remoteHost ? `http://${remoteHost}:${endpoint.port}/app` : null,
+  });
+  const remote: RemoteControl = {
+    enable(host: string) {
+      const h = host.trim();
+      if (!h) throw new Error("remote hostname required");
+      if (remoteServer && remoteHost === h) return remoteInfo();
+      if (remoteServer) remoteServer.stop(true);
+      // Bind the SAME ephemeral port on the chosen interface (a distinct socket from localhost).
+      remoteServer = Bun.serve({ hostname: h, port: endpoint.port, ...serveConfig });
+      remoteHost = h;
+      return remoteInfo();
+    },
+    disable() {
+      remoteServer?.stop(true);
+      remoteServer = null;
+      remoteHost = null;
+      return remoteInfo();
+    },
+    status: () => remoteInfo(),
+  };
+
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote });
+
+  // Shared Bun.serve config (websocket + fetch) reused by the localhost and remote listeners.
+  const serveConfig = {
     websocket: {
-      open(ws) {
+      open(ws: any) {
         sockets.add(ws);
         ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
       },
-      close(ws) {
+      close(ws: any) {
         sockets.delete(ws);
       },
       message() {
         /* cockpit is push-only for now; ignore client messages */
       },
     },
-    async fetch(request, srv) {
+    async fetch(request: Request, srv: any): Promise<Response | undefined> {
       const url = new URL(request.url);
 
       // Serve the cockpit (static; no secrets — RPCs it calls are authed). PWA-installable.
@@ -103,7 +136,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
 
       return handler(request);
     },
-  });
+  };
+
+  const server = Bun.serve({ hostname, port: opts.port ?? 0, ...serveConfig });
 
   if (server.port == null) {
     server.stop(true);
@@ -124,9 +159,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     token,
     approvals,
     pairing,
+    remote,
     stop: () => {
       clearInterval(broadcast);
       approvals.clear();
+      remote.disable();
       server.stop(true);
     },
   };

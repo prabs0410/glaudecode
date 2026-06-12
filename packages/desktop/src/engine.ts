@@ -416,6 +416,17 @@ export const createPairCode = (scope: TokenScope) => engineRpc<PairCode>("create
 export const listDevices = () => engineRpc<PairedDevice[]>("listDevices", {});
 export const revokeDevice = (deviceId: string) => engineRpc<{ ok: boolean }>("revokeDevice", { deviceId });
 
+/** State of the engine's optional remote (Tailscale) listener (Epic G remote). */
+export interface RemoteInfo {
+  enabled: boolean;
+  hostname: string | null;
+  port: number;
+  url: string | null;
+}
+export const enableRemote = (hostname: string) => engineRpc<RemoteInfo>("enableRemote", { hostname });
+export const disableRemote = () => engineRpc<RemoteInfo>("disableRemote", {});
+export const remoteStatus = () => engineRpc<RemoteInfo>("remoteStatus", {});
+
 /** The engine's localhost endpoint (port + token), for building the cockpit URL. */
 export const engineEndpoint = () => invoke<{ port: number; token: string }>("engine_endpoint");
 

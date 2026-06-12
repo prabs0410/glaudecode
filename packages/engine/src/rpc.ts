@@ -99,6 +99,9 @@ export type RpcMethod =
   | "createPairCode"
   | "listDevices"
   | "revokeDevice"
+  | "enableRemote"
+  | "disableRemote"
+  | "remoteStatus"
   | "defaultDir";
 
 const METHODS = new Set<RpcMethod>([
@@ -162,6 +165,9 @@ const METHODS = new Set<RpcMethod>([
   "createPairCode",
   "listDevices",
   "revokeDevice",
+  "enableRemote",
+  "disableRemote",
+  "remoteStatus",
   "defaultDir",
 ]);
 
@@ -181,6 +187,9 @@ const LOCAL_ONLY_METHODS = new Set<string>([
   // Managing the project's PreToolUse hooks rewrites .claude/settings.json and a shell
   // command — never reachable by a remote device, only the local desktop bearer.
   "installApprovalHook", "uninstallApprovalHook", "approvalHookStatus",
+  // Turning remote access on/off is a desktop-only decision; a paired phone must never be able
+  // to widen the engine's network exposure or read its bind config.
+  "enableRemote", "disableRemote", "remoteStatus",
 ]);
 
 /** POSIX shell-quote a path so metacharacters/spaces in it can't break or inject into the
@@ -255,6 +264,22 @@ export interface DispatchDeps {
   slashWriter?: SlashCommandWriter;
   /** Pairing service for remote cockpit tokens (Epic G). */
   pairing?: PairingService;
+  /** Starts/stops the engine's second (remote) listener — desktop-only (Epic G remote). */
+  remoteControl?: RemoteControl;
+}
+
+/** Snapshot of the remote (non-localhost) listener's state. */
+export interface RemoteInfo {
+  enabled: boolean;
+  hostname: string | null;
+  port: number;
+  url: string | null;
+}
+/** Controls the engine's optional second listener bound to a network interface (e.g. Tailscale). */
+export interface RemoteControl {
+  enable(hostname: string): RemoteInfo;
+  disable(): RemoteInfo;
+  status(): RemoteInfo;
 }
 
 /** Make an absolute path repo-relative so it matches `git status` output. */
@@ -553,6 +578,17 @@ export async function dispatch(
       return deps.pairing?.listDevices() ?? [];
     case "revokeDevice":
       return { ok: deps.pairing?.revoke(req(p.deviceId, "deviceId")) ?? false };
+    case "enableRemote": {
+      // Start the second listener on a caller-supplied interface (the desktop resolves the
+      // Tailscale IP and passes it). Local-only — a remote token can never reach this.
+      if (!deps.remoteControl) throw new Error("remote control unavailable");
+      return deps.remoteControl.enable(req(p.hostname, "hostname"));
+    }
+    case "disableRemote":
+      if (!deps.remoteControl) throw new Error("remote control unavailable");
+      return deps.remoteControl.disable();
+    case "remoteStatus":
+      return deps.remoteControl?.status() ?? { enabled: false, hostname: null, port: 0, url: null };
     case "defaultDir":
       // The engine sidecar runs in the project directory — the cockpit uses this to list
       // that project's sessions without Tauri.
@@ -586,6 +622,8 @@ export interface RpcHandlerDeps {
   endpoint?: { port: number; token: string };
   /** Pairing service; when present, remote scoped tokens are accepted (Epic G). */
   pairing?: PairingService;
+  /** Controls the optional remote listener (Epic G remote). */
+  remoteControl?: RemoteControl;
   /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
   dispatchDeps?: DispatchDeps;
 }
@@ -688,6 +726,7 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
         approvals: deps.approvals,
         endpoint: deps.endpoint,
         pairing: deps.pairing,
+        remoteControl: deps.remoteControl,
         ...deps.dispatchDeps,
       });
       return Response.json({ result });

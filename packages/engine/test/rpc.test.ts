@@ -286,6 +286,10 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("installApprovalHook")).toBe("local");
     expect(methodScope("uninstallApprovalHook")).toBe("local");
     expect(methodScope("approvalHookStatus")).toBe("local");
+    // Controlling remote exposure must never be reachable by a paired device.
+    expect(methodScope("enableRemote")).toBe("local");
+    expect(methodScope("disableRemote")).toBe("local");
+    expect(methodScope("remoteStatus")).toBe("local");
     expect(methodScope("someBrandNewMethod")).toBe("steer"); // fail-safe default
   });
 

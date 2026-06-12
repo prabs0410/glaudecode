@@ -52,6 +52,15 @@ describe("engine server", () => {
     expect(res.status).toBe(401);
   });
 
+  test("remote listener is off by default; disable is idempotent (Epic G remote)", () => {
+    const s = server.remote.status();
+    expect(s.enabled).toBe(false);
+    expect(s.hostname).toBeNull();
+    expect(s.url).toBeNull();
+    expect(s.port).toBe(server.port); // status reports the shared port even while off
+    expect(server.remote.disable().enabled).toBe(false); // no-op when already off
+  });
+
   test("a paired steer token answers an approval end-to-end", async () => {
     // Mint a pair code (local), redeem for a steer token, enqueue an approval, resolve it.
     const code = server.pairing.createPairCode("steer").code;

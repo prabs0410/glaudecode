@@ -402,6 +402,28 @@ fn project_dir() -> String {
     find_project_dir().to_string_lossy().into_owned()
 }
 
+/// This machine's Tailscale IPv4 (e.g. 100.x.y.z), or None if Tailscale isn't installed/up.
+/// Used to bind the engine's remote listener to the tailnet only (Epic G remote).
+#[tauri::command]
+fn tailscale_ip() -> Option<String> {
+    // The CLI may be on PATH (standalone install) or inside the App Store app bundle.
+    let candidates = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
+    for bin in candidates {
+        if let Ok(out) = Command::new(bin).args(["ip", "-4"]).output() {
+            if out.status.success() {
+                if let Some(ip) = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .map(|l| l.trim())
+                    .find(|l| !l.is_empty())
+                {
+                    return Some(ip.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -422,7 +444,8 @@ pub fn run() {
             pty_resize,
             pty_kill,
             engine_endpoint,
-            project_dir
+            project_dir,
+            tailscale_ip
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

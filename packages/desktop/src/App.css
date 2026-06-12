@@ -760,6 +760,28 @@ body,
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   padding: 12px;
 }
+.pair-remote {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #0d1117;
+  border: 1px solid #1f2630;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pair-remote code,
+.pair-url code {
+  color: #79c0ff;
+}
+.pair-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
 .pair-gen {
   display: flex;
   align-items: center;
