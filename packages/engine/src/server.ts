@@ -13,9 +13,17 @@
 import { ClaudeCodeAdapter } from "./adapter";
 import { createRpcHandler, type RemoteControl, type RemoteInfo } from "./rpc";
 import { ApprovalQueue } from "./approvalQueue";
-import { PairingService } from "./pairing";
+import { PairingService, genPairCode } from "./pairing";
+import { RateLimiter } from "./rateLimiter";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
+
+/** Refuse to bind a wildcard interface (all interfaces) for the remote listener — only a
+ *  specific address (e.g. the Mac's Tailscale IP) is allowed (V5 Phase 0.1). */
+function isWildcardHost(h: string): boolean {
+  const x = h.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return x === "" || x === "0.0.0.0" || x === "::" || x === "*" || x === "::0" || x === "0:0:0:0:0:0:0:0";
+}
 
 export interface EngineServer {
   port: number;
@@ -47,9 +55,15 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // both random + held in memory only (no token at rest).
   const pairing = new PairingService({
     now: () => Date.now(),
-    genCode: () => crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase(),
+    genCode: () => genPairCode(),
     genToken: () => crypto.randomUUID() + crypto.randomUUID().replace(/-/g, ""),
   });
+  // Throttle /pair so the short code can't be brute-forced (V5 Phase 0.3). code-server baseline:
+  // 2/min + 12/hr, keyed by client IP. A successful pair resets the IP's counter.
+  const pairLimiter = new RateLimiter(() => Date.now(), [
+    { windowMs: 60_000, max: 2 },
+    { windowMs: 3_600_000, max: 12 },
+  ]);
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds.
   const endpoint = { port: 0, token };
@@ -72,6 +86,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     enable(host: string) {
       const h = host.trim();
       if (!h) throw new Error("remote hostname required");
+      if (isWildcardHost(h)) {
+        // Binding all interfaces would expose the cockpit (with its steer/approval RPCs) on the
+        // LAN and, behind port-forwarding, the public internet — defeating the tailnet-only intent.
+        throw new Error(`refusing to bind wildcard interface "${host}" — pass a specific address (e.g. your Tailscale IP)`);
+      }
       if (remoteServer && remoteHost === h) return remoteInfo();
       if (remoteServer) remoteServer.stop(true);
       // Bind the SAME ephemeral port on the chosen interface (a distinct socket from localhost).
@@ -94,14 +113,41 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   const serveConfig = {
     websocket: {
       open(ws: any) {
-        sockets.add(ws);
-        ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
+        // Not authed yet — receive nothing, and auto-close if no valid auth frame arrives soon.
+        ws.data.authTimer = setTimeout(() => {
+          try {
+            ws.close(4001, "auth timeout");
+          } catch {
+            /* already closed */
+          }
+        }, 5000);
+      },
+      message(ws: any, raw: any) {
+        if (ws.data.authed) return; // after auth the stream is push-only; ignore client messages
+        let msg: any;
+        try {
+          msg = JSON.parse(String(raw));
+        } catch {
+          return;
+        }
+        // First message must be {type:"auth", token}. ONLY a paired token is accepted here — the
+        // local bearer (the engine's master credential) must never authenticate /ws (Phase 0.2).
+        if (msg?.type === "auth" && pairing.verify(String(msg.token ?? "")).ok) {
+          ws.data.authed = true;
+          clearTimeout(ws.data.authTimer);
+          sockets.add(ws);
+          ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
+        } else {
+          try {
+            ws.close(4003, "unauthorized");
+          } catch {
+            /* already closed */
+          }
+        }
       },
       close(ws: any) {
+        clearTimeout(ws.data?.authTimer);
         sockets.delete(ws);
-      },
-      message() {
-        /* cockpit is push-only for now; ignore client messages */
       },
     },
     async fetch(request: Request, srv: any): Promise<Response | undefined> {
@@ -116,21 +162,30 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       }
 
       // Pairing redemption: an unpaired client exchanges a short code (which IS the
-      // credential — single-use + expiring) for a scoped token. No bearer required here.
+      // credential — single-use + expiring) for a scoped token. No bearer required here, so it's
+      // rate-limited + audited per IP to make the short code un-brute-forceable (V5 Phase 0.3).
       if (request.method === "POST" && url.pathname === "/pair") {
+        const ip = srv.requestIP?.(request)?.address ?? "unknown";
+        if (!pairLimiter.hit(ip)) {
+          console.error(`[glaudecode] /pair rate-limited (${ip})`);
+          return Response.json({ error: "too many attempts — slow down" }, { status: 429 });
+        }
         const body = await request.json().catch(() => null);
         const tok = pairing.redeem(String(body?.code ?? "").trim().toUpperCase(), String(body?.name ?? "device"));
-        if (!tok) return Response.json({ error: "invalid or expired pairing code" }, { status: 401 });
+        if (!tok) {
+          console.error(`[glaudecode] /pair failed redemption (${ip})`);
+          return Response.json({ error: "invalid or expired pairing code" }, { status: 401 });
+        }
+        pairLimiter.reset(ip); // legit pair clears the counter so the user isn't locked out
         return Response.json(tok);
       }
 
-      // WebSocket event stream — authenticated by token in the query (browsers can't set
-      // headers on WS). Any valid token (local bearer or paired) may subscribe (view).
+      // WebSocket event stream. The token is NOT in the URL (V5 Phase 0.2 — query strings leak via
+      // history/Referer/proxy logs, and the local bearer must never ride on /ws). We upgrade
+      // unauthenticated, then require a paired token in the FIRST message (see websocket.message);
+      // the socket receives nothing until authed and is closed if it doesn't auth promptly.
       if (url.pathname === "/ws") {
-        const t = url.searchParams.get("token") ?? "";
-        const authed = t === token || pairing.verify(t).ok;
-        if (!authed) return new Response("unauthorized", { status: 401 });
-        if (srv.upgrade(request)) return undefined;
+        if (srv.upgrade(request, { data: { authed: false } })) return undefined;
         return new Response("expected websocket", { status: 426 });
       }
 

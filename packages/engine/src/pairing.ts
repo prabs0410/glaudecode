@@ -7,6 +7,12 @@
 
 export type TokenScope = "view" | "steer";
 
+/** Generate a pairing code: uppercased hex of `len` chars (V5 Phase 0.3 widened 8→10 — ~16^10
+ *  ≈ 1.1e12 keyspace; the rate limiter on /pair is the primary brute-force defense). */
+export function genPairCode(len = 10): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, len).toUpperCase();
+}
+
 export interface PairCode {
   code: string;
   scope: TokenScope;

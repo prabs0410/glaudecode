@@ -141,8 +141,9 @@ async function refreshSessions() {
 
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(proto + "://" + location.host + "/ws?token=" + encodeURIComponent(TOKEN));
-  ws.onopen = () => { $("conn").className = "dot ok"; };
+  // Token goes in the FIRST message, never the URL (it would leak via history/Referer/logs).
+  const ws = new WebSocket(proto + "://" + location.host + "/ws");
+  ws.onopen = () => { ws.send(JSON.stringify({ type: "auth", token: TOKEN })); $("conn").className = "dot ok"; };
   ws.onclose = () => { $("conn").className = "dot"; setTimeout(connectWs, 2000); };
   ws.onmessage = (ev) => {
     try { const f = JSON.parse(ev.data); if (f.type === "approvals") { approvals = f.payload || []; render(); } } catch (e) {}
