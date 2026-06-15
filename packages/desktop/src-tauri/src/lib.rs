@@ -14,6 +14,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -765,6 +766,11 @@ fn tailscale_dns_name() -> Option<String> {
 /// secure than binding the tailnet IP). Returns the `https://<node>.ts.net` URL, or a clear error
 /// (the tailnet admin must enable MagicDNS + HTTPS certificates first). [Behavioral verify needs a
 /// real tailnet — HUMAN-GATE 5.1.1.]
+/// Whether THIS app started a Tailscale Serve handler on :443, so we tear it down on exit (audit M5).
+/// Without this the `serve --bg` rule persists across reboots and a same-port restart silently
+/// re-proxies a stale target.
+static SERVE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
 async fn tailscale_serve_start(port: u16) -> Result<String, String> {
     // CRITICAL: async + spawn_blocking. `tailscale serve --https=443` provisions a TLS cert, which
@@ -779,11 +785,16 @@ async fn tailscale_serve_start(port: u16) -> Result<String, String> {
     })
     .await
     .map_err(|e| e.to_string())?;
-    dns.map(|d| format!("https://{d}")).ok_or_else(|| {
-        "Couldn't start Tailscale Serve. Is Tailscale running, and are MagicDNS + HTTPS \
-         certificates enabled in your tailnet admin console? Falling back to a direct tailnet bind."
-            .to_string()
-    })
+    match dns {
+        Some(d) => {
+            SERVE_ACTIVE.store(true, Ordering::SeqCst); // remember to tear it down on exit (M5)
+            Ok(format!("https://{d}"))
+        }
+        None => Err("Couldn't start Tailscale Serve. Is Tailscale running, and are MagicDNS + HTTPS \
+                     certificates enabled in your tailnet admin console? Falling back to a direct \
+                     tailnet bind."
+            .to_string()),
+    }
 }
 
 /// Hold / release the keep-awake inhibitor (V5 Phase 5). The desktop calls this when remote access
@@ -801,9 +812,21 @@ fn set_keep_awake(keep: State<keep_awake::KeepAwake>, on: bool) {
 /// Turn off the Tailscale Serve handler on :443 for this node (V5 Phase 5).
 #[tauri::command]
 fn tailscale_serve_stop() -> Result<(), String> {
-    run_tailscale(&["serve", "--https=443", "off"])
-        .map(|_| ())
-        .ok_or_else(|| "tailscale serve off failed".to_string())
+    let ok = run_tailscale(&["serve", "--https=443", "off"]).is_some();
+    SERVE_ACTIVE.store(false, Ordering::SeqCst); // even on failure: don't loop trying to stop it
+    if ok {
+        Ok(())
+    } else {
+        Err("tailscale serve off failed".to_string())
+    }
+}
+
+/// On app exit, tear down our Serve handler if we started one (audit M5) — otherwise the `:443 --bg`
+/// rule persists across reboots and a same-port restart silently re-proxies a stale target.
+fn tailscale_serve_stop_on_exit() {
+    if SERVE_ACTIVE.swap(false, Ordering::SeqCst) {
+        let _ = run_tailscale(&["serve", "--https=443", "off"]);
+    }
 }
 
 /// The MagicDNS https URL if a Serve handler appears active on this node, else None (V5 Phase 5).
@@ -859,6 +882,7 @@ pub fn run() {
             // behind that gates (and, when the engine is down, denies) tools. Defense in
             // depth — GLAUDECODE_MANAGED scoping already spares non-managed sessions.
             uninstall_approval_hook_on_exit();
+            tailscale_serve_stop_on_exit(); // tear down our :443 Serve rule (audit M5)
             app_handle.state::<keep_awake::KeepAwake>().release(); // drop the caffeinate inhibitor
             if let Some(mut child) = app_handle.state::<EngineState>().child.lock().unwrap().take() {
                 let _ = child.kill();
