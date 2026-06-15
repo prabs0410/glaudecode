@@ -35,6 +35,12 @@ export const TERM_HTML = `<!doctype html>
     border-top: 1px solid #1f2630; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     display: none; }
   #inputbar.notarmed { opacity: 0.6; }
+  #modetabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .modetab { background: transparent; color: #8b949e; border: none; border-bottom: 2px solid transparent;
+    padding: 4px 10px; font-size: 13px; cursor: pointer; }
+  .modetab.active { color: #c9d1d9; border-bottom-color: #1f6feb; }
+  .ipanel { margin-bottom: 6px; }
+  #panel-smart { display: flex; flex-wrap: wrap; gap: 6px; }
   #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
@@ -56,6 +62,22 @@ export const TERM_HTML = `<!doctype html>
   <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><span id="pill" class="pill"></span></div>
   <div id="term"></div>
   <div id="inputbar">
+    <div id="modetabs">
+      <button id="tab-msg" class="modetab active">Message</button>
+      <button id="tab-smart" class="modetab">Smart</button>
+    </div>
+    <div id="panel-msg" class="ipanel">
+      <div id="textrow">
+        <textarea id="tin" rows="1" placeholder="message — Enter to send, Shift+Enter for a newline" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+        <button id="insert" title="Type into the pane without pressing Enter">Insert</button>
+        <button id="send">Send</button>
+      </div>
+    </div>
+    <div id="panel-smart" class="ipanel" style="display:none">
+      <div class="muted" id="smart-empty">No prompt right now — this fills when Claude asks a question.</div>
+    </div>
+    <!-- Persistent key bar (Mode B): the design mandates it always be reachable to answer a TUI prompt,
+         so it stays visible under both tabs rather than hiding behind a third tab. -->
     <div id="keys">
       <button id="k-esc">Esc</button>
       <button id="k-tab">Tab</button>
@@ -65,11 +87,6 @@ export const TERM_HTML = `<!doctype html>
       <button id="k-left">←</button>
       <button id="k-right">→</button>
       <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
-    </div>
-    <div id="textrow">
-      <textarea id="tin" rows="1" placeholder="message — Enter to send, Shift+Enter for a newline" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
-      <button id="insert" title="Type into the pane without pressing Enter">Insert</button>
-      <button id="send">Send</button>
     </div>
     <div id="hint" class="muted"></div>
   </div>
@@ -131,12 +148,19 @@ export const TERM_HTML = `<!doctype html>
     el.className = "pill" + (cls ? " " + cls : "");
   }
 
+  // Keep the terminal viewport clear of the (variable-height) input bar — measured, not hardcoded,
+  // so a grown textarea / the active tab / the keyboard (Task 4.2.1) never overlap scrollback.
+  function layout() {
+    var ib = document.getElementById("inputbar");
+    document.getElementById("term").style.bottom = (canTypeScope ? ib.offsetHeight : 0) + "px";
+  }
+
   function updateInputUI() {
     var bar = document.getElementById("inputbar");
     if (!canTypeScope) { bar.style.display = "none"; setPill("view-only", ""); return; }
     bar.style.display = "";
     bar.className = armed ? "" : "notarmed";
-    document.getElementById("term").style.bottom = "118px";
+    layout();
     document.getElementById("tin").disabled = !armed;
     document.getElementById("insert").disabled = !armed;
     document.getElementById("send").disabled = !armed;
@@ -164,7 +188,7 @@ export const TERM_HTML = `<!doctype html>
   // Wire the input controls (terminal scope only).
   if (canTypeScope) {
     var tin = document.getElementById("tin");
-    function autoGrow() { tin.style.height = "auto"; tin.style.height = Math.min(tin.scrollHeight, 96) + "px"; }
+    function autoGrow() { tin.style.height = "auto"; tin.style.height = Math.min(tin.scrollHeight, 96) + "px"; layout(); }
     tin.addEventListener("input", autoGrow);
     // send(true)  = Send: bracketed-pasted text + Enter (run it).
     // send(false) = Insert: type into the pane WITHOUT Enter (compose, then use the key bar).
@@ -192,6 +216,21 @@ export const TERM_HTML = `<!doctype html>
       this.classList.toggle("on", rawOn);
       if (rawOn) term.focus();
     };
+
+    // Message / Smart tab switch (the persistent key bar stays under both). Last tab is remembered.
+    var activeTab = sessionStorage.getItem("ck.tab") || "msg";
+    function setTab(t) {
+      activeTab = t; sessionStorage.setItem("ck.tab", t);
+      document.getElementById("panel-msg").style.display = t === "msg" ? "" : "none";
+      document.getElementById("panel-smart").style.display = t === "smart" ? "flex" : "none";
+      document.getElementById("tab-msg").classList.toggle("active", t === "msg");
+      document.getElementById("tab-smart").classList.toggle("active", t === "smart");
+      layout();
+    }
+    document.getElementById("tab-msg").onclick = function () { setTab("msg"); };
+    document.getElementById("tab-smart").onclick = function () { setTab("smart"); };
+    setTab(activeTab);
+
     setInterval(refreshArmed, 3000);
   }
   updateInputUI();
