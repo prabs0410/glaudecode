@@ -44,7 +44,7 @@ export const TERM_HTML = `<!doctype html>
   #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
-  #rawbtn.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  #rawbtn.on, #k-ctrl.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
   #textrow { display: flex; gap: 6px; align-items: flex-end; }
   #tin { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
     padding: 10px; font: 14px ui-monospace, Menlo, monospace; resize: none; line-height: 1.3;
@@ -81,11 +81,14 @@ export const TERM_HTML = `<!doctype html>
     <div id="keys">
       <button id="k-esc">Esc</button>
       <button id="k-tab">Tab</button>
+      <button id="k-stab" title="Shift+Tab — cycle Claude Code mode">⇧Tab</button>
       <button id="k-ctrlc">^C</button>
+      <button id="k-ctrl" title="Sticky Ctrl: tap, then a key (e.g. Ctrl then C)">Ctrl</button>
       <button id="k-up">↑</button>
       <button id="k-down">↓</button>
       <button id="k-left">←</button>
       <button id="k-right">→</button>
+      <button id="k-enter">⏎</button>
       <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
     </div>
     <div id="hint" class="muted"></div>
@@ -101,7 +104,7 @@ export const TERM_HTML = `<!doctype html>
   if (!paneId) return;
 
   var canTypeScope = SCOPE === "terminal";
-  var armed = false, rawOn = false, ws = null;
+  var armed = false, rawOn = false, ctrlArmed = false, ws = null;
 
   var term = new Terminal({
     fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
@@ -131,8 +134,25 @@ export const TERM_HTML = `<!doctype html>
     try { ws.send(f); } catch (e) {}
   }
   function sendText(s) { sendInput(new TextEncoder().encode(s)); }
-  // Raw keystrokes from xterm (only forwarded while raw mode is on).
-  term.onData(function (d) { if (rawOn) sendText(d); });
+
+  // Mirror of engine \`termInput.ctrlByte\` (tested in @glaudecode/engine): a printable char → its
+  // control byte. Sticky Ctrl is armed from the key bar; the next key composes, then it releases.
+  function ctrlByte(ch) {
+    if (!ch || ch.length !== 1) return "";
+    var code = ch.toUpperCase().charCodeAt(0);
+    if (code >= 0x40 && code <= 0x5f) return String.fromCharCode(code & 0x1f);
+    if (code >= 0x61 && code <= 0x7a) return String.fromCharCode(code & 0x1f);
+    return "";
+  }
+  function setCtrl(on) { ctrlArmed = on; var b = document.getElementById("k-ctrl"); if (b) b.classList.toggle("on", on); }
+
+  // Raw keystrokes from xterm (only forwarded while raw mode is on); honor sticky Ctrl.
+  term.onData(function (d) {
+    if (!rawOn) return;
+    if (ctrlArmed && d.length === 1) { var c = ctrlByte(d); sendText(c || d); setCtrl(false); return; }
+    if (ctrlArmed) setCtrl(false);
+    sendText(d);
+  });
 
   function rpc(method, params) {
     return fetch("/rpc", {
@@ -148,11 +168,16 @@ export const TERM_HTML = `<!doctype html>
     el.className = "pill" + (cls ? " " + cls : "");
   }
 
-  // Keep the terminal viewport clear of the (variable-height) input bar — measured, not hardcoded,
-  // so a grown textarea / the active tab / the keyboard (Task 4.2.1) never overlap scrollback.
+  // Keyboard height (px) from the VisualViewport API, 0 when no keyboard / API absent.
+  function kbHeight() {
+    var vv = window.visualViewport;
+    return vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  }
+  // Keep the terminal viewport clear of the (variable-height) input bar AND the soft keyboard —
+  // measured, not hardcoded, so a grown textarea / tab switch / the keyboard never overlap scrollback.
   function layout() {
     var ib = document.getElementById("inputbar");
-    document.getElementById("term").style.bottom = (canTypeScope ? ib.offsetHeight : 0) + "px";
+    document.getElementById("term").style.bottom = (canTypeScope ? ib.offsetHeight + kbHeight() : 0) + "px";
   }
 
   function updateInputUI() {
@@ -205,10 +230,18 @@ export const TERM_HTML = `<!doctype html>
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(true); } // Shift+Enter = newline
     });
 
-    var KEYS = { "k-esc": "\\x1b", "k-tab": "\\t", "k-ctrlc": "\\x03",
-      "k-up": "\\x1b[A", "k-down": "\\x1b[B", "k-left": "\\x1b[D", "k-right": "\\x1b[C" };
-    Object.keys(KEYS).forEach(function (id) {
-      document.getElementById(id).onclick = function () { sendText(KEYS[id]); if (rawOn) term.focus(); };
+    function tapKey(seq) { sendText(seq); if (rawOn) term.focus(); setCtrl(false); }
+    document.getElementById("k-esc").onclick = function () { tapKey("\\x1b"); };
+    document.getElementById("k-tab").onclick = function () { tapKey("\\t"); };
+    document.getElementById("k-stab").onclick = function () { tapKey("\\x1b[Z"); };
+    document.getElementById("k-ctrlc").onclick = function () { tapKey("\\x03"); };
+    document.getElementById("k-enter").onclick = function () { tapKey("\\r"); };
+    document.getElementById("k-ctrl").onclick = function () { setCtrl(!ctrlArmed); };
+    // Arrows: a Ctrl-modified variant (word-nav) when sticky Ctrl is armed, else the plain arrow.
+    var ARROWS = { "k-up": ["\\x1b[A", "\\x1b[1;5A"], "k-down": ["\\x1b[B", "\\x1b[1;5B"],
+      "k-left": ["\\x1b[D", "\\x1b[1;5D"], "k-right": ["\\x1b[C", "\\x1b[1;5C"] };
+    Object.keys(ARROWS).forEach(function (id) {
+      document.getElementById(id).onclick = function () { tapKey(ctrlArmed ? ARROWS[id][1] : ARROWS[id][0]); };
     });
     document.getElementById("rawbtn").onclick = function () {
       rawOn = !rawOn;
@@ -230,6 +263,25 @@ export const TERM_HTML = `<!doctype html>
     document.getElementById("tab-msg").onclick = function () { setTab("msg"); };
     document.getElementById("tab-smart").onclick = function () { setTab("smart"); };
     setTab(activeTab);
+
+    // Pin the input bar above the soft keyboard (VisualViewport API); feature-detect, else the
+    // fixed-bottom fallback stays. translateY lifts the fixed-bottom bar by the keyboard height.
+    var vv = window.visualViewport;
+    if (vv) {
+      var pin = function () {
+        document.getElementById("inputbar").style.transform = "translateY(-" + kbHeight() + "px)";
+        layout();
+      };
+      vv.addEventListener("resize", pin);
+      vv.addEventListener("scroll", pin);
+      pin();
+    }
+    // Key-bar / tab taps must NOT blur the textarea (that would dismiss the keyboard mid-compose).
+    ["keys", "modetabs"].forEach(function (id) {
+      document.getElementById(id).addEventListener("pointerdown", function (e) {
+        if (e.target && e.target.tagName === "BUTTON") e.preventDefault();
+      });
+    });
 
     setInterval(refreshArmed, 3000);
   }
