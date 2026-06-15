@@ -134,8 +134,17 @@ export function Workspace({
   const killSwitch = async () => {
     try {
       await disarmAllPanes();
-    } finally {
-      setArmed(new Set()); // reflect the disarm even if the call partly failed (fail-safe)
+      // Only clear the UI once Rust has actually disarmed. Also clear the live "driving" echoes —
+      // nothing should be typing once disarmed.
+      setArmed(new Set());
+      setDriving(new Set());
+      setError(null);
+    } catch (e) {
+      // A failed disarm is the DANGEROUS direction: panes may STILL be armed in Rust. Surface it
+      // loudly rather than clearing the UI (which would falsely claim "disarmed" — fail-unsafe). The
+      // armed set is left intact so the kill switch stays visible to retry; Rust's authoritative
+      // armed-changed event keeps it honest.
+      setError("Disarm failed — panes may still accept phone input: " + String((e as Error)?.message ?? e));
     }
   };
 
