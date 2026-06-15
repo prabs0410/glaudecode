@@ -212,20 +212,46 @@ export const TERM_HTML = `<!doctype html>
     if (!q || !q.options.length) return;
     var qd = document.createElement("div"); qd.className = "qtext"; qd.textContent = q.question;
     el.appendChild(qd);
-    q.options.forEach(function (o, i) {
+    // A multiSelect prompt is answered by TOGGLING options (Space) and submitting once (Enter) — the
+    // old code sent down×i + bare Enter for every option, silently confirming the WRONG/empty
+    // selection (audit M11). We track the TUI's highlighted row (assumed to start at 0, same as the
+    // single-select path) and move relative to it; a separate Confirm button submits. Best-effort.
+    var cursor = 0;
+    function mkOpt(o) {
       var btn = document.createElement("button"); btn.className = "smartbtn";
       btn.textContent = o.label; // textContent — never innerHTML — so option text can't inject markup
       if (o.description) {
         var d = document.createElement("span"); d.className = "opt-desc"; d.textContent = o.description;
         btn.appendChild(d);
       }
-      btn.onclick = function () {
-        var seq = ""; for (var k = 0; k < i; k++) seq += "\\x1b[B"; // down-arrow × index
-        sendText(seq + "\\r");
-        el.innerHTML = ""; lastQ = null; // clear after answering
-      };
-      el.appendChild(btn);
-    });
+      return btn;
+    }
+    if (q.multiSelect) {
+      q.options.forEach(function (o, i) {
+        var btn = mkOpt(o);
+        btn.onclick = function () {
+          var delta = i - cursor, step = delta >= 0 ? "\\x1b[B" : "\\x1b[A", seq = "";
+          for (var k = 0; k < Math.abs(delta); k++) seq += step;
+          sendText(seq + " "); // move to row i, then Space toggles it (no submit)
+          cursor = i;
+          btn.classList.toggle("on"); // reflect the toggle locally
+        };
+        el.appendChild(btn);
+      });
+      var confirm = document.createElement("button"); confirm.className = "smartbtn"; confirm.textContent = "✓ Confirm selection";
+      confirm.onclick = function () { sendText("\\r"); el.innerHTML = ""; lastQ = null; };
+      el.appendChild(confirm);
+    } else {
+      q.options.forEach(function (o, i) {
+        var btn = mkOpt(o);
+        btn.onclick = function () {
+          var seq = ""; for (var k = 0; k < i; k++) seq += "\\x1b[B"; // down-arrow × index
+          sendText(seq + "\\r"); // single-select: navigate + submit
+          el.innerHTML = ""; lastQ = null; // clear after answering
+        };
+        el.appendChild(btn);
+      });
+    }
   }
   rpc("defaultDir").then(function (d) { DIR = (d && d.dir) || ""; pollPromptState(); }).catch(function () {});
 
