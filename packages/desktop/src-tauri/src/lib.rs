@@ -9,7 +9,7 @@
 
 use portable_pty::{native_pty_system, Child as PtyChild, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -37,6 +37,11 @@ struct PaneHandle {
 #[derive(Default)]
 struct PtyRegistry {
     panes: Mutex<HashMap<String, PaneHandle>>,
+    /// Panes the user has armed for remote (phone) input (V5 Phase 2). Default empty = nothing
+    /// accepts remote input. This Rust set is the AUTHORITATIVE arming gate — the engine keeps a
+    /// mirrored copy (for an early gate + the phone UI), but a write only ever reaches a PTY if the
+    /// pane is in THIS set, checked at the moment of write.
+    armed: Mutex<HashSet<String>>,
 }
 
 // Vendored fish-like autosuggestions plugin (MIT — see NOTICE), embedded in the binary so
@@ -248,11 +253,9 @@ fn pty_spawn(
         if let Some(tx) = &bridge {
             let _ = tx.try_send(pane_bridge::encode_close(&pane_id));
         }
-        app.state::<PtyRegistry>()
-            .panes
-            .lock()
-            .unwrap()
-            .remove(&pane_id);
+        let reg = app.state::<PtyRegistry>();
+        reg.panes.lock().unwrap().remove(&pane_id);
+        reg.armed.lock().unwrap().remove(&pane_id); // a dead pane can never be armed
         let _ = app.emit(&exit_event, ());
     });
 
@@ -268,6 +271,67 @@ fn pty_write(registry: State<PtyRegistry>, pane_id: String, data: String) -> Res
     pane.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     pane.writer.flush().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Write bytes a PHONE typed to a pane's PTY — the authoritative remote-input gate (V5 Phase 2).
+/// Called from the input-bridge reader thread with bytes the engine already gated (terminal scope +
+/// armed pane). We re-check arming HERE, closest to the PTY: even a compromised/buggy engine cannot
+/// type into a pane the user hasn't armed. Silently drops anything for an unarmed/unknown pane.
+fn pty_write_internal(app: &AppHandle, pane_id: &str, data: &[u8]) {
+    let registry = app.state::<PtyRegistry>();
+    if !registry.armed.lock().unwrap().contains(pane_id) {
+        return; // not armed → never reaches the shell
+    }
+    let mut panes = registry.panes.lock().unwrap();
+    if let Some(pane) = panes.get_mut(pane_id) {
+        if pane.writer.write_all(data).is_ok() {
+            let _ = pane.writer.flush();
+            // Live "📱 phone is driving this pane" echo for the desktop UI.
+            let _ = app.emit(&format!("pane-remote-input:{pane_id}"), ());
+        }
+    }
+}
+
+/// Arm / disarm a pane for remote (phone) input (V5 Phase 2). Default is disarmed; this is a
+/// deliberate, local desktop action. Mirrors the new state to the engine so it can gate input early
+/// + reflect armed state on the phone. The Rust `armed` set remains authoritative.
+#[tauri::command]
+fn pty_set_armed(
+    registry: State<PtyRegistry>,
+    engine: State<EngineState>,
+    pane_id: String,
+    armed: bool,
+) -> Result<(), String> {
+    {
+        let mut set = registry.armed.lock().unwrap();
+        if armed {
+            set.insert(pane_id.clone());
+        } else {
+            set.remove(&pane_id);
+        }
+    }
+    if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
+        let _ = tx.try_send(pane_bridge::encode_arm(&pane_id, armed));
+    }
+    Ok(())
+}
+
+/// Kill switch (V5 Phase 2): disarm every pane at once. Returns the pane ids that were armed so the
+/// UI can clear their toggles. Pushes ARM=off to the engine for each.
+#[tauri::command]
+fn pty_disarm_all(registry: State<PtyRegistry>, engine: State<EngineState>) -> Result<Vec<String>, String> {
+    let ids: Vec<String> = {
+        let mut set = registry.armed.lock().unwrap();
+        let ids = set.iter().cloned().collect();
+        set.clear();
+        ids
+    };
+    if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
+        for id in &ids {
+            let _ = tx.try_send(pane_bridge::encode_arm(id, false));
+        }
+    }
+    Ok(ids)
 }
 
 #[tauri::command]
@@ -299,6 +363,7 @@ fn pty_kill(registry: State<PtyRegistry>, pane_id: String) -> Result<(), String>
     if let Some(mut pane) = registry.panes.lock().unwrap().remove(&pane_id) {
         let _ = pane.child.kill();
     }
+    registry.armed.lock().unwrap().remove(&pane_id); // killed pane can't stay armed
     Ok(())
 }
 
@@ -328,7 +393,8 @@ fn engine_entry_path() -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
 }
 
-fn spawn_engine(state: &EngineState) -> Result<(), String> {
+fn spawn_engine(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<EngineState>();
     let entry = engine_entry_path();
     let mut child = Command::new("bun")
         .arg(&entry)
@@ -356,6 +422,12 @@ fn spawn_engine(state: &EngineState) -> Result<(), String> {
     // Start the pane bridge so PTY output can mirror to phones via the engine (V5 Phase 1). It
     // connects to this engine's /pane-bridge with the bearer token; PTY reader threads tee into it.
     *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone()));
+    // Start the INPUT bridge (V5 Phase 2): the engine pushes phone keystrokes back over a second,
+    // bearer-only socket; each lands in pty_write_internal, which re-checks arming before the PTY.
+    let app_for_input = app.clone();
+    pane_bridge::start_input(endpoint.port, endpoint.token.clone(), move |pane_id, data| {
+        pty_write_internal(&app_for_input, pane_id, data);
+    });
     // Each launch gets a fresh port; if the approval hook is installed, refresh its endpoint
     // file so it keeps working across restarts (instead of pointing at the dead old engine).
     refresh_approval_endpoint(&endpoint);
@@ -463,7 +535,7 @@ pub fn run() {
         .manage(PtyRegistry::default())
         .manage(EngineState::default())
         .setup(|app| {
-            if let Err(e) = spawn_engine(app.state::<EngineState>().inner()) {
+            if let Err(e) = spawn_engine(&app.handle().clone()) {
                 eprintln!("[glaudecode] engine sidecar failed: {e}");
             }
             Ok(())
@@ -473,6 +545,8 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            pty_set_armed,
+            pty_disarm_all,
             engine_endpoint,
             project_dir,
             tailscale_ip
