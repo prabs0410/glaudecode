@@ -207,6 +207,81 @@ Plus the cross-cutting fix `81b53df`: **keymap `mod` = Cmd on macOS / Ctrl elsew
   refreshes on each launch; and it's written `0o600` / dir `0o700` (was world-readable with the bearer
   token). See memory `project-approval-hook-can-strand-agent`.
 
+### Phase 7 — V4: dogfood quality pass "make every surface honest" (`feat/v4-quality-pass`) — COMPLETE
+Audit-driven fixes after dogfooding (plan: `docs/GOAL-V4.md`). All on data the audit found genuinely
+broken, one commit per cluster.
+- **A — honest empty states + compare scope + resume timing** `21537bc` / `2f9345b` / `e6fc71d` —
+  Graph/Memory/Compare/Replay no longer say "No project." on a shell pane; ComparePanel reads each
+  session from its own cwd (was reading B from A's worktree); the resume recap now shows *before*
+  resuming a stale session, not over an already-open one.
+- **B — search scope + session sort + errors** `4392d2d` — FTS index gained a `dir` column so search is
+  project-scoped (was cross-project, wrong-dir resume); sidebar sorts live-first then by recency;
+  search/reindex errors surfaced instead of swallowed.
+- **C — split panes + OSC-7 cwd** `47503a8` — split panes made actually resizable (Splitter between the
+  panes via CSS `order`) + remembered width; the OSC-7 cwd surfaced as a chip.
+- **D/E/F** `fce62ec` / `4e9201c` / `a9ffae8` — compare legend + consistent empty-state wording;
+  robustness (keymap doesn't fire while typing; await WS listeners before spawn; "Use → pane" disabled
+  on shell panes; copy-on-select on real mouseup); removed 5 orphaned RPC wrappers.
+- **Crash fix** `c18053d` — the recency sort called `.localeCompare` on `lastModified`, which the SDK
+  delivers as an epoch **number**, not the typed `string` → the sort threw and (with no boundary)
+  blanked the whole app. Normalised to millis + added a top-level **ErrorBoundary** in `main.tsx`.
+
+### Phase 8 — V5: phone-driven full terminal (`feat/v5-remote-terminal`) — Phase 0+1+2 BUILT + reviewed, on-device verify pending
+The flagship: drive your whole terminal + Claude Code from your phone, secure-by-default, no cloud we
+run. Researched first (5 design docs: `docs/design/{mobile-terminal-control,transport-options-phone-to-mac,
+oss-at-scale-strategy,secure-mirror-tech-stack,cross-project-session-view}.md`); plan in `docs/GOAL-V5.md`.
+- **Phase 0 — security footguns** `4c8202a` — `remote.enable()` refuses wildcard binds; `/ws` no longer
+  takes the token in the URL or accepts the local bearer (paired token in the first message instead);
+  `/pair` rate-limited + audited per IP; pair-code entropy widened 8→10. New pure `RateLimiter`.
+- **Phase 1 — view-only mirror, engine side** — `termProtocol` (per-pane cockpit codec) `fc4e38b` ·
+  `PaneHub` (ring-buffer replay + ACK flow control + fan-out) `85bfb48` · `bridgeProtocol` (multiplexed
+  Rust↔engine codec) `5131d2a` · server wiring `c38db2e` (`/pane-bridge` **bearer-only**, `/term-ws`
+  **paired-only**, `listPanes` view RPC). All unit-tested + an end-to-end test (bridge client → term
+  client) proving the relay + auth boundary.
+- **Phase 1 — Rust producer** `cbe85c4` — a sync `tungstenite` client (fits the blocking PTY reader
+  threads, no async runtime) tees PTY output → engine over a bounded drop-on-full channel (local
+  terminal never stalls). `pty_spawn` announces panes (META+SIZE) + tees output; reader sends CLOSE.
+- **Phase 1 — cockpit consumer** `6961673` — engine vendors **xterm.js 6.0.0** (served itself, no CDN);
+  `/app/term` view-only page attaches to `/term-ws`, decodes the protocol, ACKs consumed bytes; cockpit
+  home gains a "Terminals" list (`listPanes`).
+- **Verify-phase fixes** — a **corrupted window-state** restored the window off-screen (9768px at
+  x=3280) — *not a crash*; reset it (and noted a follow-up to clamp restored geometry to the visible
+  screen). Fixed a font-size-effect `pty_resize` racing the now-async spawn (added `.catch`). Added a
+  bearer-gated `/clientlog` endpoint so WebView errors surface in the engine log (how the above was found).
+- **Phase 2 — remote input (the RCE-class slice)** — phone keystrokes now reach the PTY, behind two
+  default-OFF gates. Built bottom-up, each layer committed + green:
+  - **Engine** `94b9a0b` — new `terminal` token scope on a linear ladder `view < steer < terminal`
+    (terminal NEVER implied by steer; `requireScope`/`levelSatisfies` share one rank helper). INPUT op
+    on the cockpit codec; INPUT (engine→Rust) + ARM (Rust→engine) ops on the bridge codec. `PaneHub`
+    gains per-pane `armed` (default off) + `canInput`. `/term-ws` captures each token's scope and, on an
+    INPUT frame, requires `scope===terminal` **and** an armed pane before relaying onto a new
+    bearer-only **`/pane-input-bridge`**. Tests: terminal→armed relays; steer denied (scope);
+    terminal→unarmed denied (arming); input-bridge rejects paired tokens (auth boundary).
+  - **Rust** `8dc1788` — a second simplex `tungstenite` reader thread (`pane-input-bridge`) brings
+    keystrokes back; `pty_write_internal` re-checks an **authoritative `armed` HashSet at the moment of
+    PTY write** (a buggy/compromised engine still can't type into an unarmed pane) and emits
+    `pane-remote-input:{paneId}`. `pty_set_armed` (mirrors arm state to the engine via ARM) +
+    `pty_disarm_all` (kill switch). Arm state cleared on pane kill/exit.
+  - **UI** `e8b5e7f` — per-tab 📱 arm toggle (dim/amber/green-pulse-while-driving), a "⛔ Disarm all"
+    kill switch, a 3-way pairing scope picker (view/steer/terminal) with an explicit RCE warning; the
+    phone terminal page gains an input bar (text box + Esc/Tab/^C/arrows key bar + raw-keystroke toggle)
+    shown only for terminal scope, enabled only when the pane is armed (polled from `listPanes`).
+  - **Security review** (mandatory; 4 adversarial lenses + a synthesizing lead, run as a workflow) —
+    confirmed the core model sound (dual gate, default-off, bearer-only bridges, kill switch, first-
+    message auth). One false positive (arm-cleanup already present). One **medium fixed** `4453638`: a
+    live `/term-ws` cached only its scope, so a revoked/expired terminal token kept typing until the
+    socket closed — now the token is **re-verified per keystroke** (immediate cut + close) and mirror
+    sockets are **swept every 2s** against revocation/expiry. Deferred to the public-release track
+    (Phase 3/7, not blockers for personal use): an RPC `TERMINAL_ONLY_METHODS` tier + a "every method
+    classified" test, lifecycle audit logging, and fail-closed-on-input-bridge-reconnect.
+- **Status:** Phases 0–2 built end-to-end (engine **302 tests** green; Rust `cargo check` clean; desktop
+  `tsc` + `vite build` clean). Verdict from the review: **safe for personal use over your own Tailscale**
+  (your machine, your keys, your trusted phone; arming is deliberate + default-off; kill switch is
+  instant). **Next is the human gate: on-device verification** — pair a *terminal*-scope device, open the
+  cockpit, arm a pane (📱 on its tab), type. Then Phases 3–7 (app-layer E2E [SPAKE2 + Noise/AEAD] · mobile
+  input UX · transport/onboarding · multi-OS · OSS launch governance) — none started. **Public release**
+  still gates on Phase 3 (independent crypto review) + Phase 7 (governance) per `docs/GOAL-V5.md`.
+
 ---
 
 ## 4. Security log (every finding addressed in-session)
