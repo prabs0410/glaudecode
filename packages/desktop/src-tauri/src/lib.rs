@@ -148,6 +148,77 @@ ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
     Some((wrapper_str, real))
 }
 
+/// The interactive shell to spawn — `$SHELL` when set (covers WSL, which presents as Linux), else an
+/// OS-appropriate default (V5 Phase 6 / 6.1.3 + 6.3.1). The old hard `/bin/bash` default is invalid
+/// on native Windows; PowerShell is the sane fallback there.
+fn default_shell() -> String {
+    if let Ok(s) = std::env::var("SHELL") {
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    #[cfg(windows)]
+    {
+        return "powershell.exe".to_string();
+    }
+    #[cfg(not(windows))]
+    {
+        "/bin/bash".to_string()
+    }
+}
+
+/// OSC 133/7 shell integration for **bash** (V5 Phase 6 / 6.1.1). Writes a private rcfile that
+/// sources the user's real ~/.bashrc first (never modifies it), then emits the same OSC markers the
+/// WebView parses (V3-E2): 133;C on command start (DEBUG trap), 133;D;<exit> + 133;A + OSC 7 cwd
+/// before each prompt (PROMPT_COMMAND). Returns the rcfile path; best-effort (shell still spawns if
+/// this fails). NOTE: behavioral verification is the real-Linux QA gate.
+fn setup_bash_integration() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let dir = PathBuf::from(&home).join(".glaudecode").join("shell");
+    std::fs::create_dir_all(&dir).ok()?;
+    let rc = dir.join("bash-integration.bash");
+    // `\e` is written literally; bash's printf interprets it as ESC at runtime (like the zsh script).
+    let body = r#"# GlaudeCode bash integration — sources your real ~/.bashrc, then adds OSC 133/7 markers.
+[ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
+_glaude_preexec() { printf '\e]133;C\e\\'; }
+_glaude_precmd() { local ec=$?; printf '\e]133;D;%s\e\\' "$ec"; printf '\e]133;A\e\\'; printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-}" "$PWD"; }
+# DEBUG fires before every command; skip it while PROMPT_COMMAND runs so we mark real commands only.
+trap '[ "$BASH_COMMAND" = "$PROMPT_COMMAND" ] || _glaude_preexec' DEBUG
+PROMPT_COMMAND='_glaude_precmd'"${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+"#;
+    std::fs::write(&rc, body).ok()?;
+    Some(rc.to_string_lossy().into_owned())
+}
+
+/// OSC 133/7 shell integration for **fish** (V5 Phase 6 / 6.1.2). Points fish at a private
+/// XDG_CONFIG_HOME whose config.fish sources the user's real config, plus a conf.d snippet that
+/// emits the OSC markers via fish's native preexec/postexec events. Returns the XDG_CONFIG_HOME dir;
+/// best-effort. NOTE: behavioral verification is the real-Linux QA gate.
+fn setup_fish_integration() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let xdg = PathBuf::from(&home).join(".glaudecode").join("shell").join("fish-xdg");
+    let fish_dir = xdg.join("fish");
+    std::fs::create_dir_all(fish_dir.join("conf.d")).ok()?;
+    // Load the user's real config first (their real XDG or ~/.config/fish).
+    let real_xdg = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{home}/.config"));
+    let config = format!(
+        "test -f {x}/fish/config.fish; and source {x}/fish/config.fish\n",
+        x = real_xdg
+    );
+    std::fs::write(fish_dir.join("config.fish"), config).ok()?;
+    let snippet = r#"function _glaude_preexec --on-event fish_preexec
+    printf '\e]133;C\e\\'
+end
+function _glaude_postexec --on-event fish_postexec
+    printf '\e]133;D;%s\e\\' $status
+    printf '\e]133;A\e\\'
+    printf '\e]7;file://%s%s\e\\' (hostname) $PWD
+end
+"#;
+    std::fs::write(fish_dir.join("conf.d").join("glaude.fish"), snippet).ok()?;
+    Some(xdg.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn pty_spawn(
     app: AppHandle,
@@ -182,19 +253,43 @@ fn pty_spawn(
             b
         }
         None => {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
-            let is_zsh =
-                std::path::Path::new(&shell).file_name().and_then(|n| n.to_str()) == Some("zsh");
-            let mut b = CommandBuilder::new(shell);
-            b.arg("-l");
-            // Fish-like command autosuggestions for zsh (from shell history), injected ONLY
-            // into GlaudeCode's shells via a ZDOTDIR wrapper — the user's ~/.zshrc is never
-            // modified. Best-effort: if setup fails, the shell just spawns without it.
-            if is_zsh {
-                if let Some((wrapper, real)) = setup_zsh_autosuggestions() {
-                    b.env("ZDOTDIR", &wrapper);
-                    b.env("_GLAUDE_REAL_ZDOTDIR", &real);
+            // OS-aware shell (Phase 6): $SHELL when set (covers WSL = Linux), else an OS default.
+            let shell = default_shell();
+            let shell_name = std::path::Path::new(&shell)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let mut b = CommandBuilder::new(&shell);
+            // POSIX shells take a login flag; PowerShell/cmd don't. bash is the exception — it reads
+            // our --rcfile only as a NON-login interactive shell (login bash ignores --rcfile).
+            #[cfg(not(windows))]
+            {
+                if shell_name != "bash" {
+                    b.arg("-l");
                 }
+            }
+            // Per-shell OSC 133/7 integration, injected ONLY into GlaudeCode's shells (the user's own
+            // rc files are sourced first, never modified). Best-effort: on failure the shell still spawns.
+            match shell_name.as_str() {
+                "zsh" => {
+                    if let Some((wrapper, real)) = setup_zsh_autosuggestions() {
+                        b.env("ZDOTDIR", &wrapper);
+                        b.env("_GLAUDE_REAL_ZDOTDIR", &real);
+                    }
+                }
+                "bash" => {
+                    if let Some(rc) = setup_bash_integration() {
+                        b.arg("--rcfile");
+                        b.arg(&rc);
+                    }
+                }
+                "fish" => {
+                    if let Some(xdg) = setup_fish_integration() {
+                        b.env("XDG_CONFIG_HOME", &xdg);
+                    }
+                }
+                _ => {} // PowerShell / cmd (native Windows) + others: plain shell, no OSC integration.
             }
             b
         }
@@ -536,7 +631,14 @@ fn project_dir() -> String {
 /// Tailscale CLI candidate paths — the SINGLE source (Phase 6 / 6.3.2 adds Windows paths here, and
 /// the serve helper reuses it). The CLI may be on PATH (standalone) or in the App Store app bundle.
 fn tailscale_candidates() -> &'static [&'static str] {
-    &["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]
+    // Each is tried in order; non-existent ones simply fail to spawn and are skipped — so listing
+    // every OS's paths here is safe and keeps discovery as ONE source (V5 Phase 6 / 6.3.2 Windows).
+    &[
+        "tailscale",
+        "/Applications/Tailscale.app/Contents/MacOS/Tailscale", // macOS App Store bundle
+        "tailscale.exe",                                         // Windows on PATH
+        "C:\\Program Files\\Tailscale\\tailscale.exe",          // Windows default install
+    ]
 }
 
 /// Run the Tailscale CLI with `args`, returning the output of the first candidate that SUCCEEDS.

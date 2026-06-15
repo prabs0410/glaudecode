@@ -39,9 +39,23 @@ fn spawn_inhibitor() -> Option<Child> {
     Command::new("caffeinate").arg("-dimsu").spawn().ok()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn spawn_inhibitor() -> Option<Child> {
-    // Linux `systemd-inhibit` backend is added in Phase 6 / Story 6.2 behind this same interface;
-    // until then (and on other OSes) keep-awake is a graceful no-op.
-    None
+    // Hold a sleep+idle inhibitor lock for the lifetime of the child (killed on release). On a
+    // non-systemd distro `systemd-inhibit` is absent → spawn fails → graceful no-op (V5 Phase 6.2.1).
+    Command::new("systemd-inhibit")
+        .args([
+            "--what=sleep:idle",
+            "--why=GlaudeCode remote access",
+            "--mode=block",
+            "sleep",
+            "infinity",
+        ])
+        .spawn()
+        .ok()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn spawn_inhibitor() -> Option<Child> {
+    None // other OSes (incl. native Windows): keep-awake is a graceful no-op
 }
