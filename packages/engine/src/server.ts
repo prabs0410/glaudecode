@@ -104,6 +104,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // at most one such socket. Kept separate from the (output) /pane-bridge so the high-volume output
   // path stays a simple low-latency one-way stream and this stays a simple one-way input stream.
   let inputBridge: any = null;
+  // Live phone mirror sockets (/term-ws). Tracked so revocation/expiry can actively tear down a
+  // live session — a paired token is re-verified per INPUT frame AND swept here every 2s, so a
+  // revoked device stops typing (and stops viewing) instead of running until its socket happens to
+  // close (Phase 2 security review, finding #1).
+  const termSockets = new Set<any>();
 
   // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
   // shares EVERYTHING with the localhost listener — same handler, token, pairing, sockets — so
@@ -184,6 +189,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             const v = pairing.verify(tok);
             if (!v.ok) return close();
             ws.data.scope = v.scope; // "view" | "steer" | "terminal" — gates INPUT (Phase 2)
+            ws.data.token = tok; // kept so the token can be RE-verified later (revocation/expiry)
           }
           ws.data.authed = true;
           clearTimeout(ws.data.authTimer);
@@ -215,6 +221,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             };
             ws.data.sub = sub;
             ws.data.detach = paneHub.attach(paneId, sub);
+            termSockets.add(ws); // so revocation/expiry can force-close this live mirror
           }
           return;
         }
@@ -241,6 +248,17 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             // The Rust core re-checks arming authoritatively before writing the PTY (defense in
             // depth) — even a bug here cannot type into an unarmed pane.
             if (ws.data.scope !== "terminal") return;
+            // Re-verify the token on every keystroke so an EXPIRED or REVOKED terminal token is cut
+            // immediately, not just on the next socket close (Phase 2 security review, finding #1).
+            const rv = pairing.verify(ws.data.token ?? "");
+            if (!rv.ok || rv.scope !== "terminal") {
+              try {
+                ws.close(4003, "token revoked or expired");
+              } catch {
+                /* already closed */
+              }
+              return;
+            }
             const paneId = ws.data.paneId;
             if (!paneId || !paneHub.canInput(paneId)) return;
             if (inputBridge) {
@@ -257,6 +275,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       close(ws: any) {
         clearTimeout(ws.data?.authTimer);
         sockets.delete(ws);
+        termSockets.delete(ws);
         if (ws === inputBridge) inputBridge = null; // Rust input sink gone (it reconnects)
         ws.data?.detach?.(); // detach a term subscriber from its pane
       },
@@ -360,8 +379,19 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   }
   endpoint.port = server.port;
 
-  // Push live approvals to cockpit sockets (the EventBus push stream will replace this).
+  // Push live approvals to cockpit sockets (the EventBus push stream will replace this), and sweep
+  // mirror sockets whose token no longer verifies (revoked/expired) — so de-authorizing a device
+  // tears down its LIVE session within ~2s, not only on the next frame (Phase 2 review #1).
   const broadcast = setInterval(() => {
+    for (const ws of termSockets) {
+      if (!pairing.verify(ws.data?.token ?? "").ok) {
+        try {
+          ws.close(4003, "token revoked or expired");
+        } catch {
+          /* already closed */
+        }
+      }
+    }
     if (sockets.size === 0) return;
     const frame = frameEvent("approvals", approvals.list(), new Date().toISOString());
     for (const ws of sockets) ws.send(frame);

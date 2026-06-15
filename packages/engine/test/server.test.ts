@@ -307,6 +307,34 @@ describe("engine server", () => {
     term.close();
   });
 
+  test("revoking a device cuts its LIVE terminal session — input stops immediately (Phase 2 review #1)", async () => {
+    const paneId = "pane-revoke";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeArm(paneId, true));
+    await sleep(40);
+
+    const dev = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "phone")!;
+    const term = await openWs("/term-ws");
+    term.send(JSON.stringify({ type: "auth", token: dev.token, paneId }));
+    await sleep(40);
+    term.send(encodeInput(new TextEncoder().encode("before\r")));
+    await sleep(60);
+    const before = sink.frames.filter((f) => f.type === "input").length;
+    expect(before).toBeGreaterThan(0); // typing worked while the token was valid
+
+    server.pairing.revoke(dev.deviceId); // user hits "Revoke" on the desktop
+    term.send(encodeInput(new TextEncoder().encode("after\r")));
+    await sleep(60);
+    const after = sink.frames.filter((f) => f.type === "input").length;
+    expect(after).toBe(before); // the revoked token's keystrokes are NOT relayed (re-verified per frame)
+    sink.ws.close();
+    bridge.close();
+    term.close();
+  });
+
   // Last: this consumes 127.0.0.1's /pair budget. Other tests redeem via server.pairing directly,
   // not the HTTP endpoint, so they're unaffected.
   test("/pair is rate-limited per IP (V5 Phase 0.3)", async () => {
