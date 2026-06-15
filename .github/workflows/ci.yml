@@ -13,9 +13,9 @@ jobs:
     name: engine (test + typecheck + secure-defaults gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
       - run: bun test
         working-directory: packages/engine
       - run: bunx tsc --noEmit
@@ -25,9 +25,9 @@ jobs:
     name: desktop (typecheck + build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
         working-directory: packages/desktop
       - run: bunx vite build
@@ -37,8 +37,8 @@ jobs:
     name: rust (cargo check + test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@stable # ref selects the toolchain channel — not SHA-pinnable
       # Tauri's Linux runtime deps (WebKitGTK etc.) are needed even for `cargo check`.
       - run: |
           sudo apt-get update

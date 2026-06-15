@@ -1,7 +1,8 @@
-# Signed release (V5 Phase 7.4.2). SKELETON: it builds + signs the desktop app and attaches an SBOM.
-# The signing keys live ONLY in CI secrets (TAURI_SIGNING_PRIVATE_KEY + its password) and are
-# provisioned by a maintainer (Task 7.4.3 — a HUMAN-GATE). Until those secrets exist, do not cut a
-# public release. Triggered on a version tag or manual dispatch — never on every push.
+# Signed release (V5 Phase 7.4.2). Builds + signs the desktop app, attaches an SBOM, and publishes a
+# DRAFT release a maintainer reviews before it goes live. Signing keys live ONLY in CI secrets
+# (TAURI_SIGNING_PRIVATE_KEY + password), provisioned by a maintainer (Task 7.4.3 — a HUMAN-GATE). A
+# preflight HARD-FAILS the job if the signing key is absent, so an unsigned, auto-updatable binary can
+# never be published — the documented P0 mass-RCE backstop (audit M21). Tag or manual dispatch only.
 name: Release
 
 on:
@@ -11,7 +12,9 @@ on:
 
 permissions:
   contents: write
-  id-token: write # for SLSA/provenance attestation
+  # No `id-token: write` here: we do NOT yet generate build-provenance attestations, so we must not
+  # request the permission that implies we do (audit M21). Add actions/attest-build-provenance and
+  # id-token together when provenance is wired (tracked in docs/security/supply-chain.md).
 
 jobs:
   release:
@@ -20,17 +23,27 @@ jobs:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: dtolnay/rust-toolchain@stable
+      # Actions pinned to a full commit SHA (audit M21) — a moved tag can't swap the action under us.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: dtolnay/rust-toolchain@stable # ref selects the toolchain channel — not SHA-pinnable
       - if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev
-      - run: bun install
-      # Build + sign. tauri-action signs the updater artifacts with the pinned key's private half
-      # when these secrets are present; without them the build is unsigned (and must NOT be published).
-      - uses: tauri-apps/tauri-action@v0
+      # PREFLIGHT: refuse to build a release without the signing key — never ship an unsigned,
+      # auto-updatable binary (audit M21).
+      - name: Require signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set — refusing to build an unsigned release."
+            exit 1
+          fi
+      - run: bun install --frozen-lockfile
+      # Build + sign + publish a DRAFT release; a maintainer verifies the artifacts then publishes.
+      - uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -39,10 +52,20 @@ jobs:
           projectPath: packages/desktop
           tagName: ${{ github.ref_name }}
           releaseName: GlaudeCode ${{ github.ref_name }}
-      # SBOM (CycloneDX) attached to the release for supply-chain transparency.
+          releaseDraft: true
+      # SBOM (CycloneDX). bun has no package-lock.json, so synthesize one (no install, no scripts) for
+      # the generator. No `|| true` — a failed SBOM fails the job instead of silently shipping nothing.
       - name: Generate SBOM
-        run: bunx @cyclonedx/cyclonedx-npm --output-file sbom.json || true
-      - uses: actions/upload-artifact@v4
+        working-directory: packages/desktop
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          bunx @cyclonedx/cyclonedx-npm --output-file "$GITHUB_WORKSPACE/sbom-${{ matrix.os }}.json"
+      - name: Attach SBOM to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "sbom-${{ matrix.os }}.json" --clobber
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-${{ matrix.os }}
-          path: sbom.json
+          path: sbom-${{ matrix.os }}.json
