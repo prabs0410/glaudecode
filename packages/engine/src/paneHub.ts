@@ -40,6 +40,9 @@ interface PaneState {
   cols: number;
   rows: number;
   title: string;
+  /** Remote input allowed for this pane? Default OFF (V5 Phase 2 — Rust core is authoritative;
+   *  this is the engine's mirrored copy, used to gate input early + show armed state on the phone). */
+  armed: boolean;
   subs: Map<TermSubscriber, SubState>;
 }
 
@@ -49,6 +52,8 @@ export interface PaneInfo {
   title: string;
   cols: number;
   rows: number;
+  /** Whether the desktop has armed this pane for remote (phone) input (V5 Phase 2). */
+  armed: boolean;
 }
 
 export class PaneHub {
@@ -66,7 +71,7 @@ export class PaneHub {
   private ensure(paneId: string): PaneState {
     let p = this.panes.get(paneId);
     if (!p) {
-      p = { ring: [], ringBytes: 0, cols: 80, rows: 24, title: "", subs: new Map() };
+      p = { ring: [], ringBytes: 0, cols: 80, rows: 24, title: "", armed: false, subs: new Map() };
       this.panes.set(paneId, p);
     }
     return p;
@@ -134,6 +139,18 @@ export class PaneHub {
     this.ensure(paneId).title = title;
   }
 
+  /** Mirror a pane's arming (from the bridge ARM frame). The Rust core is authoritative — this
+   *  copy lets the engine reject input to an unarmed pane early + show armed state on the phone. */
+  setArmed(paneId: string, armed: boolean): void {
+    this.ensure(paneId).armed = armed;
+  }
+
+  /** Engine-side gate: may a phone's keystrokes be forwarded to this pane? True only if the pane
+   *  exists AND is armed. The Rust core re-checks arming authoritatively before writing the PTY. */
+  canInput(paneId: string): boolean {
+    return this.panes.get(paneId)?.armed ?? false;
+  }
+
   /** Panes the cockpit can attach to (for the listPanes RPC). */
   list(): PaneInfo[] {
     return [...this.panes.entries()].map(([paneId, p]) => ({
@@ -141,6 +158,7 @@ export class PaneHub {
       title: p.title,
       cols: p.cols,
       rows: p.rows,
+      armed: p.armed,
     }));
   }
 

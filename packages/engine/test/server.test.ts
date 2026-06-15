@@ -3,13 +3,38 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { startEngineServer, type EngineServer } from "../src/server";
-import { encodeBridgeMeta, encodeBridgeOutput, encodeBridgeSize } from "../src/bridgeProtocol";
-import { decodeFrame } from "../src/termProtocol";
+import {
+  decodeBridgeFrame,
+  encodeBridgeArm,
+  encodeBridgeMeta,
+  encodeBridgeOutput,
+  encodeBridgeSize,
+} from "../src/bridgeProtocol";
+import { decodeFrame, encodeInput } from "../src/termProtocol";
 
 function asU8(d: unknown): Uint8Array {
   if (d instanceof Uint8Array) return d;
   if (d instanceof ArrayBuffer) return new Uint8Array(d);
   return new Uint8Array(d as ArrayBufferLike);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function openWs(path: string): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}${path}`);
+  ws.binaryType = "arraybuffer";
+  return new Promise((resolve) => {
+    ws.onopen = () => resolve(ws);
+  });
+}
+/** Stand in for the Rust core's input sink: connect /pane-input-bridge (engine-bearer) and collect
+ *  the bridge frames the engine pushes to it. */
+async function openInputSink(): Promise<{ ws: WebSocket; frames: ReturnType<typeof decodeBridgeFrame>[] }> {
+  const ws = await openWs("/pane-input-bridge");
+  const frames: ReturnType<typeof decodeBridgeFrame>[] = [];
+  ws.onmessage = (e) => frames.push(decodeBridgeFrame(asU8(e.data)));
+  ws.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+  await sleep(40);
+  return { ws, frames };
 }
 
 let server: EngineServer;
@@ -193,6 +218,91 @@ describe("engine server", () => {
     });
     const body = await res.json();
     expect(body.result.find((p: any) => p.paneId === paneId)?.title).toBe("my session");
+    bridge.close();
+    term.close();
+  });
+
+  test("/pane-input-bridge rejects a paired token — engine-bearer only (V5 Phase 2 auth boundary)", async () => {
+    const tok = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "phone")!.token;
+    const ws = await openWs("/pane-input-bridge");
+    const outcome = await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve("stayed-open"), 1500);
+      ws.send(JSON.stringify({ type: "auth", token: tok })); // a paired token, not the engine bearer
+      ws.onclose = () => {
+        clearTimeout(timer);
+        resolve("closed");
+      };
+    });
+    expect(outcome).toBe("closed");
+  });
+
+  test("terminal-scope token types into an ARMED pane; engine relays to the Rust input sink (V5 Phase 2)", async () => {
+    const paneId = "pane-input-armed";
+    const sink = await openInputSink();
+    // Rust core arms the pane over the (output) /pane-bridge.
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeMeta(paneId, "armed session"));
+    bridge.send(encodeBridgeArm(paneId, true));
+    await sleep(40);
+
+    // Phone: a TERMINAL-scope token attaches and types.
+    const tok = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "phone")!.token;
+    const term = await openWs("/term-ws");
+    term.send(JSON.stringify({ type: "auth", token: tok, paneId }));
+    await sleep(40);
+    term.send(encodeInput(new TextEncoder().encode("ls\r")));
+    await sleep(60);
+
+    const input = sink.frames.find((f) => f.type === "input" && f.paneId === paneId);
+    expect(input).toBeTruthy();
+    if (input && input.type === "input") expect(new TextDecoder().decode(input.data)).toBe("ls\r");
+    sink.ws.close();
+    bridge.close();
+    term.close();
+  });
+
+  test("a STEER token cannot type — terminal scope is never implied by steer (V5 Phase 2)", async () => {
+    const paneId = "pane-input-steer";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeArm(paneId, true)); // pane IS armed — isolate that SCOPE is the gate
+    await sleep(40);
+
+    const tok = server.pairing.redeem(server.pairing.createPairCode("steer").code, "phone")!.token;
+    const term = await openWs("/term-ws");
+    term.send(JSON.stringify({ type: "auth", token: tok, paneId }));
+    await sleep(40);
+    term.send(encodeInput(new TextEncoder().encode("rm -rf ~\r")));
+    await sleep(60);
+
+    expect(sink.frames.some((f) => f.type === "input")).toBe(false); // nothing reached the PTY sink
+    sink.ws.close();
+    bridge.close();
+    term.close();
+  });
+
+  test("a TERMINAL token cannot type into an UNARMED pane (default-off arming, V5 Phase 2)", async () => {
+    const paneId = "pane-input-unarmed";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeMeta(paneId, "not armed")); // pane exists but is NOT armed
+    await sleep(40);
+
+    const tok = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "phone")!.token;
+    const term = await openWs("/term-ws");
+    term.send(JSON.stringify({ type: "auth", token: tok, paneId }));
+    await sleep(40);
+    term.send(encodeInput(new TextEncoder().encode("whoami\r")));
+    await sleep(60);
+
+    expect(sink.frames.some((f) => f.type === "input")).toBe(false); // unarmed pane → no input relayed
+    sink.ws.close();
     bridge.close();
     term.close();
   });

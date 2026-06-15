@@ -2,10 +2,24 @@
 // must NEVER be shared to a phone. Instead the desktop issues a short, expiring PAIR CODE; a
 // client redeems it for a scoped, expiring, revocable REMOTE TOKEN. Tokens are held in memory
 // only (no token at rest) and die with the engine — re-pair after a restart. Scope is "view"
-// (read-only) or "steer" (can answer approvals / send follow-ups). All time + randomness is
-// injected so the logic is fully deterministic under test.
+// (read-only), "steer" (can answer approvals / send follow-ups), or "terminal" (can type into
+// armed terminal panes — the RCE-class scope; V5 Phase 2). All time + randomness is injected so
+// the logic is fully deterministic under test.
+//
+// Scope is a linear privilege ladder: view < steer < terminal. A higher scope satisfies every
+// lower requirement, but NEVER the reverse — crucially, a "steer" token can answer approvals yet
+// can NEVER type into a terminal (terminal is a dedicated, more-privileged scope, never implied
+// by steer). `terminal` is the "full control from my phone" scope.
 
-export type TokenScope = "view" | "steer";
+export type TokenScope = "view" | "steer" | "terminal";
+
+/** Privilege rank for the linear scope ladder (view < steer < terminal). Higher satisfies lower. */
+const SCOPE_RANK: Record<TokenScope, number> = { view: 0, steer: 1, terminal: 2 };
+
+/** True iff a token of `held` scope is allowed to do something requiring `required` scope. */
+export function scopeSatisfies(held: TokenScope, required: TokenScope): boolean {
+  return SCOPE_RANK[held] >= SCOPE_RANK[required];
+}
 
 /** Generate a pairing code: uppercased hex of `len` chars (V5 Phase 0.3 widened 8→10 — ~16^10
  *  ≈ 1.1e12 keyspace; the rate limiter on /pair is the primary brute-force defense). */
@@ -121,11 +135,13 @@ export class PairingService {
     return { ok: true, scope: t.scope, deviceId: t.deviceId };
   }
 
-  /** Verify AND require a scope. "steer" implies "view"; "view" never satisfies "steer". */
+  /** Verify AND require a scope along the linear ladder (view < steer < terminal). A higher
+   *  scope satisfies a lower requirement; a lower NEVER satisfies a higher (so a "steer" token
+   *  is denied "terminal", and "view" is denied "steer"). */
   requireScope(token: string, required: TokenScope): VerifyResult {
     const v = this.verify(token);
     if (!v.ok) return v;
-    if (required === "steer" && v.scope !== "steer") return { ok: false, reason: "insufficient scope" };
+    if (!v.scope || !scopeSatisfies(v.scope, required)) return { ok: false, reason: "insufficient scope" };
     return v;
   }
 

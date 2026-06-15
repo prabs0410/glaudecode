@@ -6,8 +6,10 @@
 //   0x00 OUTPUT  server -> client : raw PTY bytes
 //   0x01 SIZE    server -> client : cols (uint16 BE), rows (uint16 BE) — phone renders at this size
 //   0x02 ACK     client -> server : uint32 BE total bytes consumed (drives flow control)
+//   0x03 INPUT   client -> server : raw bytes to write to the PTY (V5 Phase 2 — terminal scope +
+//                armed pane required at the server; this codec carries no auth itself)
 
-export const TermOp = { OUTPUT: 0x00, SIZE: 0x01, ACK: 0x02 } as const;
+export const TermOp = { OUTPUT: 0x00, SIZE: 0x01, ACK: 0x02, INPUT: 0x03 } as const;
 
 export function encodeOutput(data: Uint8Array): Uint8Array {
   const f = new Uint8Array(1 + data.length);
@@ -32,10 +34,20 @@ export function encodeAck(bytes: number): Uint8Array {
   return f;
 }
 
+/** Phone → server keystroke/paste bytes (V5 Phase 2). Authorization (terminal scope + an armed
+ *  pane) is enforced by the server on receipt — this frame carries none. */
+export function encodeInput(data: Uint8Array): Uint8Array {
+  const f = new Uint8Array(1 + data.length);
+  f[0] = TermOp.INPUT;
+  f.set(data, 1);
+  return f;
+}
+
 export type TermFrame =
   | { type: "output"; data: Uint8Array }
   | { type: "size"; cols: number; rows: number }
   | { type: "ack"; bytes: number }
+  | { type: "input"; data: Uint8Array }
   | { type: "unknown"; op: number };
 
 export function decodeFrame(buf: Uint8Array): TermFrame {
@@ -45,5 +57,6 @@ export function decodeFrame(buf: Uint8Array): TermFrame {
   if (op === TermOp.OUTPUT) return { type: "output", data: buf.subarray(1) };
   if (op === TermOp.SIZE && buf.length >= 5) return { type: "size", cols: dv().getUint16(1, false), rows: dv().getUint16(3, false) };
   if (op === TermOp.ACK && buf.length >= 5) return { type: "ack", bytes: dv().getUint32(1, false) };
+  if (op === TermOp.INPUT) return { type: "input", data: buf.subarray(1) };
   return { type: "unknown", op };
 }

@@ -30,7 +30,7 @@ import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
 import { KeybindingStore, validateKeys } from "./keybindings";
 import { PromptStore, SlashCommandWriter } from "./prompt";
-import type { PairingService, TokenScope } from "./pairing";
+import { scopeSatisfies, type PairingService, type TokenScope } from "./pairing";
 import { SearchIndex } from "./searchIndex";
 import type { PaneInfo } from "./paneHub";
 import type { SessionMessage } from "./types";
@@ -652,10 +652,9 @@ function tokenLevel(authHeader: string | null, engineToken: string, pairing?: Pa
 }
 
 function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" | "local"): boolean {
-  if (level === "local") return true;
-  if (required === "local") return false;
-  if (required === "steer") return level === "steer";
-  return level === "view" || level === "steer"; // required === "view"
+  if (level === "local") return true; // the local bearer (desktop) can do anything
+  if (required === "local") return false; // only the local bearer satisfies a local-only method
+  return scopeSatisfies(level, required); // linear ladder: view < steer < terminal
 }
 
 // The desktop WebView is a different origin (dev: http://localhost:1420; prod Tauri webviews:

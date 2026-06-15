@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   decodeBridgeFrame,
+  encodeBridgeArm,
   encodeBridgeClose,
+  encodeBridgeInput,
   encodeBridgeMeta,
   encodeBridgeOutput,
   encodeBridgeSize,
@@ -36,6 +38,21 @@ describe("bridgeProtocol", () => {
 
   test("CLOSE carries just the paneId", () => {
     expect(decodeBridgeFrame(encodeBridgeClose(PANE))).toEqual({ type: "close", paneId: PANE });
+  });
+
+  test("INPUT carries paneId + raw keystroke bytes (engine -> Rust, V5 Phase 2)", () => {
+    const keys = new Uint8Array([0x03, 13, 0, 255]); // Ctrl-C, CR, plus zero/high bytes
+    const d = decodeBridgeFrame(encodeBridgeInput(PANE, keys));
+    expect(d.type).toBe("input");
+    if (d.type === "input") {
+      expect(d.paneId).toBe(PANE);
+      expect([...d.data]).toEqual([...keys]);
+    }
+  });
+
+  test("ARM round-trips the armed flag (Rust -> engine, V5 Phase 2)", () => {
+    expect(decodeBridgeFrame(encodeBridgeArm(PANE, true))).toEqual({ type: "arm", paneId: PANE, armed: true });
+    expect(decodeBridgeFrame(encodeBridgeArm(PANE, false))).toEqual({ type: "arm", paneId: PANE, armed: false });
   });
 
   test("truncated / unknown frames don't mis-decode", () => {

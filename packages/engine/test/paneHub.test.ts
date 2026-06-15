@@ -112,4 +112,28 @@ describe("PaneHub", () => {
     expect(s.isClosed()).toBe(true);
     expect(hub.subscriberCount("p")).toBe(0);
   });
+
+  test("arming defaults OFF; canInput follows setArmed (V5 Phase 2)", () => {
+    const hub = new PaneHub();
+    hub.ingest("p", b(1)); // pane now exists
+    expect(hub.canInput("p")).toBe(false); // default OFF — the safe default
+    hub.setArmed("p", true);
+    expect(hub.canInput("p")).toBe(true);
+    hub.setArmed("p", false);
+    expect(hub.canInput("p")).toBe(false);
+  });
+
+  test("canInput is false for an unknown pane (fail-safe)", () => {
+    const hub = new PaneHub();
+    expect(hub.canInput("never-seen")).toBe(false);
+  });
+
+  test("list() reports per-pane armed state for the phone picker (V5 Phase 2)", () => {
+    const hub = new PaneHub();
+    hub.setMeta("p", "session");
+    hub.setSize("p", 80, 24);
+    expect(hub.list().find((x) => x.paneId === "p")).toMatchObject({ title: "session", armed: false });
+    hub.setArmed("p", true);
+    expect(hub.list().find((x) => x.paneId === "p")?.armed).toBe(true);
+  });
 });

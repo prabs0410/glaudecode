@@ -57,6 +57,21 @@ describe("PairingService", () => {
     expect(svc.requireScope(view.token, "steer").ok).toBe(false);
   });
 
+  test("requireScope: terminal is the top of the ladder — NEVER implied by steer (V5 Phase 2)", () => {
+    const { svc } = harness();
+    const terminal = svc.redeem(svc.createPairCode("terminal").code, "t")!;
+    const steer = svc.redeem(svc.createPairCode("steer").code, "s")!;
+    const view = svc.redeem(svc.createPairCode("view").code, "v")!;
+    expect(terminal.scope).toBe("terminal");
+    // terminal satisfies everything (full control from the phone)
+    expect(svc.requireScope(terminal.token, "view").ok).toBe(true);
+    expect(svc.requireScope(terminal.token, "steer").ok).toBe(true);
+    expect(svc.requireScope(terminal.token, "terminal").ok).toBe(true);
+    // but NOTHING below terminal can reach it — this is the RCE boundary
+    expect(svc.requireScope(steer.token, "terminal").ok).toBe(false);
+    expect(svc.requireScope(view.token, "terminal").ok).toBe(false);
+  });
+
   test("revoke kills the device and its token immediately", () => {
     const { svc } = harness();
     const tok = svc.redeem(svc.createPairCode().code, "a")!;

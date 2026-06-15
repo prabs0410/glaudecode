@@ -2,13 +2,17 @@
 // pane's PTY output to the engine over ONE localhost WebSocket, so each frame carries the paneId.
 // This is distinct from termProtocol (the per-pane engine→cockpit channel, no paneId). Binary:
 //   [op:1][paneIdLen:1][paneId utf8 ...][payload ...]
-//   0x00 OUTPUT : payload = raw PTY bytes
-//   0x01 SIZE   : payload = cols (uint16 BE), rows (uint16 BE)
-//   0x02 META   : payload = title (utf8) — human label for the cockpit pane list
-//   0x03 CLOSE  : payload = empty — the pane ended
+//   0x00 OUTPUT : payload = raw PTY bytes                         (Rust -> engine)
+//   0x01 SIZE   : payload = cols (uint16 BE), rows (uint16 BE)    (Rust -> engine)
+//   0x02 META   : payload = title (utf8) — human label           (Rust -> engine)
+//   0x03 CLOSE  : payload = empty — the pane ended                (Rust -> engine)
+//   0x04 INPUT  : payload = raw bytes to write to the PTY         (engine -> Rust; V5 Phase 2)
+//   0x05 ARM    : payload = 1 byte (0/1) "remote input allowed"   (Rust -> engine; V5 Phase 2)
 // Pure codec, unit-tested; the engine decodes these into PaneHub calls, the Rust side encodes them.
+// Phase 2 makes the bridge duplex: INPUT flows engine -> Rust (over a separate input connection),
+// ARM flows Rust -> engine to mirror per-pane arming so the engine can gate input early.
 
-export const BridgeOp = { OUTPUT: 0x00, SIZE: 0x01, META: 0x02, CLOSE: 0x03 } as const;
+export const BridgeOp = { OUTPUT: 0x00, SIZE: 0x01, META: 0x02, CLOSE: 0x03, INPUT: 0x04, ARM: 0x05 } as const;
 
 function frame(op: number, paneId: string, payload: Uint8Array): Uint8Array {
   const id = new TextEncoder().encode(paneId);
@@ -37,12 +41,22 @@ export function encodeBridgeMeta(paneId: string, title: string): Uint8Array {
 export function encodeBridgeClose(paneId: string): Uint8Array {
   return frame(BridgeOp.CLOSE, paneId, new Uint8Array(0));
 }
+/** engine -> Rust: bytes a phone typed, to be written to the pane's PTY (V5 Phase 2). */
+export function encodeBridgeInput(paneId: string, data: Uint8Array): Uint8Array {
+  return frame(BridgeOp.INPUT, paneId, data);
+}
+/** Rust -> engine: mirror a pane's "remote input allowed" arming so the engine can gate early. */
+export function encodeBridgeArm(paneId: string, armed: boolean): Uint8Array {
+  return frame(BridgeOp.ARM, paneId, new Uint8Array([armed ? 1 : 0]));
+}
 
 export type BridgeFrame =
   | { type: "output"; paneId: string; data: Uint8Array }
   | { type: "size"; paneId: string; cols: number; rows: number }
   | { type: "meta"; paneId: string; title: string }
   | { type: "close"; paneId: string }
+  | { type: "input"; paneId: string; data: Uint8Array }
+  | { type: "arm"; paneId: string; armed: boolean }
   | { type: "unknown"; op: number };
 
 export function decodeBridgeFrame(buf: Uint8Array): BridgeFrame {
@@ -63,6 +77,11 @@ export function decodeBridgeFrame(buf: Uint8Array): BridgeFrame {
       return { type: "meta", paneId, title: new TextDecoder().decode(payload) };
     case BridgeOp.CLOSE:
       return { type: "close", paneId };
+    case BridgeOp.INPUT:
+      return { type: "input", paneId, data: payload };
+    case BridgeOp.ARM:
+      if (payload.length < 1) return { type: "unknown", op };
+      return { type: "arm", paneId, armed: payload[0] !== 0 };
     default:
       return { type: "unknown", op };
   }

@@ -16,7 +16,7 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
-import { decodeBridgeFrame } from "./bridgeProtocol";
+import { decodeBridgeFrame, encodeBridgeInput } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
@@ -99,6 +99,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // Terminal-mirror relay (V5 Phase 1): the Rust core tees pane PTY bytes here over /pane-bridge,
   // and cockpit phones attach over /term-ws to view them.
   const paneHub = new PaneHub();
+  // The Rust core's INPUT sink (V5 Phase 2): a second, engine-bearer-only WS the Rust core dials
+  // (/pane-input-bridge) so the engine can push phone keystrokes back to the PTY. One Rust core =
+  // at most one such socket. Kept separate from the (output) /pane-bridge so the high-volume output
+  // path stays a simple low-latency one-way stream and this stays a simple one-way input stream.
+  let inputBridge: any = null;
 
   // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
   // shares EVERYTHING with the localhost listener — same handler, token, pairing, sockets — so
@@ -169,19 +174,25 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
           };
           if (msg?.type !== "auth") return close();
           const tok = String(msg.token ?? "");
-          // AUTH BOUNDARY: the pane-bridge is the Rust core only → it authenticates with the engine
-          // BEARER token (never a paired token), so a paired phone can never reach the PTY ingress,
-          // even on the remote listener. /ws + /term-ws accept PAIRED tokens only (never the bearer).
-          if (kind === "bridge") {
+          // AUTH BOUNDARY: the pane bridges are the Rust core only → they authenticate with the
+          // engine BEARER token (never a paired token), so a paired phone can never reach the PTY
+          // ingress OR egress, even on the remote listener. /ws + /term-ws accept PAIRED tokens only
+          // (never the bearer); the term socket's SCOPE is captured here and re-checked per INPUT.
+          if (kind === "bridge" || kind === "inbridge") {
             if (tok !== token) return close();
-          } else if (!pairing.verify(tok).ok) {
-            return close();
+          } else {
+            const v = pairing.verify(tok);
+            if (!v.ok) return close();
+            ws.data.scope = v.scope; // "view" | "steer" | "terminal" — gates INPUT (Phase 2)
           }
           ws.data.authed = true;
           clearTimeout(ws.data.authTimer);
           if (kind === "approvals") {
             sockets.add(ws);
             ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
+          } else if (kind === "inbridge") {
+            // The Rust core's input delivery socket — the engine pushes phone keystrokes here.
+            inputBridge = ws;
           } else if (kind === "term") {
             const paneId = String(msg.paneId ?? "");
             if (!paneId) return close();
@@ -216,19 +227,37 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
           else if (f.type === "size") paneHub.setSize(f.paneId, f.cols, f.rows);
           else if (f.type === "meta") paneHub.setMeta(f.paneId, f.title);
           else if (f.type === "close") paneHub.closePane(f.paneId);
+          else if (f.type === "arm") paneHub.setArmed(f.paneId, f.armed);
         } else if (kind === "term") {
           const buf = toU8(raw);
           if (!buf) return;
           const f = decodeFrame(buf);
           if (f.type === "ack" && ws.data.paneId && ws.data.sub) {
             paneHub.ack(ws.data.paneId, ws.data.sub, f.bytes);
+          } else if (f.type === "input") {
+            // RCE GATE (V5 Phase 2): forward a phone's keystrokes to the PTY ONLY when BOTH hold:
+            //   1. the token's scope is exactly "terminal" (never view/steer — defense vs scope creep)
+            //   2. the target pane is armed (the desktop opted this pane in; default OFF)
+            // The Rust core re-checks arming authoritatively before writing the PTY (defense in
+            // depth) — even a bug here cannot type into an unarmed pane.
+            if (ws.data.scope !== "terminal") return;
+            const paneId = ws.data.paneId;
+            if (!paneId || !paneHub.canInput(paneId)) return;
+            if (inputBridge) {
+              try {
+                inputBridge.send(encodeBridgeInput(paneId, f.data));
+              } catch {
+                /* input sink gone — drop; the Rust core reconnects */
+              }
+            }
           }
         }
-        // approvals: push-only — ignore any client messages.
+        // approvals + inbridge: no inbound client messages to handle.
       },
       close(ws: any) {
         clearTimeout(ws.data?.authTimer);
         sockets.delete(ws);
+        if (ws === inputBridge) inputBridge = null; // Rust input sink gone (it reconnects)
         ws.data?.detach?.(); // detach a term subscriber from its pane
       },
     },
@@ -242,6 +271,17 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       if (request.method === "GET" && url.pathname === "/app/manifest.json") {
         return new Response(MANIFEST_JSON, { headers: { "content-type": "application/manifest+json" } });
       }
+      // Diagnostic: the desktop WebView forwards uncaught errors here (the WebView console isn't
+      // visible in the terminal otherwise). Bearer-gated so only the local app can post.
+      if (request.method === "POST" && url.pathname === "/clientlog") {
+        if (request.headers.get("authorization") !== `Bearer ${token}`) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        const t = await request.text().catch(() => "");
+        console.error("[client] " + t.slice(0, 4000));
+        return new Response("ok");
+      }
+
       // The view-only terminal page + its vendored xterm.js (V5 Phase 1). All static; the RPCs/WS
       // they call are authed. The token lives in sessionStorage, never these URLs.
       if (request.method === "GET" && url.pathname === "/app/term") {
@@ -282,6 +322,14 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       // the auth boundary, not the bind, is what protects it.
       if (url.pathname === "/pane-bridge") {
         if (srv.upgrade(request, { data: { kind: "bridge", authed: false } })) return undefined;
+        return new Response("expected websocket", { status: 426 });
+      }
+      // Rust-core input sink (V5 Phase 2): the engine pushes phone keystrokes to the Rust core over
+      // this socket. ENGINE-BEARER only — a paired phone can never connect here to inject input; it
+      // can only send INPUT on /term-ws, which the engine gates (terminal scope + armed pane) before
+      // relaying onto this trusted channel.
+      if (url.pathname === "/pane-input-bridge") {
+        if (srv.upgrade(request, { data: { kind: "inbridge", authed: false } })) return undefined;
         return new Response("expected websocket", { status: 426 });
       }
       // Cockpit terminal mirror (V5 Phase 1): a paired token + paneId in the first message attaches
