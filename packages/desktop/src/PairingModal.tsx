@@ -117,10 +117,10 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
         await invoke("set_keep_awake", { on: false }).catch(() => {}); // let the Mac sleep again
       } else {
         // Prefer Tailscale Serve (real TLS on the MagicDNS name → installable PWA + clean wss). The
-        // engine stays localhost-only; Serve proxies it. Fall back to the plain tailnet bind.
-        const ep = await engineEndpoint();
+        // engine stays localhost-only; Serve proxies it (it reads the engine port from its own state,
+        // not a param — audit M17). Fall back to the plain tailnet bind.
         try {
-          const url = await invoke<string>("tailscale_serve_start", { port: ep.port });
+          const url = await invoke<string>("tailscale_serve_start");
           setServeUrl(url);
         } catch (serveErr: any) {
           const ip = await invoke<string | null>("tailscale_ip");

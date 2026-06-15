@@ -857,7 +857,17 @@ fn tailscale_dns_name() -> Option<String> {
 static SERVE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
-async fn tailscale_serve_start(port: u16) -> Result<String, String> {
+async fn tailscale_serve_start(app: AppHandle) -> Result<String, String> {
+    // Read the engine port from our OWN state, not a WebView-supplied param (audit M17): a buggy or
+    // compromised WebView must not be able to point Serve at port 0 or another local service.
+    let port = app
+        .state::<EngineState>()
+        .endpoint
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|e| e.port)
+        .ok_or("engine not ready — no endpoint yet")?;
     // CRITICAL: async + spawn_blocking. `tailscale serve --https=443` provisions a TLS cert, which
     // BLOCKS — and when HTTPS certs aren't enabled in the tailnet it can stall for a long time. As a
     // synchronous Tauri command this ran on the MAIN THREAD and froze the entire UI (beachball). Now
@@ -1015,7 +1025,18 @@ fn uninstall_approval_hook_on_exit() {
     // Pretty-print to match the engine's writer; if serialization somehow fails, leave the
     // file untouched rather than risk truncating the user's settings.
     if let Ok(out) = serde_json::to_string_pretty(&root) {
-        let _ = std::fs::write(&path, out + "\n");
+        // Capture the write result (audit M18): a SILENT failure leaves the stale hook in place, so a
+        // future closed-app `claude` session fail-closed-denies everything — the exact hazard this fn
+        // exists to prevent. We still leave the file untouched on error (no truncation); we just LOG
+        // it with the manual remedy.
+        if let Err(e) = std::fs::write(&path, out + "\n") {
+            eprintln!(
+                "[glaudecode] could not strip the approval hook from {}: {e}. If a closed-app \
+                 `claude` session is later denied everything, remove it manually: rm {}",
+                path.display(),
+                path.display()
+            );
+        }
     }
 }
 
