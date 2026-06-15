@@ -125,6 +125,8 @@ function summarize(input) { const i = input || {}; return i.command || i.file_pa
 let approvals = [];
 let sessions = [];
 let panes = [];
+const deciding = {}; // approval id -> true while its resolve is in flight (M10)
+let actionError = null; // last failed Allow/Deny, shown as a banner until the next attempt (M10)
 
 function render() {
   $("logout").style.display = "";
@@ -139,8 +141,10 @@ function render() {
         '<div class="mono">' + esc(a.redacted ? "(input hidden — view-only device)" : summarize(a.input)) + "</div>" +
         (a.redacted ? "" : '<div class="muted">' + esc(a.reason || "") + "</div>") +
         (canAct
-          ? '<div class="row"><button data-act="allow" data-id="' + esc(a.id) + '">Allow</button>' +
-            '<button class="deny" data-act="deny" data-id="' + esc(a.id) + '">Deny</button></div>'
+          ? (deciding[a.id]
+              ? '<div class="row"><button disabled>…</button></div>' // in flight — no double-submit
+              : '<div class="row"><button data-act="allow" data-id="' + esc(a.id) + '">Allow</button>' +
+                '<button class="deny" data-act="deny" data-id="' + esc(a.id) + '">Deny</button></div>')
           : "") +
         "</div>"
       ).join("")
@@ -163,14 +167,31 @@ function render() {
           '</div><div class="muted">' + esc(p.cols + "x" + p.rows + (p.armed ? " · armed for input" : "")) + "</div></div></a>";
       }).join("")
     : '<div class="empty">No live terminals — open a pane in GlaudeCode.</div>';
+  const errHtml = actionError
+    ? '<div style="background:#3a1212;color:#ff7b72;padding:8px 10px;border-radius:8px;margin-bottom:10px">' + esc(actionError) + "</div>"
+    : "";
   $("app").innerHTML =
-    "<h2>Approvals</h2>" + apHtml + "<h2>Terminals</h2>" + tHtml + "<h2>Sessions</h2>" + sHtml;
+    errHtml + "<h2>Approvals</h2>" + apHtml + "<h2>Terminals</h2>" + tHtml + "<h2>Sessions</h2>" + sHtml;
 }
 
 async function decide(id, decision) {
-  approvals = approvals.filter((a) => a.id !== id);
+  // Don't optimistically remove the card or swallow failures (audit M10): mark it in-flight (buttons
+  // disabled), and remove it ONLY on a confirmed resolve. A throw or {ok:false} restores the card and
+  // shows an error — a failed Allow/Deny on a flaky link must never look like success.
+  if (deciding[id]) return;
+  deciding[id] = true;
+  actionError = null;
   render();
-  try { await rpc("resolveApproval", { id, decision }); } catch (e) {}
+  try {
+    const r = await rpc("resolveApproval", { id, decision });
+    if (r && r.ok === false) throw new Error("not resolved — it may have already been decided");
+    approvals = approvals.filter((a) => a.id !== id);
+  } catch (e) {
+    actionError = "Couldn't " + decision + " that request: " + (e && e.message ? e.message : "please retry");
+  } finally {
+    delete deciding[id];
+    render();
+  }
 }
 // Event delegation — no inline handlers, no string interpolation of data into markup.
 $("app").addEventListener("click", (ev) => {
