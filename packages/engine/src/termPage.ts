@@ -116,6 +116,7 @@ export const TERM_HTML = `<!doctype html>
 
   var canTypeScope = SCOPE === "terminal";
   var armed = false, rawOn = false, ctrlArmed = false, paused = false, sizeOn = false, ws = null;
+  var connOk = true, repairing = false; // connOk: last listPanes succeeded (so "not armed" is real)
 
   var term = new Terminal({
     fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
@@ -165,12 +166,30 @@ export const TERM_HTML = `<!doctype html>
     sendText(d);
   });
 
+  function repair() {
+    // Token revoked/expired (routine at the 1h terminal-scope TTL) — go re-pair rather than silently
+    // reading armed=false and showing a WRONG "not armed" message. Guard against concurrent failing
+    // calls storming the redirect.
+    if (repairing) return;
+    repairing = true;
+    sessionStorage.removeItem("ck.token");
+    sessionStorage.removeItem("ck.scope");
+    location.href = "/app";
+  }
+  // Mirrors cockpit.ts rpc(): checks r.ok and RETURNS body.result (not the envelope). A 401/403 means
+  // the token died — re-pair instead of letting callers silently fall back to empty/false (audit M9).
   function rpc(method, params) {
     return fetch("/rpc", {
       method: "POST",
       headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
       body: JSON.stringify({ method: method, params: params || {} }),
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (r.status === 401 || r.status === 403) { repair(); throw new Error("unauthorized"); }
+        if (!r.ok) throw new Error((body && body.error) || ("rpc " + method + " " + r.status));
+        return body.result;
+      });
+    });
   }
   // Mode C — the cockpit knows it's Claude Code: poll \`promptState\` and render the live
   // AskUserQuestion as tappable buttons (selecting option i = down-arrow × i, then Enter). For a
@@ -179,8 +198,8 @@ export const TERM_HTML = `<!doctype html>
   var DIR = "", lastQ = null;
   function pollPromptState() {
     if (!canTypeScope || !DIR) return;
-    rpc("promptState", { id: paneId, dir: DIR }).then(function (b) {
-      renderSmartQ((b && b.result) || { askUserQuestion: null });
+    rpc("promptState", { id: paneId, dir: DIR }).then(function (s) {
+      renderSmartQ(s || { askUserQuestion: null });
     }).catch(function () {});
   }
   function renderSmartQ(s) {
@@ -208,7 +227,7 @@ export const TERM_HTML = `<!doctype html>
       el.appendChild(btn);
     });
   }
-  rpc("defaultDir").then(function (b) { DIR = (b && b.result && b.result.dir) || ""; pollPromptState(); }).catch(function () {});
+  rpc("defaultDir").then(function (d) { DIR = (d && d.dir) || ""; pollPromptState(); }).catch(function () {});
 
   function setPill(text, cls) {
     var el = document.getElementById("pill");
@@ -238,20 +257,21 @@ export const TERM_HTML = `<!doctype html>
     document.getElementById("insert").disabled = !armed;
     document.getElementById("send").disabled = !armed;
     document.getElementById("rawbtn").disabled = !armed;
-    document.getElementById("hint").textContent = armed ? "" : "Not armed — tap 📱 on this pane's tab in GlaudeCode to allow input.";
+    document.getElementById("hint").textContent = armed ? "" : (connOk ? "Not armed — tap 📱 on this pane's tab in GlaudeCode to allow input." : "Reconnecting…");
     setPill(armed ? "armed" : "not armed", armed ? "on" : "off");
     if (!armed && rawOn) { rawOn = false; term.options.disableStdin = true; document.getElementById("rawbtn").classList.remove("on"); }
   }
 
   function refreshArmed() {
     if (!canTypeScope) { updateInputUI(); return; }
-    rpc("listPanes").then(function (b) {
-      var list = (b && b.result) || [];
+    rpc("listPanes").then(function (list) {
+      list = list || [];
       var me = null;
       for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) me = list[i];
       armed = !!(me && me.armed);
+      connOk = true; // listPanes succeeded → a "not armed" hint now reflects the real pane state
       updateInputUI();
-    }).catch(function () {});
+    }).catch(function () { connOk = false; updateInputUI(); }); // a 401/403 already triggered repair()
   }
 
   // Mirror of engine \`termInput.wrapForPaste\` (tested in @glaudecode/engine): multi-line text is
@@ -359,14 +379,14 @@ export const TERM_HTML = `<!doctype html>
       document.getElementById("smart-chips").appendChild(b);
     });
     // Mode C snippets — one tap inserts a saved prompt (no auto-Enter, so you review then send).
-    rpc("listPrompts").then(function (b) {
-      var list = (b && b.result) || [];
+    rpc("listPrompts").then(function (list) {
+      list = list || [];
       var el = document.getElementById("smart-snippets");
       list.slice(0, 12).forEach(function (p) {
         var btn = document.createElement("button"); btn.className = "smartbtn"; btn.textContent = "/" + (p.id || "snippet");
         btn.onclick = function () {
-          rpc("readPrompt", { id: p.id }).then(function (r) {
-            sendText(wrapForPaste((r && r.result && r.result.body) || "")); // Insert (no auto-CR)
+          rpc("readPrompt", { id: p.id }).then(function (pr) {
+            sendText(wrapForPaste((pr && pr.body) || "")); // Insert (no auto-CR)
           }).catch(function () {});
         };
         el.appendChild(btn);
@@ -415,8 +435,8 @@ export const TERM_HTML = `<!doctype html>
   // Switch to the next live terminal (detach current, attach next).
   document.getElementById("switch").onclick = function (e) {
     e.preventDefault();
-    rpc("listPanes").then(function (b) {
-      var list = (b && b.result) || [];
+    rpc("listPanes").then(function (list) {
+      list = list || [];
       if (list.length < 2) return;
       var idx = -1;
       for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) idx = i;
