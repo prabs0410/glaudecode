@@ -439,6 +439,12 @@ export const setPaneArmed = (paneId: string, armed: boolean) =>
   invoke<void>("pty_set_armed", { paneId, armed });
 /** Kill switch: disarm every pane at once; returns the pane ids that were armed. */
 export const disarmAllPanes = () => invoke<string[]>("pty_disarm_all", {});
+/**
+ * Read the authoritative armed pane ids from the Rust core (audit H2). The WebView hydrates from
+ * this on mount + focus so a reload (HMR / remount / refresh) can't lose arm state — or hide the
+ * kill switch — while phone input is still flowing into a pane Rust still considers armed.
+ */
+export const listArmed = () => invoke<string[]>("pty_list_armed", {});
 
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than

@@ -5,7 +5,7 @@ import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
 import { MetaAgentPanel } from "./MetaAgentPanel";
 import { Splitter } from "./Splitter";
-import { setPaneArmed, disarmAllPanes } from "./engine";
+import { setPaneArmed, disarmAllPanes, listArmed } from "./engine";
 
 // A pane is one terminal tab: either a plain shell or a Claude Code session bound to
 // a worktree. For Claude panes `paneId === sessionId` (the uuid we mint and pass to
@@ -89,6 +89,33 @@ export function Workspace({
   const [armed, setArmed] = useState<Set<string>>(new Set());
   const [driving, setDriving] = useState<Set<string>>(new Set());
   const driveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Hydrate `armed` from the AUTHORITATIVE Rust core on mount + on focus/visibility (audit H2). A
+  // WebView reload (vite HMR, ErrorBoundary remount, any refresh) re-runs this renderer WITHOUT
+  // respawning Rust/engine — so a pane still armed in Rust (still accepting phone keystrokes) must
+  // re-appear as armed here, or the 📱 toggle silently reads "off" and the kill switch disappears
+  // while input keeps flowing. We also subscribe to `armed-changed` (Rust pushes it on every
+  // arm/disarm/kill) so the mirror can never drift. On a read error we KEEP the last-known set rather
+  // than clear to empty (clearing would fail-UNSAFE by hiding the kill switch).
+  useEffect(() => {
+    let alive = true;
+    const hydrate = () =>
+      void listArmed()
+        .then((ids) => alive && setArmed(new Set(ids)))
+        .catch(() => {});
+    hydrate();
+    const onFocus = () => hydrate();
+    const onVis = () => document.visibilityState === "visible" && hydrate();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    const unlistenP = listen<string[]>("armed-changed", (e) => alive && setArmed(new Set(e.payload)));
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+      void unlistenP.then((un) => un());
+    };
+  }, []);
 
   const toggleArm = async (paneId: string) => {
     const next = !armed.has(paneId);

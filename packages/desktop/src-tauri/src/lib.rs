@@ -415,6 +415,7 @@ fn pty_resize_internal(app: &AppHandle, pane_id: &str, cols: u16, rows: u16) {
 /// + reflect armed state on the phone. The Rust `armed` set remains authoritative.
 #[tauri::command]
 fn pty_set_armed(
+    app: AppHandle,
     registry: State<PtyRegistry>,
     engine: State<EngineState>,
     pane_id: String,
@@ -431,13 +432,34 @@ fn pty_set_armed(
     if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
         let _ = tx.try_send(pane_bridge::encode_arm(&pane_id, armed));
     }
+    emit_armed_changed(&app, registry.inner()); // keep the WebView's mirror authoritative
     Ok(())
+}
+
+/// Emit the authoritative armed set to the WebView so its arm/kill UI can never desync from the
+/// long-lived Rust core (audit H2). A WebView reload (vite HMR, ErrorBoundary remount, any refresh)
+/// re-runs the renderer WITHOUT respawning Rust — the WebView must re-read `armed` from here, and we
+/// also push it on every change so a still-armed pane never silently renders "off".
+fn emit_armed_changed(app: &AppHandle, registry: &PtyRegistry) {
+    let ids: Vec<String> = registry.armed.lock().unwrap().iter().cloned().collect();
+    let _ = app.emit("armed-changed", ids);
+}
+
+/// Read the authoritative armed pane ids (audit H2). The WebView hydrates from this on mount + focus
+/// so a reload can't lose the arm state (or hide the kill switch) while phone input still flows.
+#[tauri::command]
+fn pty_list_armed(registry: State<PtyRegistry>) -> Result<Vec<String>, String> {
+    Ok(registry.armed.lock().unwrap().iter().cloned().collect())
 }
 
 /// Kill switch (V5 Phase 2): disarm every pane at once. Returns the pane ids that were armed so the
 /// UI can clear their toggles. Pushes ARM=off to the engine for each.
 #[tauri::command]
-fn pty_disarm_all(registry: State<PtyRegistry>, engine: State<EngineState>) -> Result<Vec<String>, String> {
+fn pty_disarm_all(
+    app: AppHandle,
+    registry: State<PtyRegistry>,
+    engine: State<EngineState>,
+) -> Result<Vec<String>, String> {
     let ids: Vec<String> = {
         let mut set = registry.armed.lock().unwrap();
         let ids = set.iter().cloned().collect();
@@ -449,6 +471,7 @@ fn pty_disarm_all(registry: State<PtyRegistry>, engine: State<EngineState>) -> R
             let _ = tx.try_send(pane_bridge::encode_arm(id, false));
         }
     }
+    emit_armed_changed(&app, registry.inner()); // now-empty set → WebView clears every toggle
     Ok(ids)
 }
 
@@ -475,13 +498,16 @@ fn pty_resize(
 }
 
 #[tauri::command]
-fn pty_kill(registry: State<PtyRegistry>, pane_id: String) -> Result<(), String> {
+fn pty_kill(app: AppHandle, registry: State<PtyRegistry>, pane_id: String) -> Result<(), String> {
     // Take the handle out and kill the child; dropping master/writer closes the
     // PTY, the reader thread sees EOF and emits `pty-exit:{paneId}`.
     if let Some(mut pane) = registry.panes.lock().unwrap().remove(&pane_id) {
         let _ = pane.child.kill();
     }
-    registry.armed.lock().unwrap().remove(&pane_id); // killed pane can't stay armed
+    let was_armed = registry.armed.lock().unwrap().remove(&pane_id); // killed pane can't stay armed
+    if was_armed {
+        emit_armed_changed(&app, registry.inner());
+    }
     Ok(())
 }
 
@@ -753,6 +779,7 @@ pub fn run() {
             pty_kill,
             pty_set_armed,
             pty_disarm_all,
+            pty_list_armed,
             engine_endpoint,
             project_dir,
             os_is_windows,
