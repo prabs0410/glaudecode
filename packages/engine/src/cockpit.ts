@@ -73,7 +73,7 @@ export const COCKPIT_HTML = `<!doctype html>
 <main id="app"></main>
 <script>
 const $ = (id) => document.getElementById(id);
-let TOKEN = new URLSearchParams(location.search).get("token") || sessionStorage.getItem("ck.token") || "";
+let TOKEN = sessionStorage.getItem("ck.token") || "";
 let DIR = null;
 
 async function rpc(method, params) {
@@ -108,9 +108,12 @@ function gate(msg) {
   };
   // QR / "Connect my phone" handoff: a #code=… fragment auto-fills + submits. The code rides in the
   // FRAGMENT (never the query string), so it isn't logged/Referer-leaked; we strip it after reading.
+  // We rewrite to the bare pathname (dropping any query too) — the RCE-scope token must NEVER be
+  // sourced from or left in the query string (it would leak into history, the Tailscale Serve
+  // TLS-proxy logs, and Referer). The token lives in sessionStorage only.
   const m = /[#&]code=([^&]+)/.exec(location.hash);
   if (m) {
-    history.replaceState(null, "", location.pathname + location.search);
+    history.replaceState(null, "", location.pathname);
     $("code").value = decodeURIComponent(m[1]).toUpperCase();
     $("go").click();
   }
