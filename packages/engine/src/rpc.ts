@@ -9,6 +9,7 @@
 
 import { ClaudeCodeAdapter } from "./adapter";
 import { deriveAgentState } from "./agentState";
+import { derivePromptState } from "./promptState";
 import { buildTimeline } from "./timeline";
 import { buildChanges } from "./changes";
 import { detectConflicts } from "./conflicts";
@@ -48,6 +49,7 @@ export type RpcMethod =
   | "tagSession"
   | "deleteSession"
   | "agentState"
+  | "promptState"
   | "timeline"
   | "sessionCost"
   | "sessionChanges"
@@ -115,6 +117,7 @@ const METHODS = new Set<RpcMethod>([
   "tagSession",
   "deleteSession",
   "agentState",
+  "promptState",
   "timeline",
   "sessionCost",
   "sessionChanges",
@@ -178,7 +181,7 @@ const METHODS = new Set<RpcMethod>([
 // pairing admin is "local" (desktop bearer only); EVERYTHING ELSE defaults to "steer", so a
 // new mutating method is never accidentally exposed to a view-only remote token.
 const VIEW_METHODS = new Set<string>([
-  "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "timeline", "sessionCost",
+  "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "promptState", "timeline", "sessionCost",
   "sessionChanges", "conflicts", "contextUsage", "pendingApprovals", "listMemory", "readMemory",
   "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
   "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
@@ -328,6 +331,11 @@ export async function dispatch(
     case "agentState": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return deriveAgentState(msgs, Date.now());
+    }
+    case "promptState": {
+      // Read-only: what Claude is asking right now (for the phone's tappable answer buttons, Mode C).
+      const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
+      return derivePromptState(msgs, Date.now());
     }
     case "timeline": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });

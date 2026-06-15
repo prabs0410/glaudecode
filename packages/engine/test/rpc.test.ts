@@ -279,6 +279,7 @@ describe("remote scope enforcement (Epic G)", () => {
   test("methodScope: reads are view, mutations are steer, pairing is local", () => {
     expect(methodScope("listSessions")).toBe("view");
     expect(methodScope("agentState")).toBe("view");
+    expect(methodScope("promptState")).toBe("view"); // read-only — Mode C sends via the input path, not RPC
     expect(methodScope("deleteSession")).toBe("steer");
     expect(methodScope("resolveApproval")).toBe("steer");
     expect(methodScope("createPairCode")).toBe("local");
