@@ -472,6 +472,19 @@ describe("engine server", () => {
     t.close();
   });
 
+  test("/term-ws attach to a pane the bridge never announced is refused with 4002 (audit M12)", async () => {
+    // A phone must not be able to conjure a phantom pane — the wire path must close (4002) when the
+    // engine's PaneHub has no record of the paneId (no bridge META/SIZE/ARM/output ever arrived).
+    const tok = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "phone")!.token;
+    const term = await openWs("/term-ws");
+    const closed = new Promise<number>((resolve) => {
+      term.onclose = (e) => resolve(e.code);
+    });
+    term.send(JSON.stringify({ type: "auth", token: tok, paneId: "never-announced-pane" }));
+    const code = await Promise.race([closed, sleep(1000).then(() => -1)]);
+    expect(code).toBe(4002);
+  });
+
   // Last: this consumes 127.0.0.1's /pair budget. Other tests redeem via server.pairing directly,
   // not the HTTP endpoint, so they're unaffected.
   test("/pair is rate-limited per IP (V5 Phase 0.3)", async () => {
