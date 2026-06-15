@@ -321,14 +321,31 @@ oss-at-scale-strategy,secure-mirror-tech-stack,cross-project-session-view}.md`);
   - **6.3** `2d8f842`/`6d62885` — Windows guards: PowerShell/cmd fallback, Tailscale `.exe`/Program-Files
     discovery in the one candidate list, a one-time "use WSL" note (`os_is_windows`).
   - **6.4.1** `6d62885` — `docs/design/multi-os-release-checklist.md` (per-OS build+smoke matrix).
-- **Status:** Phases 0–2 + **4 + 5 + 6 + (3 Story 3.3)** built (engine **326 tests** green; macOS `cargo
-  check` + `tsc` + `vite build` clean). The Linux/Windows `cfg` arms compile only on those OSes — verified
-  by the Phase-6 real-OS QA gates. **Outstanding HUMAN-GATEs:** Phase-2 on-device verify; Phase 4 iOS/Android
-  QA; Phase 5 real-tailnet (Serve certs / PWA / ACL); Phase 6 real Linux+Windows+WSL QA + the 6.4.2 parity
-  security review; **Phase 3 crypto core (device probe + the mandatory independent review)**; Phase 7 not
-  started (governance + the signing trust-root). **Public release** still gates on the Phase 3 crypto review
-  + the Phase 7 signing root per `docs/goal-v5/README.md`. New `docs/design/*` → INDEX lines flagged for the
-  founder (`transport-self-host-relay.md`, `transport-acl-hardening.md`, `multi-os-release-checklist.md`).
+- **Phase 7 — OSS launch governance gate (`feat/v5-governance`, me-first #5, built per the founder's
+  "Phase 7 go ahead").** Converts a one-person posture into a fleet-survivable one.
+  - **7.1** `b588928` — `SECURITY.md` (private GHSA reporting, ~72h/90-day disclosure, safe-harbor,
+    supported versions) + `docs/security/threat-model.md` (the Epic-G model promoted + expanded for the
+    multi-user/OSS reality: names the keystroke mirror as RCE, threats↔mitigations table with honest
+    "transport sees plaintext until Phase 3" status, a shared-responsibility split, residual risk).
+  - **7.2** `3321137` — a forward-looking (empty) `TERMINAL_ONLY_METHODS` tier + an EXPLICIT steer set +
+    a test asserting **every RpcMethod is in exactly one tier** (a new unclassified method fails the
+    build); fixed `approvalHookStatus` being double-listed.
+  - **7.3** `1a7bea6` — the secure-defaults **CI gate**: `.github/workflows/ci.yml` (net-new) +
+    `secureDefaults.test.ts` (localhost default, wildcard rejection, exhaustive classification, terminal
+    not a pairing default, governance-doc presence) — break any default → red.
+  - **7.5** `18b3fa2` — a non-skippable first-run **RCE consent** before the first remote bind.
+  - **7.4 / 7.6** `18b3fa2` — `docs/security/supply-chain.md` (SLSA 3+, the **pinned-key** updater config,
+    verify steps) + a `release.yml` signing skeleton; `bulletins.md` + the tracked post-launch trust
+    track. The live updater pubkey + the signing keypair are the **maintainer trust-root (7.4.3 =
+    HUMAN-GATE)** — not wired here, to avoid shipping a placeholder key.
+- **Status:** Phases 0–2 + **4 + 5 + 6 + 7 + (3 Story 3.3)** built — **all five V5 phases' automatable
+  work is done** (engine **333 tests** green; macOS `cargo check` + `tsc` + `vite build` clean; the CI gate
+  encodes the secure defaults). The Linux/Windows `cfg` arms compile only on those OSes. **Only human gates
+  remain:** Phase-2 on-device verify; real iOS/Android QA (4) + real-tailnet (5) + real Linux/Windows/WSL
+  QA + 6.4.2 parity review (6); **the Phase-3 crypto core (device probe + the mandatory independent crypto
+  review)**; and the **Phase-7 signing trust-root (7.4.3)**. **Public release** gates on the Phase-3 crypto
+  review + the Phase-7 signing root per `docs/goal-v5/README.md`. New `docs/{design,security}/*` → INDEX
+  lines flagged for the founder.
 
 ---
 
