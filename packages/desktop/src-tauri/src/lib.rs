@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -549,6 +549,9 @@ struct EngineState {
     child: Mutex<Option<Child>>,
     /// Sender into the pane bridge — tees PTY output to the engine for the phone mirror (V5 Phase 1).
     bridge: Mutex<Option<pane_bridge::BridgeTx>>,
+    /// Stop flag for the current input-bridge thread, so a respawn can retire the old one instead of
+    /// leaving it to reconnect-loop forever against the dead port (audit M6 GAP B).
+    input_stop: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 fn engine_entry_path() -> PathBuf {
@@ -630,8 +633,15 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     }));
     // Start the INPUT bridge (V5 Phase 2): the engine pushes phone keystrokes back over a second,
     // bearer-only socket; each lands in pty_write_internal, which re-checks arming before the PTY.
+    // Retire the PREVIOUS input-bridge thread first (on respawn) so it stops reconnecting to the dead
+    // port instead of leaking forever (audit M6 GAP B).
+    if let Some(old_stop) = state.input_stop.lock().unwrap().take() {
+        old_stop.store(true, Ordering::SeqCst);
+    }
+    let input_stop = Arc::new(AtomicBool::new(false));
+    *state.input_stop.lock().unwrap() = Some(input_stop.clone());
     let app_for_input = app.clone();
-    pane_bridge::start_input(endpoint.port, endpoint.token.clone(), move |op, pane_id, data| {
+    pane_bridge::start_input(endpoint.port, endpoint.token.clone(), input_stop, move |op, pane_id, data| {
         if op == pane_bridge::OP_INPUT {
             pty_write_internal(&app_for_input, pane_id, data);
         } else if op == pane_bridge::OP_RESIZE && data.len() >= 4 {
@@ -654,6 +664,7 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
 fn supervise_engine(app: AppHandle) {
     thread::spawn(move || {
         let mut restarts: u32 = 0;
+        let mut healthy_ticks: u32 = 0;
         loop {
             thread::sleep(Duration::from_secs(2));
             let needs_respawn = {
@@ -665,8 +676,16 @@ fn supervise_engine(app: AppHandle) {
                 }
             };
             if !needs_respawn {
+                // After a sustained healthy window (~30s), forgive prior restarts so the cap is a
+                // crash-LOOP rate limit, not a per-session lifetime cap (audit M6 GAP A) — an engine
+                // that crashes once an hour but recovers each time never trips engine-down.
+                healthy_ticks += 1;
+                if healthy_ticks >= 15 {
+                    restarts = 0;
+                }
                 continue;
             }
+            healthy_ticks = 0;
             if restarts >= 5 {
                 let _ = app.emit("engine-down", "engine unavailable — restart GlaudeCode");
                 return; // bounded — never crash-loop

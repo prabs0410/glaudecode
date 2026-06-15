@@ -15,7 +15,9 @@
 // The output channel is bounded with try_send (drop on full), so a slow/disconnected engine NEVER
 // stalls the local terminal — the engine's per-pane ring buffer replays the screen on (re)attach.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -164,25 +166,29 @@ fn is_disconnected(rx: &Receiver<Vec<u8>>) -> bool {
 /// authenticates with the engine bearer token, and blocking-reads inbound frames the engine pushes
 /// (a phone's keystrokes / resizes, already gated by the engine for terminal scope + an armed pane).
 /// Each decoded frame calls `on_frame(op, paneId, payload)`, which re-checks arming authoritatively
-/// before touching the PTY. Reconnects with a short backoff. The thread is a daemon — it dies with
-/// the process on app exit (the engine child is killed there).
-pub fn start_input<F>(port: u16, token: String, on_frame: F)
+/// before touching the PTY. Reconnects with a short backoff. The thread exits when `stop` is set (on
+/// an engine respawn) — otherwise the old thread would reconnect-loop forever against the dead port
+/// (audit M6 GAP B); it's also a daemon, so it dies with the process on app exit.
+pub fn start_input<F>(port: u16, token: String, stop: Arc<AtomicBool>, on_frame: F)
 where
     F: Fn(u8, &str, &[u8]) + Send + 'static,
 {
     thread::Builder::new()
         .name("pane-input-bridge".into())
-        .spawn(move || pump_input(port, token, on_frame))
+        .spawn(move || pump_input(port, token, stop, on_frame))
         .ok();
 }
 
-fn pump_input<F>(port: u16, token: String, on_frame: F)
+fn pump_input<F>(port: u16, token: String, stop: Arc<AtomicBool>, on_frame: F)
 where
     F: Fn(u8, &str, &[u8]),
 {
     let url = format!("ws://127.0.0.1:{port}/pane-input-bridge");
     let auth = serde_json::json!({ "type": "auth", "token": token }).to_string();
     loop {
+        if stop.load(Ordering::Relaxed) {
+            return; // retired by a respawn — stop reconnecting to a dead port
+        }
         if let Ok((mut ws, _resp)) = connect(&url) {
             if ws.send(Message::Text(auth.clone().into())).is_ok() {
                 // Block reading inbound frames until the socket dies, then reconnect.
