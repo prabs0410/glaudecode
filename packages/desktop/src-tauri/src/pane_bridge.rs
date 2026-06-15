@@ -172,3 +172,54 @@ where
         thread::sleep(Duration::from_secs(2));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // The bridge decoder is the parser for engine -> Rust INPUT/RESIZE frames — hostile input
+    // (a buggy/compromised engine, or a phone that reached the input path) must NEVER panic and must
+    // round-trip a well-formed frame (audit M20).
+    use super::*;
+
+    #[test]
+    fn decode_rejects_truncated_frames() {
+        assert!(decode(&[]).is_none()); // no op byte
+        assert!(decode(&[OP_INPUT]).is_none()); // missing length byte
+        // id_len claims 5 but only 2 id bytes follow → truncated, dropped (not a panic / OOB read)
+        assert!(decode(&[OP_INPUT, 5, b'a', b'b']).is_none());
+    }
+
+    #[test]
+    fn decode_reads_op_paneid_payload() {
+        let buf = [OP_INPUT, 3, b'a', b'b', b'c', b'h', b'i'];
+        let (op, id, payload) = decode(&buf).unwrap();
+        assert_eq!(op, OP_INPUT);
+        assert_eq!(id, "abc");
+        assert_eq!(payload, b"hi");
+    }
+
+    #[test]
+    fn decode_handles_empty_paneid_and_empty_payload() {
+        let (op, id, payload) = decode(&[OP_RESIZE, 0]).unwrap();
+        assert_eq!(op, OP_RESIZE);
+        assert_eq!(id, "");
+        assert!(payload.is_empty());
+    }
+
+    #[test]
+    fn decode_never_panics_on_non_utf8_paneid() {
+        // Invalid UTF-8 in the id → from_utf8_lossy substitutes U+FFFD; the payload still decodes.
+        let buf = [OP_INPUT, 2, 0xff, 0xfe, b'x'];
+        let (_, id, payload) = decode(&buf).unwrap();
+        assert!(id.contains('\u{fffd}'));
+        assert_eq!(payload, b"x");
+    }
+
+    #[test]
+    fn encoded_frame_round_trips_through_decode() {
+        let f = encode_arm("pane-1", true);
+        let (op, id, payload) = decode(&f).unwrap();
+        assert_eq!(op, OP_ARM);
+        assert_eq!(id, "pane-1");
+        assert_eq!(payload, vec![1]);
+    }
+}

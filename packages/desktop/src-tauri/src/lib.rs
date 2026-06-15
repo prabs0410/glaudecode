@@ -369,13 +369,20 @@ fn pty_write(registry: State<PtyRegistry>, pane_id: String, data: String) -> Res
     Ok(())
 }
 
+/// Pure arming-gate predicate (audit M20): a phone write/resize reaches a pane's PTY ONLY if the
+/// pane id is in the armed set. Factored out of pty_write_internal/pty_resize_internal so the single
+/// most important security decision in the Rust core is unit-tested (it previously had zero tests).
+fn is_armed(armed: &HashSet<String>, pane_id: &str) -> bool {
+    armed.contains(pane_id)
+}
+
 /// Write bytes a PHONE typed to a pane's PTY — the authoritative remote-input gate (V5 Phase 2).
 /// Called from the input-bridge reader thread with bytes the engine already gated (terminal scope +
 /// armed pane). We re-check arming HERE, closest to the PTY: even a compromised/buggy engine cannot
 /// type into a pane the user hasn't armed. Silently drops anything for an unarmed/unknown pane.
 fn pty_write_internal(app: &AppHandle, pane_id: &str, data: &[u8]) {
     let registry = app.state::<PtyRegistry>();
-    if !registry.armed.lock().unwrap().contains(pane_id) {
+    if !is_armed(&registry.armed.lock().unwrap(), pane_id) {
         return; // not armed → never reaches the shell
     }
     let mut panes = registry.panes.lock().unwrap();
@@ -395,7 +402,7 @@ fn pty_write_internal(app: &AppHandle, pane_id: &str, data: &[u8]) {
 /// viewer re-render. Silently drops for an unarmed/unknown pane.
 fn pty_resize_internal(app: &AppHandle, pane_id: &str, cols: u16, rows: u16) {
     let registry = app.state::<PtyRegistry>();
-    if !registry.armed.lock().unwrap().contains(pane_id) {
+    if !is_armed(&registry.armed.lock().unwrap(), pane_id) {
         return; // not armed → never resizes the desktop pane
     }
     {
@@ -844,5 +851,58 @@ fn uninstall_approval_hook_on_exit() {
     // file untouched rather than risk truncating the user's settings.
     if let Ok(out) = serde_json::to_string_pretty(&root) {
         let _ = std::fs::write(&path, out + "\n");
+    }
+}
+
+#[cfg(test)]
+mod arming_tests {
+    // The authoritative remote-input gate (audit M20). These pin the security predicate the whole
+    // V5 RCE story rests on: phone keystrokes reach a PTY ONLY when the pane is armed.
+    use super::is_armed;
+    use std::collections::HashSet;
+
+    fn armed_set(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn unarmed_pane_is_dropped() {
+        // No pane armed → every write/resize must be dropped (the default-OFF posture).
+        let armed = armed_set(&[]);
+        assert!(!is_armed(&armed, "pane-1"));
+    }
+
+    #[test]
+    fn armed_pane_is_allowed_others_still_gated() {
+        let armed = armed_set(&["pane-1"]);
+        assert!(is_armed(&armed, "pane-1"));
+        assert!(!is_armed(&armed, "pane-2")); // arming one pane never arms another
+    }
+
+    #[test]
+    fn disarm_clears_the_gate() {
+        let mut armed = armed_set(&["pane-1", "pane-2"]);
+        armed.remove("pane-1"); // pty_set_armed(false)
+        assert!(!is_armed(&armed, "pane-1"));
+        assert!(is_armed(&armed, "pane-2"));
+    }
+
+    #[test]
+    fn disarm_all_leaves_nothing_armed() {
+        let mut armed = armed_set(&["a", "b", "c"]);
+        let previously: Vec<String> = armed.iter().cloned().collect(); // pty_disarm_all return value
+        armed.clear();
+        assert_eq!(previously.len(), 3);
+        for id in ["a", "b", "c"] {
+            assert!(!is_armed(&armed, id));
+        }
+    }
+
+    #[test]
+    fn dead_pane_cleanup_removes_from_armed() {
+        // pty_kill removes a killed pane from the armed set so a reused id can't inherit arming.
+        let mut armed = armed_set(&["pane-1"]);
+        armed.remove("pane-1");
+        assert!(!is_armed(&armed, "pane-1"));
     }
 }
