@@ -438,7 +438,22 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     }
     if (sockets.size === 0) return;
     const frame = frameEvent("approvals", approvals.list(), new Date().toISOString());
-    for (const ws of sockets) ws.send(frame);
+    for (const ws of sockets) {
+      // The /ws approvals stream is the MORE sensitive feed (it carries the tool, the full input —
+      // the exact Bash command + paths — and the sessionId), yet it was only verified at first-message
+      // auth. Re-verify here exactly like termSockets so a revoked/expired device's LIVE approvals
+      // feed is cut within ~2s, not left streaming until it happens to disconnect (audit H3).
+      const tok = ws.data?.token ?? "";
+      if (!pairing.verify(tok).ok) {
+        try {
+          ws.close(4003, "token revoked or expired");
+        } catch {
+          /* already closed */
+        }
+        continue; // never push live tool commands to a de-authorized device
+      }
+      ws.send(frame);
+    }
   }, 2000);
   (broadcast as any)?.unref?.();
 

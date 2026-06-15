@@ -335,6 +335,31 @@ describe("engine server", () => {
     term.close();
   });
 
+  test("revoking a device cuts its LIVE /ws approvals feed via the sweep (audit H3)", async () => {
+    // The /ws approvals stream carries the more sensitive payload (tool + full input + sessionId) yet
+    // was only verified at first-message auth. The 2s sweep must re-verify it like termSockets.
+    const dev = server.pairing.redeem(server.pairing.createPairCode("steer").code, "ws-revoke")!;
+    const ws = await openWs("/ws");
+    let snapshots = 0;
+    ws.onmessage = (e) => {
+      try {
+        if (JSON.parse(String(e.data)).type === "approvals") snapshots++;
+      } catch {
+        /* not JSON */
+      }
+    };
+    const closed = new Promise<number>((resolve) => {
+      ws.onclose = (e) => resolve(e.code);
+    });
+    ws.send(JSON.stringify({ type: "auth", token: dev.token }));
+    await sleep(60);
+    expect(snapshots).toBeGreaterThan(0); // received the live feed while authorized
+
+    server.pairing.revoke(dev.deviceId); // user hits "Revoke"
+    const code = await Promise.race([closed, sleep(2600).then(() => -1)]);
+    expect(code).toBe(4003); // the sweep force-closed the revoked approvals stream (not left streaming)
+  });
+
   test("a terminal+armed RESIZE relays to the Rust sink; a steer RESIZE is dropped (V5 Phase 4)", async () => {
     const paneId = "pane-resize";
     const sink = await openInputSink();
