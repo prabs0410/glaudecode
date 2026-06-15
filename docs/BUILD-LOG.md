@@ -306,13 +306,29 @@ oss-at-scale-strategy,secure-mirror-tech-stack,cross-project-session-view}.md`);
     Linux `systemd-inhibit` slots in at Phase 6/6.2) held while remote is on, released on toggle-off + exit.
   - **5.4** `99e0362` — `docs/design/transport-self-host-relay.md` (you-run-it recipe; plaintext-until-Phase-3)
     + `transport-acl-hardening.md` (deny-by-default tailnet grant, a MUST on shared tailnets); in-app ACL pointer.
-- **Status:** Phases 0–2 + **4 + 5** built (engine **321 tests** green; `cargo check` + `tsc` + `vite
-  build` clean). Outstanding HUMAN-GATEs: Phase 4 real iOS/Android QA; Phase-2 on-device verify; Phase 5
-  needs a real tailnet (MagicDNS+certs for Serve, the PWA install, the ACL snippet on a shared tailnet).
-  **Next in the me-first order: Phase 3 (app-layer E2E crypto).** Then Phase 6 (multi-OS), Phase 7
-  (governance). **Public release** still gates on the Phase 3 independent crypto review + the Phase 7
-  signing trust-root per `docs/goal-v5/README.md`. New `docs/design/*` files → INDEX lines flagged for the
-  founder (`transport-self-host-relay.md`, `transport-acl-hardening.md`).
+- **Phase 3 — App-layer E2E crypto (`feat/v5-crypto`, me-first #3): Story 3.3 done; crypto core GATED.**
+  `986d44d` shipped the deferred Phase-2 security hardenings — fail-closed input-bridge reconnect, a pure
+  `AuditLog` (terminal-auth / arm / INPUT-as-byte-count / revoke-expiry disconnects), and **short-lived
+  rotating `terminal` tokens** (R8: 1h cap + refresh on a live session). The crypto core (SPAKE2 + Noise +
+  AEAD, 3.0–3.2/3.4/3.5) is **deliberately deferred** — it's gated at both ends by human gates the loop
+  can't satisfy (3.0.1 real-device browser-crypto probe blocks the wire work; 3.5 the mandatory independent
+  crypto review blocks shipping) and is the most security-critical code, so it's checklisted, not rushed.
+- **Phase 6 — Multi-OS (`feat/v5-multi-os`, me-first #4, built per the founder's "Phase 6 only" scope).**
+  - **6.1** `2d8f842` — OS-aware `default_shell()` (PowerShell on native Windows, fixing the invalid
+    `/bin/bash` default); **bash** OSC 133/7 via a private `--rcfile` and **fish** via a private
+    `XDG_CONFIG_HOME` conf.d snippet (both source the user's real config, never edit it).
+  - **6.2** `2d8f842` — Linux `systemd-inhibit` keep-awake backend behind the Phase-5 interface (no re-arch).
+  - **6.3** `2d8f842`/`6d62885` — Windows guards: PowerShell/cmd fallback, Tailscale `.exe`/Program-Files
+    discovery in the one candidate list, a one-time "use WSL" note (`os_is_windows`).
+  - **6.4.1** `6d62885` — `docs/design/multi-os-release-checklist.md` (per-OS build+smoke matrix).
+- **Status:** Phases 0–2 + **4 + 5 + 6 + (3 Story 3.3)** built (engine **326 tests** green; macOS `cargo
+  check` + `tsc` + `vite build` clean). The Linux/Windows `cfg` arms compile only on those OSes — verified
+  by the Phase-6 real-OS QA gates. **Outstanding HUMAN-GATEs:** Phase-2 on-device verify; Phase 4 iOS/Android
+  QA; Phase 5 real-tailnet (Serve certs / PWA / ACL); Phase 6 real Linux+Windows+WSL QA + the 6.4.2 parity
+  security review; **Phase 3 crypto core (device probe + the mandatory independent review)**; Phase 7 not
+  started (governance + the signing trust-root). **Public release** still gates on the Phase 3 crypto review
+  + the Phase 7 signing root per `docs/goal-v5/README.md`. New `docs/design/*` → INDEX lines flagged for the
+  founder (`transport-self-host-relay.md`, `transport-acl-hardening.md`, `multi-os-release-checklist.md`).
 
 ---
 
