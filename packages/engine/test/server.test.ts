@@ -433,6 +433,45 @@ describe("engine server", () => {
     t2.close();
   });
 
+  test("oversized INPUT is dropped and RESIZE is clamped to a sane range (audit M2)", async () => {
+    const paneId = "pane-m2";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeArm(paneId, true));
+    await sleep(40);
+
+    const term = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "p")!.token;
+    const t = await openWs("/term-ws");
+    t.send(JSON.stringify({ type: "auth", token: term, paneId }));
+    await sleep(40);
+
+    // Oversized INPUT (> 256 KiB) is dropped — never relayed to the PTY sink.
+    const before = sink.frames.filter((f) => f.type === "input").length;
+    t.send(encodeInput(new Uint8Array(300 * 1024)));
+    await sleep(60);
+    expect(sink.frames.filter((f) => f.type === "input").length).toBe(before);
+
+    // A normal INPUT still relays (the cap never touches real input).
+    t.send(encodeInput(new TextEncoder().encode("ls\r")));
+    await sleep(60);
+    expect(sink.frames.filter((f) => f.type === "input").length).toBe(before + 1);
+
+    // A 0 x 65535 RESIZE is clamped to 1..1000 before it can reach the real PTY.
+    t.send(encodeResize(0, 65535));
+    await sleep(60);
+    const rz = sink.frames.filter((f) => f.type === "resize" && f.paneId === paneId).pop();
+    expect(rz).toBeTruthy();
+    if (rz && rz.type === "resize") {
+      expect(rz.cols).toBe(1);
+      expect(rz.rows).toBe(1000);
+    }
+    sink.ws.close();
+    bridge.close();
+    t.close();
+  });
+
   // Last: this consumes 127.0.0.1's /pair budget. Other tests redeem via server.pairing directly,
   // not the HTTP endpoint, so they're unaffected.
   test("/pair is rate-limited per IP (V5 Phase 0.3)", async () => {

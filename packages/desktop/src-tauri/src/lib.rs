@@ -406,6 +406,10 @@ fn pty_resize_internal(app: &AppHandle, pane_id: &str, cols: u16, rows: u16) {
     if !is_armed(&registry.armed.lock().unwrap(), pane_id) {
         return; // not armed → never resizes the desktop pane
     }
+    // Clamp to a sane terminal size, mirroring the engine (audit M2): even if a malformed RESIZE got
+    // past the engine, a 0x0 / 65535 frame must never reach the real PTY.
+    let cols = cols.clamp(1, 1000);
+    let rows = rows.clamp(1, 1000);
     {
         let panes = registry.panes.lock().unwrap();
         if let Some(pane) = panes.get(pane_id) {

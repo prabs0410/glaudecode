@@ -91,6 +91,12 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     { windowMs: 60_000, max: 2 },
     { windowMs: 3_600_000, max: 12 },
   ]);
+  // Bounds on the RCE channel (audit M2). A per-frame byte cap stops a single absurd INPUT frame; a
+  // per-device token bucket stops a flood of INPUT/RESIZE frames. Real typing/paste stays far under
+  // both (a fast keyboard is tens of frames/sec; a paste is one frame). Dropped frames are audited.
+  const MAX_INPUT_BYTES = 256 * 1024; // 256 KiB — generous for paste, absurd for a keystroke flood
+  const inputLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 1_000, max: 500 }]);
+  const clampDim = (n: number) => Math.max(1, Math.min(1000, Math.trunc(n) || 1)); // 1..1000 cols/rows
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds.
   const endpoint = { port: 0, token };
@@ -316,13 +322,24 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             // live token + armed pane). The Rust core re-checks arming before writing (defense in depth).
             const paneId = gateTerminal(ws);
             if (paneId) {
-              audit.record({ type: "input", deviceId: ws.data.deviceId, paneId, bytes: f.data.length });
-              relayToBridge(ws, encodeBridgeInput(paneId, f.data));
+              // Bounds (M2): drop an oversized frame or one over the per-device rate, and audit it —
+              // never relay it. Real input never trips these; a flood/abuse does.
+              if (f.data.length > MAX_INPUT_BYTES) {
+                audit.record({ type: "input-dropped", deviceId: ws.data.deviceId, paneId, bytes: f.data.length, reason: "oversized" });
+              } else if (!inputLimiter.hit(ws.data.deviceId ?? "anon")) {
+                audit.record({ type: "input-dropped", deviceId: ws.data.deviceId, paneId, reason: "rate-limited" });
+              } else {
+                audit.record({ type: "input", deviceId: ws.data.deviceId, paneId, bytes: f.data.length });
+                relayToBridge(ws, encodeBridgeInput(paneId, f.data));
+              }
             }
           } else if (f.type === "resize") {
-            // RESIZE is RCE-adjacent (mutates the desktop pane) — gated EXACTLY like INPUT (V5 Phase 4).
+            // RESIZE is RCE-adjacent (mutates the desktop pane) — gated EXACTLY like INPUT (V5 Phase 4),
+            // rate-limited, and clamped to 1..1000 so a 0x0 / 65535 frame can't reach the real PTY (M2).
             const paneId = gateTerminal(ws);
-            if (paneId) relayToBridge(ws, encodeBridgeResize(paneId, f.cols, f.rows));
+            if (paneId && inputLimiter.hit(ws.data.deviceId ?? "anon")) {
+              relayToBridge(ws, encodeBridgeResize(paneId, clampDim(f.cols), clampDim(f.rows)));
+            }
           }
         }
         // approvals + inbridge: no inbound client messages to handle.

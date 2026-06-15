@@ -4,7 +4,13 @@
 // in memory + bounded (no token/secret at rest), like the rest of the engine; `now` is injected so
 // it's deterministic under test.
 
-export type AuditEventType = "terminal-auth" | "arm" | "disarm" | "input" | "disconnect";
+export type AuditEventType =
+  | "terminal-auth"
+  | "arm"
+  | "disarm"
+  | "input"
+  | "input-dropped"
+  | "disconnect";
 
 export interface AuditEvent {
   type: AuditEventType;
