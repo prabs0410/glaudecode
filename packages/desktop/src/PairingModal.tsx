@@ -108,7 +108,9 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
       if (remoteOn) {
         // Turn off whichever path is active.
         if (serveUrl) {
-          await invoke("tailscale_serve_stop").catch(() => {});
+          // A FAILED stop leaves the box remotely reachable — let it surface (don't swallow), and
+          // only clear the UI once it actually stops (audit L14).
+          await invoke("tailscale_serve_stop");
           setServeUrl("");
         }
         if (remote?.enabled) setRemote(await disableRemote());
@@ -120,13 +122,21 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
         try {
           const url = await invoke<string>("tailscale_serve_start", { port: ep.port });
           setServeUrl(url);
-        } catch {
+        } catch (serveErr: any) {
           const ip = await invoke<string | null>("tailscale_ip");
           if (!ip) {
             setError("Tailscale not found — is it installed and running on this Mac?");
             return;
           }
           setRemote(await enableRemote(ip));
+          // Don't degrade SILENTLY: tell the user Serve failed and they're on the weaker plain bind
+          // (no TLS / not installable), with the reason (audit M16).
+          setError(
+            "Tailscale Serve unavailable — using a plain tailnet bind (no HTTPS / installable PWA). " +
+              "Enable MagicDNS + HTTPS certificates in your Tailscale admin console to use Serve. (" +
+              String(serveErr?.message ?? serveErr) +
+              ")",
+          );
         }
         await invoke("set_keep_awake", { on: true }).catch(() => {}); // keep the Mac awake while reachable
       }
@@ -148,8 +158,14 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   };
 
   const revoke = async (id: string) => {
-    await revokeDevice(id);
-    await reloadDevices();
+    // Revoking a device is a SECURITY action — a silent failure must not look like success (audit L14).
+    try {
+      await revokeDevice(id);
+      await reloadDevices();
+      setError(null);
+    } catch (e: any) {
+      setError("Couldn't revoke that device: " + String(e?.message ?? e));
+    }
   };
 
   return (
