@@ -20,6 +20,21 @@ import { decodeBridgeFrame } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
+import { TERM_HTML } from "./termPage";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// Engine-vendored xterm.js (self-hosted, no CDN — V5 Phase 1). Read once at startup as UTF-8 text
+// (both are text assets); null if the vendor dir is missing (then it degrades to 503, not a crash).
+function readVendor(name: string): string | null {
+  try {
+    return readFileSync(join(import.meta.dir, "..", "vendor", name), "utf8");
+  } catch {
+    return null;
+  }
+}
+const XTERM_JS = readVendor("xterm.js");
+const XTERM_CSS = readVendor("xterm.css");
 
 /** Refuse to bind a wildcard interface (all interfaces) for the remote listener — only a
  *  specific address (e.g. the Mac's Tailscale IP) is allowed (V5 Phase 0.1). */
@@ -226,6 +241,21 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       }
       if (request.method === "GET" && url.pathname === "/app/manifest.json") {
         return new Response(MANIFEST_JSON, { headers: { "content-type": "application/manifest+json" } });
+      }
+      // The view-only terminal page + its vendored xterm.js (V5 Phase 1). All static; the RPCs/WS
+      // they call are authed. The token lives in sessionStorage, never these URLs.
+      if (request.method === "GET" && url.pathname === "/app/term") {
+        return new Response(TERM_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      if (request.method === "GET" && url.pathname === "/app/xterm.js") {
+        return XTERM_JS
+          ? new Response(XTERM_JS, { headers: { "content-type": "text/javascript; charset=utf-8" } })
+          : new Response("xterm.js not vendored", { status: 503 });
+      }
+      if (request.method === "GET" && url.pathname === "/app/xterm.css") {
+        return XTERM_CSS
+          ? new Response(XTERM_CSS, { headers: { "content-type": "text/css; charset=utf-8" } })
+          : new Response("", { status: 503 });
       }
 
       // Pairing redemption: an unpaired client exchanges a short code (which IS the

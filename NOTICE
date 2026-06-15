@@ -25,3 +25,9 @@ zsh-syntax-highlighting (v0.8.0) — packages/desktop/src-tauri/resources/shell/
   https://github.com/zsh-users/zsh-syntax-highlighting
   Copyright (c) 2010-2021 zsh-syntax-highlighting contributors
   Licensed under the BSD 3-Clause License.
+
+xterm.js (@xterm/xterm v6.0.0) — packages/engine/vendor/xterm.js, xterm.css
+  Terminal emulator for the mobile cockpit (vendored so the engine serves it itself, no CDN).
+  https://github.com/xtermjs/xterm.js
+  Copyright (c) 2017-2024 The xterm.js authors. Copyright (c) 2014-2017 SourceLair, Inc.
+  Licensed under the MIT License.

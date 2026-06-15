@@ -95,6 +95,7 @@ function summarize(input) { const i = input || {}; return i.command || i.file_pa
 
 let approvals = [];
 let sessions = [];
+let panes = [];
 
 function render() {
   $("logout").style.display = "";
@@ -114,7 +115,17 @@ function render() {
         esc(s.title || s.firstPrompt || s.id.slice(0, 8)) + '</div><div class="muted">' + esc(s.gitBranch || "") + "</div></div></div>"
       ).join("")
     : '<div class="empty">No sessions.</div>';
-  $("app").innerHTML = "<h2>Approvals</h2>" + apHtml + "<h2>Sessions</h2>" + sHtml;
+  // Live terminals you can mirror (V5 Phase 1) — plain anchors to the view-only terminal page; the
+  // paneId is URL-encoded + HTML-escaped, no inline handlers (keeps the no-injection posture).
+  const tHtml = panes.length
+    ? panes.map((p) =>
+        '<a class="sess termlink" href="/app/term?pane=' + encodeURIComponent(p.paneId) + '">' +
+        '<span class="state ok"></span><div><div>' + esc(p.title || p.paneId.slice(0, 8)) +
+        '</div><div class="muted">' + esc(p.cols + "x" + p.rows) + "</div></div></a>"
+      ).join("")
+    : '<div class="empty">No live terminals — open a pane in GlaudeCode.</div>';
+  $("app").innerHTML =
+    "<h2>Approvals</h2>" + apHtml + "<h2>Terminals</h2>" + tHtml + "<h2>Sessions</h2>" + sHtml;
 }
 
 async function decide(id, decision) {
@@ -127,6 +138,10 @@ $("app").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-act]");
   if (btn) decide(btn.getAttribute("data-id"), btn.getAttribute("data-act"));
 });
+
+async function refreshPanes() {
+  try { panes = await rpc("listPanes"); render(); } catch (e) {}
+}
 
 async function refreshSessions() {
   if (!DIR) return;
@@ -157,7 +172,9 @@ async function start() {
     render();
     connectWs();
     refreshSessions();
+    refreshPanes();
     setInterval(refreshSessions, 5000);
+    setInterval(refreshPanes, 4000);
   } catch (e) {
     sessionStorage.removeItem("ck.token");
     gate();

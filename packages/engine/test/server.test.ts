@@ -55,6 +55,16 @@ describe("engine server", () => {
     expect(await res.text()).toContain("GlaudeCode Cockpit");
   });
 
+  test("serves the terminal page + vendored xterm.js, no CDN (V5 Phase 1)", async () => {
+    const page = await fetch(`${base()}/app/term`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("GlaudeCode Terminal");
+    const xterm = await fetch(`${base()}/app/xterm.js`);
+    expect(xterm.status).toBe(200);
+    expect(xterm.headers.get("content-type")).toContain("javascript");
+    expect((await xterm.text()).length).toBeGreaterThan(10000); // the real vendored lib, not a stub
+  });
+
   test("/ws without a websocket upgrade returns 426", async () => {
     const res = await fetch(`${base()}/ws`);
     expect(res.status).toBe(426);
