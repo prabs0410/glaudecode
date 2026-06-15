@@ -40,7 +40,15 @@ export const TERM_HTML = `<!doctype html>
     padding: 4px 10px; font-size: 13px; cursor: pointer; }
   .modetab.active { color: #c9d1d9; border-bottom-color: #1f6feb; }
   .ipanel { margin-bottom: 6px; }
-  #panel-smart { display: flex; flex-wrap: wrap; gap: 6px; }
+  #panel-smart { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; }
+  #smart-q, #smart-chips, #smart-snippets { display: flex; flex-wrap: wrap; gap: 6px; }
+  #smart-q { flex-direction: column; }
+  .qtext { color: #c9d1d9; font-size: 13px; }
+  .smartbtn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px 12px; font-size: 13px; cursor: pointer; text-align: left; }
+  .smartbtn:active { background: #30363d; }
+  #smart-q .smartbtn { width: 100%; }
+  .smartbtn .opt-desc { color: #8b949e; font-size: 11px; display: block; margin-top: 2px; }
   #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
@@ -74,7 +82,9 @@ export const TERM_HTML = `<!doctype html>
       </div>
     </div>
     <div id="panel-smart" class="ipanel" style="display:none">
-      <div class="muted" id="smart-empty">No prompt right now — this fills when Claude asks a question.</div>
+      <div id="smart-q"></div>
+      <div id="smart-chips"></div>
+      <div id="smart-snippets"></div>
     </div>
     <!-- Persistent key bar (Mode B): the design mandates it always be reachable to answer a TUI prompt,
          so it stays visible under both tabs rather than hiding behind a third tab. -->
@@ -161,6 +171,43 @@ export const TERM_HTML = `<!doctype html>
       body: JSON.stringify({ method: method, params: params || {} }),
     }).then(function (r) { return r.json(); });
   }
+  // Mode C — the cockpit knows it's Claude Code: poll \`promptState\` and render the live
+  // AskUserQuestion as tappable buttons (selecting option i = down-arrow × i, then Enter). For a
+  // Claude pane paneId === sessionId, so promptState({id: paneId, dir: DIR}) resolves it; a worktree
+  // session in a different cwd won't match (a known follow-up). permissionMode is omitted (undefined).
+  var DIR = "", lastQ = null;
+  function pollPromptState() {
+    if (!canTypeScope || !DIR) return;
+    rpc("promptState", { id: paneId, dir: DIR }).then(function (b) {
+      renderSmartQ((b && b.result) || { askUserQuestion: null });
+    }).catch(function () {});
+  }
+  function renderSmartQ(s) {
+    var el = document.getElementById("smart-q");
+    var q = s.askUserQuestion;
+    var key = q ? q.question + "|" + q.options.map(function (o) { return o.label; }).join("|") : null;
+    if (key === lastQ) return; // unchanged — don't rebuild (so a tap isn't lost mid-poll)
+    lastQ = key;
+    el.innerHTML = "";
+    if (!q || !q.options.length) return;
+    var qd = document.createElement("div"); qd.className = "qtext"; qd.textContent = q.question;
+    el.appendChild(qd);
+    q.options.forEach(function (o, i) {
+      var btn = document.createElement("button"); btn.className = "smartbtn";
+      btn.textContent = o.label; // textContent — never innerHTML — so option text can't inject markup
+      if (o.description) {
+        var d = document.createElement("span"); d.className = "opt-desc"; d.textContent = o.description;
+        btn.appendChild(d);
+      }
+      btn.onclick = function () {
+        var seq = ""; for (var k = 0; k < i; k++) seq += "\\x1b[B"; // down-arrow × index
+        sendText(seq + "\\r");
+        el.innerHTML = ""; lastQ = null; // clear after answering
+      };
+      el.appendChild(btn);
+    });
+  }
+  rpc("defaultDir").then(function (b) { DIR = (b && b.result && b.result.dir) || ""; pollPromptState(); }).catch(function () {});
 
   function setPill(text, cls) {
     var el = document.getElementById("pill");
@@ -283,7 +330,28 @@ export const TERM_HTML = `<!doctype html>
       });
     });
 
-    setInterval(refreshArmed, 3000);
+    // Mode C chips — common one-tap inputs.
+    [["yes", "yes\\r"], ["continue", "continue\\r"], ["Esc", "\\x1b"]].forEach(function (c) {
+      var b = document.createElement("button"); b.className = "smartbtn"; b.textContent = c[0];
+      b.onclick = function () { sendText(c[1]); };
+      document.getElementById("smart-chips").appendChild(b);
+    });
+    // Mode C snippets — one tap inserts a saved prompt (no auto-Enter, so you review then send).
+    rpc("listPrompts").then(function (b) {
+      var list = (b && b.result) || [];
+      var el = document.getElementById("smart-snippets");
+      list.slice(0, 12).forEach(function (p) {
+        var btn = document.createElement("button"); btn.className = "smartbtn"; btn.textContent = "/" + (p.id || "snippet");
+        btn.onclick = function () {
+          rpc("readPrompt", { id: p.id }).then(function (r) {
+            sendText(wrapForPaste((r && r.result && r.result.body) || "")); // Insert (no auto-CR)
+          }).catch(function () {});
+        };
+        el.appendChild(btn);
+      });
+    }).catch(function () {});
+
+    setInterval(function () { refreshArmed(); pollPromptState(); }, 3000);
   }
   updateInputUI();
 
