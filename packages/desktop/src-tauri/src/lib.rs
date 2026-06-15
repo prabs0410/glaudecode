@@ -17,6 +17,8 @@ use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod pane_bridge;
+
 // ---------- PTY registry (Epic A — multi-session orchestration) ----------
 //
 // V1 ran a single PTY. V2 runs many: one pane per Claude Code session (each on
@@ -144,6 +146,7 @@ ZDOTDIR="${_GLAUDE_REAL_ZDOTDIR:-$HOME}"
 fn pty_spawn(
     app: AppHandle,
     registry: State<PtyRegistry>,
+    engine: State<EngineState>,
     pane_id: String,
     cwd: Option<String>,
     cmd: Option<String>,
@@ -215,6 +218,17 @@ fn pty_spawn(
 
     let out_event = format!("pty-output:{pane_id}");
     let exit_event = format!("pty-exit:{pane_id}");
+
+    // Tee this pane to the phone mirror (V5 Phase 1): announce it (META + SIZE) and clone the
+    // bridge sender into the reader thread. Best-effort — if the bridge isn't up, the local
+    // terminal is unaffected.
+    let bridge = engine.bridge.lock().unwrap().clone();
+    if let Some(tx) = &bridge {
+        let title = cmd.clone().unwrap_or_else(|| "shell".to_string());
+        let _ = tx.try_send(pane_bridge::encode_meta(&pane_id, &title));
+        let _ = tx.try_send(pane_bridge::encode_size(&pane_id, cols, rows));
+    }
+
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -222,12 +236,18 @@ fn pty_spawn(
                 Ok(0) => break,
                 Ok(n) => {
                     let _ = app.emit(&out_event, buf[..n].to_vec());
+                    if let Some(tx) = &bridge {
+                        let _ = tx.try_send(pane_bridge::encode_output(&pane_id, &buf[..n]));
+                    }
                 }
                 Err(_) => break,
             }
         }
-        // PTY closed: the child exited (or was killed). Drop its handle so the
+        // PTY closed: the child exited (or was killed). Tell the mirror, drop the handle so the
         // registry doesn't leak, then notify the pane.
+        if let Some(tx) = &bridge {
+            let _ = tx.try_send(pane_bridge::encode_close(&pane_id));
+        }
         app.state::<PtyRegistry>()
             .panes
             .lock()
@@ -253,6 +273,7 @@ fn pty_write(registry: State<PtyRegistry>, pane_id: String, data: String) -> Res
 #[tauri::command]
 fn pty_resize(
     registry: State<PtyRegistry>,
+    engine: State<EngineState>,
     pane_id: String,
     rows: u16,
     cols: u16,
@@ -264,6 +285,10 @@ fn pty_resize(
     pane.master
         .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| e.to_string())?;
+    // Mirror the new size to the phone so its xterm re-renders correctly (V5 Phase 1).
+    if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
+        let _ = tx.try_send(pane_bridge::encode_size(&pane_id, cols, rows));
+    }
     Ok(())
 }
 
@@ -289,6 +314,8 @@ struct EngineEndpoint {
 struct EngineState {
     endpoint: Mutex<Option<EngineEndpoint>>,
     child: Mutex<Option<Child>>,
+    /// Sender into the pane bridge — tees PTY output to the engine for the phone mirror (V5 Phase 1).
+    bridge: Mutex<Option<pane_bridge::BridgeTx>>,
 }
 
 fn engine_entry_path() -> PathBuf {
@@ -326,6 +353,9 @@ fn spawn_engine(state: &EngineState) -> Result<(), String> {
 
     *state.endpoint.lock().unwrap() = Some(endpoint.clone());
     *state.child.lock().unwrap() = Some(child);
+    // Start the pane bridge so PTY output can mirror to phones via the engine (V5 Phase 1). It
+    // connects to this engine's /pane-bridge with the bearer token; PTY reader threads tee into it.
+    *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone()));
     // Each launch gets a fresh port; if the approval hook is installed, refresh its endpoint
     // file so it keeps working across restarts (instead of pointing at the dead old engine).
     refresh_approval_endpoint(&endpoint);
