@@ -34,8 +34,19 @@ const OP_ARM: u8 = 5;
 pub const OP_RESIZE: u8 = 6;
 
 fn frame(op: u8, pane_id: &str, payload: &[u8]) -> Vec<u8> {
-    let id = pane_id.as_bytes();
-    let id = &id[..id.len().min(255)];
+    // Truncate an over-long id at a UTF-8 CHAR boundary, never a raw byte (audit L12) — a raw cut
+    // could split a codepoint and decode to a different string than the engine sees. paneIds are
+    // short ASCII UUIDs in practice, so this never actually fires.
+    let bytes = pane_id.as_bytes();
+    let id = if bytes.len() <= 255 {
+        bytes
+    } else {
+        let mut end = 255;
+        while end > 0 && !pane_id.is_char_boundary(end) {
+            end -= 1;
+        }
+        &bytes[..end]
+    };
     let mut v = Vec::with_capacity(2 + id.len() + payload.len());
     v.push(op);
     v.push(id.len() as u8);
@@ -241,5 +252,18 @@ mod tests {
         assert_eq!(op, OP_ARM);
         assert_eq!(id, "pane-1");
         assert_eq!(payload, vec![1]);
+    }
+
+    #[test]
+    fn frame_truncates_an_overlong_id_at_a_char_boundary(/* audit L12 */) {
+        // 200 × 2-byte 'é' = 400 bytes > 255. A raw cut at 255 would split a codepoint; we must cut
+        // at a boundary so the decoded id is valid UTF-8 (no U+FFFD from a split).
+        let long = "é".repeat(200);
+        let f = encode_meta(&long, "t");
+        let id_len = f[1] as usize;
+        assert!(id_len <= 255 && id_len % 2 == 0); // whole 2-byte chars only
+        let (_, id, _) = decode(&f).unwrap();
+        assert!(!id.contains('\u{fffd}')); // never a split-codepoint replacement char
+        assert!(id.chars().all(|c| c == 'é'));
     }
 }

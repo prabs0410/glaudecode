@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -191,7 +191,12 @@ _glaude_preexec() { printf '\e]133;C\e\\'; }
 _glaude_precmd() { local ec=$?; printf '\e]133;D;%s\e\\' "$ec"; printf '\e]133;A\e\\'; printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-}" "$PWD"; }
 # DEBUG fires before every command; skip it while PROMPT_COMMAND runs so we mark real commands only.
 trap '[ "$BASH_COMMAND" = "$PROMPT_COMMAND" ] || _glaude_preexec' DEBUG
-PROMPT_COMMAND='_glaude_precmd'"${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+# Idempotent: don't prepend _glaude_precmd again if the rcfile is re-sourced (audit L18) — otherwise
+# it duplicates the OSC 133;D markers on every prompt.
+case "$PROMPT_COMMAND" in
+  *_glaude_precmd*) ;;
+  *) PROMPT_COMMAND='_glaude_precmd'"${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac
 "#;
     std::fs::write(&rc, body).ok()?;
     Some(rc.to_string_lossy().into_owned())
@@ -201,29 +206,16 @@ PROMPT_COMMAND='_glaude_precmd'"${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 /// XDG_CONFIG_HOME whose config.fish sources the user's real config, plus a conf.d snippet that
 /// emits the OSC markers via fish's native preexec/postexec events. Returns the XDG_CONFIG_HOME dir;
 /// best-effort. NOTE: behavioral verification is the real-Linux QA gate.
-fn setup_fish_integration() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let xdg = PathBuf::from(&home).join(".glaudecode").join("shell").join("fish-xdg");
-    let fish_dir = xdg.join("fish");
-    std::fs::create_dir_all(fish_dir.join("conf.d")).ok()?;
-    // Load the user's real config first (their real XDG or ~/.config/fish).
-    let real_xdg = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{home}/.config"));
-    let config = format!(
-        "test -f {x}/fish/config.fish; and source {x}/fish/config.fish\n",
-        x = real_xdg
-    );
-    std::fs::write(fish_dir.join("config.fish"), config).ok()?;
-    let snippet = r#"function _glaude_preexec --on-event fish_preexec
-    printf '\e]133;C\e\\'
-end
-function _glaude_postexec --on-event fish_postexec
-    printf '\e]133;D;%s\e\\' $status
-    printf '\e]133;A\e\\'
-    printf '\e]7;file://%s%s\e\\' (hostname) $PWD
-end
-"#;
-    std::fs::write(fish_dir.join("conf.d").join("glaude.fish"), snippet).ok()?;
-    Some(xdg.to_string_lossy().into_owned())
+/// The fish `--init-command` that adds OSC 133/7 markers via fish's native preexec/postexec events.
+/// Injected with `-C` rather than by overriding XDG_CONFIG_HOME (audit L18): the old approach pointed
+/// XDG_CONFIG_HOME at a wrapper dir for the WHOLE process tree, breaking git/gh/nvim/starship config
+/// resolution in every nested command. With `--init-command` the user's real fish config loads
+/// normally and only our session gets the markers.
+fn fish_init_command() -> String {
+    "function _glaude_preexec --on-event fish_preexec; printf '\\e]133;C\\e\\\\'; end; \
+     function _glaude_postexec --on-event fish_postexec; printf '\\e]133;D;%s\\e\\\\' $status; \
+     printf '\\e]133;A\\e\\\\'; printf '\\e]7;file://%s%s\\e\\\\' (hostname) $PWD; end"
+        .to_string()
 }
 
 #[tauri::command]
@@ -292,9 +284,10 @@ fn pty_spawn(
                     }
                 }
                 "fish" => {
-                    if let Some(xdg) = setup_fish_integration() {
-                        b.env("XDG_CONFIG_HOME", &xdg);
-                    }
+                    // -C / --init-command, NOT an XDG override, so nested commands keep their real
+                    // config (audit L18).
+                    b.arg("--init-command");
+                    b.arg(fish_init_command());
                 }
                 _ => {} // PowerShell / cmd (native Windows) + others: plain shell, no OSC integration.
             }
@@ -319,6 +312,9 @@ fn pty_spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    // A fresh pane starts DISARMED — clear any stale entry for a reused id so it can't inherit
+    // arming from a prior pane (audit L7).
+    registry.armed.lock().unwrap().remove(&pane_id);
     let title = cmd.clone().unwrap_or_else(|| "shell".to_string());
     registry.panes.lock().unwrap().insert(
         pane_id.clone(),
@@ -441,6 +437,11 @@ fn pty_set_armed(
     pane_id: String,
     armed: bool,
 ) -> Result<(), String> {
+    // Don't arm a pane that doesn't exist — keep `armed ⊆ live panes` so a phantom id can't sit
+    // "armed" (audit L7). Check panes (lock + release) before touching `armed` — never nested.
+    if armed && !registry.panes.lock().unwrap().contains_key(&pane_id) {
+        return Err(format!("no such pane: {pane_id}"));
+    }
     {
         let mut set = registry.armed.lock().unwrap();
         if armed {
@@ -730,20 +731,27 @@ fn engine_endpoint(state: State<EngineState>) -> Result<EngineEndpoint, String> 
         .ok_or_else(|| "engine not ready".to_string())
 }
 
-/// The nearest git repo root at/above the process cwd, else the cwd itself.
+/// The nearest git repo root at/above the process cwd, else the cwd itself. The result is
+/// process-stable (cwd doesn't change after launch), so cache it in a OnceLock instead of walking the
+/// filesystem on every call (audit L19).
 fn find_project_dir() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut dir = cwd.as_path();
-    loop {
-        if dir.join(".git").exists() {
-            return dir.to_path_buf();
-        }
-        match dir.parent() {
-            Some(p) => dir = p,
-            None => break,
-        }
-    }
-    cwd
+    static PROJECT_DIR: OnceLock<PathBuf> = OnceLock::new();
+    PROJECT_DIR
+        .get_or_init(|| {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let mut dir = cwd.as_path();
+            loop {
+                if dir.join(".git").exists() {
+                    return dir.to_path_buf();
+                }
+                match dir.parent() {
+                    Some(p) => dir = p,
+                    None => break,
+                }
+            }
+            cwd
+        })
+        .clone()
 }
 
 /// The project directory whose sessions the UI should list.
@@ -992,6 +1000,12 @@ pub fn run() {
             app_handle.state::<keep_awake::KeepAwake>().release(); // drop the caffeinate inhibitor
             if let Some(mut child) = app_handle.state::<EngineState>().child.lock().unwrap().take() {
                 let _ = child.kill();
+            }
+            // Kill the PTY children too (audit L6): only the engine child was being killed, so
+            // HUP-ignoring / detached pane processes (claude, nohup …) could orphan on exit.
+            let registry = app_handle.state::<PtyRegistry>();
+            for (_, mut pane) in registry.panes.lock().unwrap().drain() {
+                let _ = pane.child.kill();
             }
         }
     });
