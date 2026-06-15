@@ -6,6 +6,18 @@
 > The design is already researched — each phase cites its source-of-truth design doc; build against it,
 > don't re-research. This README is authoritative; the sibling `phase-*.md` files are reading extracts.
 
+## Build status — automatable scope COMPLETE (2026-06-16)
+
+**All five phases' automatable work is built, committed, and pushed** (Phases 0–2 prior; **4 + 5 + 6 + 7
++ 3 Story 3.3** this run) across the `feat/v5-*` stack (`mobile-ux → transport → crypto → multi-os →
+governance`, ~144 commits, all green: engine 333 tests, tsc, vite build, cargo check). **Everything that
+remains in this goal is HUMAN-GATED and cannot be satisfied autonomously** — see the master checklist
+below: the Phase-3 crypto core (real-device browser-crypto probe **+** the mandatory independent crypto
+review), real iOS/Android + tailnet + Linux/Windows/WSL QA (Phases 4/5/6), and the Phase-7 signing
+trust-root. A multi-agent audit of the built work is recorded in `docs/security/audit-2026-06-15.md`
+(its remediation tracker is the active fix backlog). **The autonomous `/goal` loop has therefore done all
+it can; close it with `/goal clear`** — the goal's terminal state requires the human gates above.
+
 ## Context
 
 GlaudeCode lets you drive your whole Mac terminal + Claude Code from your phone. **Phases 0–2 are done** (security footguns; view-only mirror; remote input with a `terminal` scope + per-pane arming + dual engine/Rust gates; a security review cleared it for personal use over your own Tailscale). This goal is the V5 plan's remaining **Phases 3–7**, decomposed for the loop to execute to completion.
