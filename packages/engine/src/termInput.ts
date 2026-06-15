@@ -6,7 +6,12 @@
  *  auto-submitting each line (e.g. Claude Code reading a multi-line prompt). Single-line text is
  *  returned unchanged. Matches the desktop paste path in `TerminalPane.tsx`. */
 export function wrapForPaste(text: string): string {
-  return text.includes("\n") ? `\x1b[200~${text}\x1b[201~` : text;
+  // Strip any bracketed-paste markers already inside the text BEFORE wrapping. Without this, an
+  // embedded \x1b[201~ ends the paste early and the PTY runs the remainder as live keystrokes —
+  // paste-jacking from a saved prompt file (~/.glaudecode/prompts), the typed textarea, or the
+  // desktop clipboard (audit H4). The byte-identical mirror in termPage.ts must match this exactly.
+  const clean = text.replace(/\x1b\[20[01]~/g, "");
+  return clean.includes("\n") ? `\x1b[200~${clean}\x1b[201~` : clean;
 }
 
 /** Map a printable key to its control byte (Ctrl-<key>), e.g. "c" -> "\x03", "[" -> "\x1b".

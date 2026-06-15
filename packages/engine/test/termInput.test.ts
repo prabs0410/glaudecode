@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { ctrlByte, wrapForPaste } from "../src/termInput";
+import { TERM_HTML } from "../src/termPage";
+
+const E = "\x1b"; // ESC
+/** A wrapped paste must carry NO end-marker except the trailing wrapper — otherwise the PTY ends
+ *  the paste early and runs the remainder as live keystrokes (paste-jacking). */
+function hasInteriorMarker(out: string): boolean {
+  const body =
+    out.startsWith(`${E}[200~`) && out.endsWith(`${E}[201~`) ? out.slice(6, -6) : out;
+  return body.includes(`${E}[201~`) || body.includes(`${E}[200~`);
+}
 
 describe("wrapForPaste (V5 Phase 4)", () => {
   test("single-line text passes through unchanged", () => {
@@ -13,6 +23,56 @@ describe("wrapForPaste (V5 Phase 4)", () => {
   });
   test("trailing newline counts as multi-line", () => {
     expect(wrapForPaste("one\n")).toBe("\x1b[200~one\n\x1b[201~");
+  });
+});
+
+describe("wrapForPaste paste-jacking guard (audit H4)", () => {
+  test("an embedded end-marker cannot terminate the paste early", () => {
+    // Single-line after the marker is stripped → passthrough, no breakout possible.
+    expect(wrapForPaste(`evil${E}[201~rm -rf /`)).toBe("evilrm -rf /");
+    // Multi-line keeps the wrap, but the interior marker is gone.
+    expect(wrapForPaste(`a${E}[201~b\nc`)).toBe(`${E}[200~ab\nc${E}[201~`);
+    expect(wrapForPaste(`${E}[200~x\ny${E}[201~`)).toBe(`${E}[200~x\ny${E}[201~`);
+  });
+
+  test("no input can produce an interior bracketed-paste marker", () => {
+    const battery = [
+      "ls -la",
+      "",
+      "line1\nline2",
+      `evil${E}[201~payload`,
+      `a${E}[200~b\nc${E}[201~d`,
+      `${E}[201~\n${E}[201~`,
+      `multi\nline\nwith${E}[201~break\nout`,
+    ];
+    for (const input of battery) expect(hasInteriorMarker(wrapForPaste(input))).toBe(false);
+  });
+});
+
+// Drift guard: the cockpit term page (termPage.ts) can't import this module — it ships wrapForPaste
+// as a verbatim mirror inside an inline <script>. Extract that mirror from the served HTML and prove
+// it is byte-for-byte equivalent to the engine source over a battery (incl. the H4 scrub).
+describe("termPage wrapForPaste mirrors the engine (audit H4 / no drift)", () => {
+  const m = TERM_HTML.match(/function wrapForPaste\(t\) \{[^}]*\}/);
+  test("the mirror is present in the served page", () => {
+    expect(m).not.toBeNull();
+  });
+  test("the mirror matches the engine for every input", () => {
+    // SAFE eval: the only input is our own compile-time TERM_HTML constant (authored in this repo),
+    // never untrusted data. We eval the extracted function literal because the goal is to prove
+    // BEHAVIORAL (byte-for-byte) equivalence of the served mirror, which a string compare can't.
+    // eslint-disable-next-line no-eval
+    const mirror = eval(`(${m![0]})`) as (t: string) => string;
+    const battery = [
+      "ls -la",
+      "",
+      "x\ny",
+      `evil${E}[201~rm -rf /`,
+      `a${E}[201~b\nc`,
+      `${E}[200~x\ny${E}[201~`,
+      `multi\nline${E}[201~break`,
+    ];
+    for (const input of battery) expect(mirror(input)).toBe(wrapForPaste(input));
   });
 });
 

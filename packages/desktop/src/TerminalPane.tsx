@@ -210,7 +210,9 @@ export function TerminalPane({
       if (mod && e.key.toLowerCase() === "v") {
         void navigator.clipboard
           .readText()
-          .then((t) => t && invoke("pty_write", { paneId, data: `\x1b[200~${t}\x1b[201~` }))
+          // Strip any bracketed-paste markers inside the clipboard before wrapping, so a copied
+          // \x1b[201~ can't end the paste early and run the rest as live keystrokes (audit H4).
+          .then((t) => t && invoke("pty_write", { paneId, data: `\x1b[200~${t.replace(/\x1b\[20[01]~/g, "")}\x1b[201~` }))
           .catch(() => {});
         return false;
       }

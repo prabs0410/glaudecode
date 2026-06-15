@@ -256,7 +256,7 @@ export const TERM_HTML = `<!doctype html>
 
   // Mirror of engine \`termInput.wrapForPaste\` (tested in @glaudecode/engine): multi-line text is
   // bracketed-pasted so the PTY treats it as one paste, never auto-submitting each line.
-  function wrapForPaste(t) { return t.indexOf("\\n") >= 0 ? "\\x1b[200~" + t + "\\x1b[201~" : t; }
+  function wrapForPaste(t) { var c = t.replace(/\\x1b\\[20[01]~/g, ""); return c.indexOf("\\n") >= 0 ? "\\x1b[200~" + c + "\\x1b[201~" : c; }
 
   // Wire the input controls (terminal scope only).
   if (canTypeScope) {
