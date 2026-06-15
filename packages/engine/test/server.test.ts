@@ -128,6 +128,42 @@ describe("engine server", () => {
     expect(outcome).toBe("closed");
   });
 
+  test("/ws redacts approval input for a view device, full payload for steer (audit M1)", async () => {
+    // A view (read-only) device must not receive the tool input (the exact command + paths).
+    server.approvals.submit(
+      { sessionId: "m1-sess", tool: "Bash", input: { command: "git push origin secret-branch" } },
+      { timeoutMs: 5000 },
+    );
+    await sleep(5);
+    const firstFrame = (token: string) =>
+      new Promise<any>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+        const timer = setTimeout(() => reject(new Error("no frame")), 3000);
+        ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token }));
+        ws.onmessage = (e) => {
+          clearTimeout(timer);
+          resolve(JSON.parse(String(e.data)));
+          ws.close();
+        };
+      });
+
+    const viewTok = server.pairing.redeem(server.pairing.createPairCode("view").code, "view-dev")!.token;
+    const viewFrame = await firstFrame(viewTok);
+    const va = viewFrame.payload.find((x: any) => x.sessionId === "m1-sess");
+    expect(va).toBeTruthy();
+    expect(va.tool).toBe("Bash"); // view still SEES an approval is pending…
+    expect(va.input).toBeUndefined(); // …but NEVER the command/paths
+    expect(va.reason).toBeUndefined();
+    expect(va.redacted).toBe(true);
+
+    const steerTok = server.pairing.redeem(server.pairing.createPairCode("steer").code, "steer-dev")!.token;
+    const steerFrame = await firstFrame(steerTok);
+    const sa = steerFrame.payload.find((x: any) => x.sessionId === "m1-sess");
+    expect(sa.input).toEqual({ command: "git push origin secret-branch" }); // steer can act → full payload
+
+    for (const p of server.approvals.list()) server.approvals.resolve(p.id, "deny"); // cleanup
+  });
+
   test("remote.enable refuses a wildcard interface (V5 Phase 0.1)", () => {
     expect(() => server.remote.enable("0.0.0.0")).toThrow(/wildcard/);
     expect(() => server.remote.enable("::")).toThrow(/wildcard/);

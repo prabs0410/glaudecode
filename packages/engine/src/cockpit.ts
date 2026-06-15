@@ -128,14 +128,21 @@ let panes = [];
 
 function render() {
   $("logout").style.display = "";
+  // Only steer+ devices may resolve approvals; a view device sees a REDACTED card (no input/reason)
+  // and NO Allow/Deny buttons (which would only 403). Read scope fresh so a same-load re-pair applies.
+  const canAct = (sessionStorage.getItem("ck.scope") || "view") !== "view";
   const apHtml = approvals.length
     ? approvals.map((a) =>
-        '<div class="card ' + (a.dangerous ? "danger" : "") + '"><div><span class="tool">' + esc(a.tool) + "</span>" +
+        '<div class="card ' + (a.dangerous ? "danger" : "") + '">' +
+        '<div><span class="tool">' + esc(a.tool) + "</span>" +
         (a.dangerous ? '<span class="badge">dangerous</span>' : "") + "</div>" +
-        '<div class="mono">' + esc(summarize(a.input)) + "</div>" +
-        '<div class="muted">' + esc(a.reason || "") + "</div>" +
-        '<div class="row"><button data-act="allow" data-id="' + esc(a.id) + '">Allow</button>' +
-        '<button class="deny" data-act="deny" data-id="' + esc(a.id) + '">Deny</button></div></div>'
+        '<div class="mono">' + esc(a.redacted ? "(input hidden — view-only device)" : summarize(a.input)) + "</div>" +
+        (a.redacted ? "" : '<div class="muted">' + esc(a.reason || "") + "</div>") +
+        (canAct
+          ? '<div class="row"><button data-act="allow" data-id="' + esc(a.id) + '">Allow</button>' +
+            '<button class="deny" data-act="deny" data-id="' + esc(a.id) + '">Deny</button></div>'
+          : "") +
+        "</div>"
       ).join("")
     : '<div class="empty">No pending approvals.</div>';
   const sHtml = sessions.length

@@ -134,6 +134,21 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     const paneId = ws.data.paneId;
     return paneId && paneHub.canInput(paneId) ? paneId : null;
   };
+  // Scope the /ws approvals feed (audit M1). Only steer+ devices — which CAN resolve approvals — get
+  // the full payload. A view (read-only) device gets a REDACTED list: it can still see that an
+  // approval is pending (count, tool, dangerous flag) but never the tool `input` (the exact Bash
+  // command + file paths) or the `reason`, which it has no business reading and can't act on.
+  const approvalsForScope = (scope: string | undefined) => {
+    const list = approvals.list();
+    if (scope === "steer" || scope === "terminal") return list;
+    return list.map((a) => ({
+      id: a.id,
+      sessionId: a.sessionId,
+      tool: a.tool,
+      dangerous: a.dangerous,
+      redacted: true,
+    }));
+  };
   // Forward a gated control frame to the Rust input sink, or FAIL CLOSED: if the sink is down, close
   // the phone socket (4504) so the user isn't typing into a void — the phone reconnects when the
   // bridge is back (Phase 2 deferred LOW / Phase 3 hardening 3.3.1).
@@ -243,7 +258,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
           clearTimeout(ws.data.authTimer);
           if (kind === "approvals") {
             sockets.add(ws);
-            ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
+            ws.send(frameEvent("approvals", approvalsForScope(ws.data.scope), new Date().toISOString()));
           } else if (kind === "inbridge") {
             // The Rust core's input delivery socket — the engine pushes phone keystrokes here.
             inputBridge = ws;
@@ -437,14 +452,15 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       }
     }
     if (sockets.size === 0) return;
-    const frame = frameEvent("approvals", approvals.list(), new Date().toISOString());
+    const at = new Date().toISOString();
     for (const ws of sockets) {
       // The /ws approvals stream is the MORE sensitive feed (it carries the tool, the full input —
       // the exact Bash command + paths — and the sessionId), yet it was only verified at first-message
       // auth. Re-verify here exactly like termSockets so a revoked/expired device's LIVE approvals
       // feed is cut within ~2s, not left streaming until it happens to disconnect (audit H3).
       const tok = ws.data?.token ?? "";
-      if (!pairing.verify(tok).ok) {
+      const v = pairing.verify(tok);
+      if (!v.ok) {
         try {
           ws.close(4003, "token revoked or expired");
         } catch {
@@ -452,7 +468,8 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         }
         continue; // never push live tool commands to a de-authorized device
       }
-      ws.send(frame);
+      // Scope the payload per-socket: a view device gets the redacted list, steer+ the full one (M1).
+      ws.send(frameEvent("approvals", approvalsForScope(v.scope), at));
     }
   }, 2000);
   (broadcast as any)?.unref?.();
