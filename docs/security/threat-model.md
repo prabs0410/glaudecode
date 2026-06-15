@@ -26,7 +26,14 @@ safe for that person, not just for an expert on a private tailnet.
 3. **Scope + arming.** `view < steer < terminal`. Only a `terminal` token may type, and only into a
    pane the desktop has **armed** (default OFF). Enforced at the engine **and** re-checked
    authoritatively in the Rust core before any PTY write.
-4. **OS account / secret storage.** macOS Keychain protects secrets at rest; **Linux/Windows do not
+4. **Instruction files are local-only (soft-RCE boundary).** Writing `CLAUDE.md` / project memory is
+   **soft remote code execution**: a *later* Claude session reads and acts on those instruction files,
+   **bypassing the per-tool approval hook**. So `writeMemory` / `writeProjectInstructions` are
+   **local-bearer-only** — only the desktop, where the user physically is, may author them. A *remote*
+   `steer` device keeps its intended powers (answer approvals, send follow-ups) but **cannot** silently
+   author instruction files. (Trust decision: a paired device you control is trusted, but instruction
+   writes are deliberate, physical-presence-gated actions, not something a remote should do unattended.)
+5. **OS account / secret storage.** macOS Keychain protects secrets at rest; **Linux/Windows do not
    have the same guarantees** — treat those hosts accordingly.
 
 ## Threats and mitigations

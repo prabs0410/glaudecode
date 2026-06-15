@@ -195,7 +195,7 @@ export const VIEW_METHODS = new Set<string>([
 // impossible to do silently; the 7.2.2 test asserts every METHODS member lands in exactly one tier.
 export const STEER_METHODS = new Set<string>([
   "forkSession", "renameSession", "tagSession", "deleteSession", "createWorktree", "removeWorktree",
-  "handoff", "resolveApproval", "setBudget", "writeMemory", "writeProjectInstructions", "reindex",
+  "handoff", "resolveApproval", "setBudget", "reindex",
   "gitStage", "gitCommit", "gitRestore", "gitRevertHunk", "addBookmark", "removeBookmark",
   "setKeybinding", "resetKeybindings", "savePrompt", "deletePrompt", "buildSlashCommand",
 ]);
@@ -215,6 +215,11 @@ export const LOCAL_ONLY_METHODS = new Set<string>([
   // The RCE-channel audit trail (who armed/typed/was-cut, byte counts — never the bytes) is for the
   // local desktop's incident review only; a remote device must never read it (audit M7).
   "auditLog",
+  // Writing CLAUDE.md / memory is SOFT-RCE: a later Claude session executes those instruction files,
+  // bypassing the approval hook. So instruction-file writes are LOCAL-ONLY — only the desktop, where
+  // the user physically is, may author them; a remote steer device cannot (audit I1). Steer keeps its
+  // intended powers (answer approvals, send follow-ups). Documented in docs/security/threat-model.md.
+  "writeMemory", "writeProjectInstructions",
 ]);
 
 /** POSIX shell-quote a path so metacharacters/spaces in it can't break or inject into the

@@ -297,6 +297,9 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("uninstallApprovalHook")).toBe("local");
     expect(methodScope("approvalHookStatus")).toBe("local");
     expect(methodScope("auditLog")).toBe("local"); // RCE-channel audit trail — local incident review only
+    // Instruction-file writes are soft-RCE → local-bearer-only, never a remote steer device (audit I1).
+    expect(methodScope("writeMemory")).toBe("local");
+    expect(methodScope("writeProjectInstructions")).toBe("local");
   });
 
   test("auditLog returns the audit trail and is local-only (audit M7)", async () => {
