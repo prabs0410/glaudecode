@@ -25,6 +25,10 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   const [localUrl, setLocalUrl] = useState<string>("");
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [remote, setRemote] = useState<RemoteInfo | null>(null);
+  // Tailscale Serve URL (https://<node>.ts.net) when Serve is the active path — the engine then
+  // stays localhost-only and Serve proxies it (real TLS → installable PWA). Distinct from `remote`,
+  // which is the plain tailnet-IP bind fallback.
+  const [serveUrl, setServeUrl] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -33,13 +37,15 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void reloadDevices();
     remoteStatus().then(setRemote).catch(() => setRemote(null));
+    invoke<string | null>("tailscale_serve_status").then((u) => setServeUrl(u || "")).catch(() => {});
     engineEndpoint()
       .then((e) => setLocalUrl(`http://localhost:${e.port}/app`))
       .catch(() => setLocalUrl(""));
   }, []);
 
-  // The URL to open on the device: the Tailscale URL when remote is on, else localhost.
-  const cockpitUrl = remote?.enabled && remote.url ? remote.url : localUrl;
+  const remoteOn = !!serveUrl || !!remote?.enabled;
+  // The URL to open on the device: Serve's HTTPS URL (PWA) > the plain tailnet bind > localhost.
+  const cockpitUrl = serveUrl ? `${serveUrl}/app` : remote?.enabled && remote.url ? remote.url : localUrl;
 
   const generate = async () => {
     setError(null);
@@ -54,15 +60,28 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      if (remote?.enabled) {
-        setRemote(await disableRemote());
-      } else {
-        const ip = await invoke<string | null>("tailscale_ip");
-        if (!ip) {
-          setError("Tailscale IP not found — is Tailscale installed and running on this Mac?");
-          return;
+      if (remoteOn) {
+        // Turn off whichever path is active.
+        if (serveUrl) {
+          await invoke("tailscale_serve_stop").catch(() => {});
+          setServeUrl("");
         }
-        setRemote(await enableRemote(ip));
+        if (remote?.enabled) setRemote(await disableRemote());
+      } else {
+        // Prefer Tailscale Serve (real TLS on the MagicDNS name → installable PWA + clean wss). The
+        // engine stays localhost-only; Serve proxies it. Fall back to the plain tailnet bind.
+        const ep = await engineEndpoint();
+        try {
+          const url = await invoke<string>("tailscale_serve_start", { port: ep.port });
+          setServeUrl(url);
+        } catch {
+          const ip = await invoke<string | null>("tailscale_ip");
+          if (!ip) {
+            setError("Tailscale not found — is it installed and running on this Mac?");
+            return;
+          }
+          setRemote(await enableRemote(ip));
+        }
       }
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -96,17 +115,22 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
         {/* Remote access over Tailscale */}
         <div className="pair-remote">
           <label className="pair-scope">
-            <input type="checkbox" checked={!!remote?.enabled} disabled={busy} onChange={() => void toggleRemote()} />
+            <input type="checkbox" checked={remoteOn} disabled={busy} onChange={() => void toggleRemote()} />
             Remote access over Tailscale {busy && <span className="muted-note">…</span>}
           </label>
-          {remote?.enabled ? (
+          {serveUrl ? (
             <div className="muted-note">
-              Reachable on your tailnet only at <code>{remote.hostname}</code>. Disable to stop.
+              On via <strong>Tailscale Serve</strong> (real TLS, installable) at <code>{serveUrl}</code>. Tailnet-only. Disable to stop.
+            </div>
+          ) : remote?.enabled ? (
+            <div className="muted-note">
+              On (plain tailnet bind) at <code>{remote.hostname}</code>. Tip: enable MagicDNS + HTTPS
+              certs in your Tailscale admin console to upgrade to Serve (installable PWA over wss). Disable to stop.
             </div>
           ) : (
             <div className="muted-note">
-              Off — the engine is localhost-only. Turn on to expose the cockpit to your phone via
-              your Tailscale IP (tailnet-only, WireGuard-encrypted).
+              Off — the engine is localhost-only. Turn on to reach the cockpit from your phone over
+              your tailnet (WireGuard-encrypted); prefers Tailscale Serve, falls back to a plain bind.
             </div>
           )}
         </div>
@@ -148,7 +172,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
             )}
-            {!remote?.enabled && (
+            {!remoteOn && (
               <div className="muted-note">
                 Tip: turn on remote access above so the device can reach this URL over Tailscale —
                 otherwise it only works in a browser on this Mac.

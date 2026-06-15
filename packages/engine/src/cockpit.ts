@@ -4,13 +4,26 @@
 // killer feature — ANSWER approval requests. Live approvals arrive over the WebSocket; the
 // session list polls. A full React client sharing packages/ui is a tracked enhancement.
 
+// A self-contained app icon as an SVG data URI (no asset to serve). Real PNG icons for iOS home
+// screen are a real-device-QA follow-up (V5 Phase 5.1.3 — HUMAN-GATE).
+const ICON_SVG =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>" +
+      "<rect width='512' height='512' rx='96' fill='#0d1117'/>" +
+      "<text x='256' y='352' font-size='300' text-anchor='middle' fill='#58a6ff' font-family='ui-monospace,monospace'>G</text></svg>",
+  );
+
 export const MANIFEST_JSON = JSON.stringify({
   name: "GlaudeCode Cockpit",
   short_name: "Cockpit",
+  id: "/app",
   start_url: "/app",
+  scope: "/app",
   display: "standalone",
   background_color: "#0d1117",
   theme_color: "#0d1117",
+  icons: [{ src: ICON_SVG, sizes: "512x512", type: "image/svg+xml", purpose: "any maskable" }],
 });
 
 export const COCKPIT_HTML = `<!doctype html>
@@ -19,6 +32,10 @@ export const COCKPIT_HTML = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Cockpit" />
 <link rel="manifest" href="/app/manifest.json" />
 <title>GlaudeCode Cockpit</title>
 <style>
