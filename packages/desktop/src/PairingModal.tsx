@@ -115,10 +115,21 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
 
         <div className="pair-gen">
           <label className="pair-scope">
-            <input type="checkbox" checked={scope === "steer"} onChange={(e) => setScope(e.currentTarget.checked ? "steer" : "view")} />
-            allow steering (answer approvals)
+            Device access:
+            <select value={scope} onChange={(e) => setScope(e.currentTarget.value as TokenScope)}>
+              <option value="view">View only — watch sessions + terminals (read)</option>
+              <option value="steer">Steer — also answer approvals / send follow-ups</option>
+              <option value="terminal">Terminal — also type into armed panes (full control)</option>
+            </select>
           </label>
-          <button className="act" onClick={() => void generate()}>
+          {scope === "terminal" && (
+            <div className="dock-error" style={{ marginTop: 6 }}>
+              ⚠ Terminal access lets this device run commands on your Mac — this is remote code
+              execution. Only pair a device you personally control. Panes still default to NOT
+              accepting input; you arm each pane explicitly (📱 on its tab), and can disarm all at once.
+            </div>
+          )}
+          <button className="act" onClick={() => void generate()} style={{ marginTop: 6 }}>
             Generate code
           </button>
         </div>

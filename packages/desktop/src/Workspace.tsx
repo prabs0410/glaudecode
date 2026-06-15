@@ -1,9 +1,11 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ITheme } from "@xterm/xterm";
+import { listen } from "@tauri-apps/api/event";
 import { TerminalPane } from "./TerminalPane";
 import { ConflictBanner } from "./ConflictBanner";
 import { MetaAgentPanel } from "./MetaAgentPanel";
 import { Splitter } from "./Splitter";
+import { setPaneArmed, disarmAllPanes } from "./engine";
 
 // A pane is one terminal tab: either a plain shell or a Claude Code session bound to
 // a worktree. For Claude panes `paneId === sessionId` (the uuid we mint and pass to
@@ -81,6 +83,63 @@ export function Workspace({
   const [handoffBusy, setHandoffBusy] = useState(false);
   const dragIdx = useRef<number | null>(null);
 
+  // Remote-input arming (V5 Phase 2). `armed` = panes opted in to phone keystrokes (default none);
+  // `driving` = panes a phone is actively typing into right now (a brief live echo). Arm state is
+  // owned by the Rust core; this mirrors it for the UI. The kill switch disarms everything.
+  const [armed, setArmed] = useState<Set<string>>(new Set());
+  const [driving, setDriving] = useState<Set<string>>(new Set());
+  const driveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const toggleArm = async (paneId: string) => {
+    const next = !armed.has(paneId);
+    try {
+      await setPaneArmed(paneId, next);
+      setArmed((a) => {
+        const n = new Set(a);
+        next ? n.add(paneId) : n.delete(paneId);
+        return n;
+      });
+    } catch {
+      /* command failed — leave UI state unchanged */
+    }
+  };
+
+  const killSwitch = async () => {
+    try {
+      await disarmAllPanes();
+    } finally {
+      setArmed(new Set()); // reflect the disarm even if the call partly failed (fail-safe)
+    }
+  };
+
+  // Flash a "📱 driving" badge on a pane whenever a phone writes to it (pane-remote-input event),
+  // and re-listen as panes come and go. Also prune armed/driving for panes that have closed.
+  const paneIdsKey = panes.map((p) => p.paneId).join(",");
+  useEffect(() => {
+    let alive = true;
+    const unlistens: Array<() => void> = [];
+    for (const p of panes) {
+      void listen(`pane-remote-input:${p.paneId}`, () => {
+        setDriving((d) => new Set(d).add(p.paneId));
+        clearTimeout(driveTimers.current[p.paneId]);
+        driveTimers.current[p.paneId] = setTimeout(() => {
+          setDriving((d) => {
+            const n = new Set(d);
+            n.delete(p.paneId);
+            return n;
+          });
+        }, 1500);
+      }).then((un) => (alive ? unlistens.push(un) : un()));
+    }
+    const ids = new Set(panes.map((p) => p.paneId));
+    setArmed((a) => (([...a].every((id) => ids.has(id))) ? a : new Set([...a].filter((id) => ids.has(id)))));
+    return () => {
+      alive = false;
+      unlistens.forEach((u) => u());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneIdsKey]);
+
   const active = panes.find((p) => p.paneId === activePaneId);
   const handoffTargets =
     active?.kind === "claude"
@@ -141,6 +200,20 @@ export function Workspace({
             >
               <span className={`tab-kind ${p.kind}`} />
               <span className="tab-title">{p.title}</span>
+              <button
+                className={`tab-arm${armed.has(p.paneId) ? " on" : ""}${driving.has(p.paneId) ? " driving" : ""}`}
+                title={
+                  armed.has(p.paneId)
+                    ? "Phone input ALLOWED for this pane — click to disarm"
+                    : "Allow phone (remote) input for this pane — off"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleArm(p.paneId);
+                }}
+              >
+                📱
+              </button>
               {panes.length > 1 && (
                 <button
                   className="tab-close"
@@ -158,6 +231,15 @@ export function Workspace({
         </div>
 
         <div className="tab-new">
+          {armed.size > 0 && (
+            <button
+              className="act danger arm-kill"
+              title="Disarm all panes — immediately stop all phone input"
+              onClick={() => void killSwitch()}
+            >
+              ⛔ Disarm all ({armed.size})
+            </button>
+          )}
           {creating ? (
             <div className="newsession">
               <input

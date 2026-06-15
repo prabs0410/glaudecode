@@ -83,6 +83,7 @@ function gate(msg) {
       if (!res.ok) return gate(body.error || "pairing failed");
       TOKEN = body.token;
       sessionStorage.setItem("ck.token", TOKEN);
+      sessionStorage.setItem("ck.scope", body.scope || "view"); // term page gates input on this
       start();
     } catch (e) {
       gate("could not reach the engine");
@@ -121,7 +122,7 @@ function render() {
     ? panes.map((p) =>
         '<a class="sess termlink" href="/app/term?pane=' + encodeURIComponent(p.paneId) + '">' +
         '<span class="state ok"></span><div><div>' + esc(p.title || p.paneId.slice(0, 8)) +
-        '</div><div class="muted">' + esc(p.cols + "x" + p.rows) + "</div></div></a>"
+        '</div><div class="muted">' + esc(p.cols + "x" + p.rows + (p.armed ? " · armed for input" : "")) + "</div></div></a>"
       ).join("")
     : '<div class="empty">No live terminals — open a pane in GlaudeCode.</div>';
   $("app").innerHTML =

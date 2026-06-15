@@ -1,8 +1,13 @@
-// Cockpit terminal page (V5 Phase 1) — the phone-side consumer of the mirror. A self-contained
-// HTML page that loads the engine-vendored xterm.js (no CDN), attaches to /term-ws with the paired
-// token + paneId, and renders the live pane. VIEW-ONLY for this slice: disableStdin, no keystrokes
-// sent (input arrives in Phase 4). Decodes the termProtocol frames (0x00 OUTPUT, 0x01 SIZE) and
-// sends 0x02 ACK so the engine's flow control can pace us.
+// Cockpit terminal page — the phone-side consumer of the mirror. A self-contained HTML page that
+// loads the engine-vendored xterm.js (no CDN), attaches to /term-ws with the paired token + paneId,
+// and renders the live pane. Decodes the termProtocol frames (0x00 OUTPUT, 0x01 SIZE) and sends
+// 0x02 ACK so the engine's flow control can pace us.
+//
+// V5 Phase 2 adds INPUT (0x03): when this device's token is "terminal" scope AND the pane is armed
+// on the desktop, a bottom input bar appears — a text box (type a line, Enter to send), a key bar
+// (Esc/Tab/^C/arrows), and a raw-keystroke toggle (xterm stdin → live keys). The phone NEVER decides
+// authorization: the engine re-checks terminal scope + arming, and the Rust core re-checks arming at
+// the PTY. The `armed` flag here only drives the UI; it's polled from listPanes.
 
 export const TERM_HTML = `<!doctype html>
 <html lang="en">
@@ -20,20 +25,60 @@ export const TERM_HTML = `<!doctype html>
   #dot { width: 8px; height: 8px; border-radius: 50%; background: #6e7681; display: inline-block; }
   #dot.ok { background: #3fb950; }
   .muted { color: #6e7681; font-size: 12px; }
+  .pill { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: #21262d; color: #8b949e; }
+  .pill.on { background: #12331f; color: #3fb950; }
+  .pill.off { background: #3a2d12; color: #d29922; }
   #term { position: absolute; top: 38px; left: 0; right: 0; bottom: 0; padding: 6px; overflow: auto; }
+  /* Input bar (terminal scope only) */
+  #inputbar { position: fixed; left: 0; right: 0; bottom: 0; background: #11161d;
+    border-top: 1px solid #1f2630; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    display: none; }
+  #inputbar.notarmed { opacity: 0.6; }
+  #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+  #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+  #rawbtn.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  #textrow { display: flex; gap: 6px; }
+  #tin { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px; font: 14px ui-monospace, Menlo, monospace; }
+  #tin:disabled { opacity: 0.5; }
+  #send { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 0 16px; font-size: 14px; cursor: pointer; }
+  #hint { margin-top: 4px; min-height: 14px; }
 </style>
 </head>
 <body>
-  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span></div>
+  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><span id="pill" class="pill"></span></div>
   <div id="term"></div>
+  <div id="inputbar">
+    <div id="keys">
+      <button id="k-esc">Esc</button>
+      <button id="k-tab">Tab</button>
+      <button id="k-ctrlc">^C</button>
+      <button id="k-up">↑</button>
+      <button id="k-down">↓</button>
+      <button id="k-left">←</button>
+      <button id="k-right">→</button>
+      <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
+    </div>
+    <div id="textrow">
+      <input id="tin" placeholder="type a command — Enter to send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <button id="send">Send</button>
+    </div>
+    <div id="hint" class="muted"></div>
+  </div>
 <script src="/app/xterm.js"></script>
 <script>
 (function () {
   var TOKEN = sessionStorage.getItem("ck.token") || "";
+  var SCOPE = sessionStorage.getItem("ck.scope") || "view";
   var paneId = new URLSearchParams(location.search).get("pane") || "";
   if (!TOKEN) { location.href = "/app"; return; }
   document.getElementById("title").textContent = paneId ? paneId.slice(0, 8) : "no pane";
   if (!paneId) return;
+
+  var canTypeScope = SCOPE === "terminal";
+  var armed = false, rawOn = false, ws = null;
 
   var term = new Terminal({
     fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
@@ -42,7 +87,7 @@ export const TERM_HTML = `<!doctype html>
   term.open(document.getElementById("term"));
 
   // Flow control: ACK the cumulative OUTPUT payload bytes we've consumed, debounced.
-  var received = 0, acked = 0, ackTimer = null, ws = null;
+  var received = 0, acked = 0, ackTimer = null;
   function scheduleAck() {
     if (ackTimer) return;
     ackTimer = setTimeout(function () {
@@ -55,12 +100,85 @@ export const TERM_HTML = `<!doctype html>
     }, 250);
   }
 
+  // ---- INPUT (V5 Phase 2). Authorization is enforced server-side; armed here is UI-only. ----
+  function sendInput(bytes) {
+    if (!ws || ws.readyState !== 1 || !canTypeScope || !armed) return;
+    var f = new Uint8Array(1 + bytes.length);
+    f[0] = 3; f.set(bytes, 1);
+    try { ws.send(f); } catch (e) {}
+  }
+  function sendText(s) { sendInput(new TextEncoder().encode(s)); }
+  // Raw keystrokes from xterm (only forwarded while raw mode is on).
+  term.onData(function (d) { if (rawOn) sendText(d); });
+
+  function rpc(method, params) {
+    return fetch("/rpc", {
+      method: "POST",
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+      body: JSON.stringify({ method: method, params: params || {} }),
+    }).then(function (r) { return r.json(); });
+  }
+
+  function setPill(text, cls) {
+    var el = document.getElementById("pill");
+    el.textContent = text;
+    el.className = "pill" + (cls ? " " + cls : "");
+  }
+
+  function updateInputUI() {
+    var bar = document.getElementById("inputbar");
+    if (!canTypeScope) { bar.style.display = "none"; setPill("view-only", ""); return; }
+    bar.style.display = "";
+    bar.className = armed ? "" : "notarmed";
+    document.getElementById("term").style.bottom = "118px";
+    document.getElementById("tin").disabled = !armed;
+    document.getElementById("send").disabled = !armed;
+    document.getElementById("rawbtn").disabled = !armed;
+    document.getElementById("hint").textContent = armed ? "" : "Not armed — tap 📱 on this pane's tab in GlaudeCode to allow input.";
+    setPill(armed ? "armed" : "not armed", armed ? "on" : "off");
+    if (!armed && rawOn) { rawOn = false; term.options.disableStdin = true; document.getElementById("rawbtn").classList.remove("on"); }
+  }
+
+  function refreshArmed() {
+    if (!canTypeScope) { updateInputUI(); return; }
+    rpc("listPanes").then(function (b) {
+      var list = (b && b.result) || [];
+      var me = null;
+      for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) me = list[i];
+      armed = !!(me && me.armed);
+      updateInputUI();
+    }).catch(function () {});
+  }
+
+  // Wire the input controls (terminal scope only).
+  if (canTypeScope) {
+    var tin = document.getElementById("tin");
+    function sendLine() { var v = tin.value; tin.value = ""; sendText(v + "\\r"); tin.focus(); }
+    document.getElementById("send").onclick = sendLine;
+    tin.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sendLine(); } });
+
+    var KEYS = { "k-esc": "\\x1b", "k-tab": "\\t", "k-ctrlc": "\\x03",
+      "k-up": "\\x1b[A", "k-down": "\\x1b[B", "k-left": "\\x1b[D", "k-right": "\\x1b[C" };
+    Object.keys(KEYS).forEach(function (id) {
+      document.getElementById(id).onclick = function () { sendText(KEYS[id]); if (rawOn) term.focus(); };
+    });
+    document.getElementById("rawbtn").onclick = function () {
+      rawOn = !rawOn;
+      term.options.disableStdin = !rawOn;
+      this.classList.toggle("on", rawOn);
+      if (rawOn) term.focus();
+    };
+    setInterval(refreshArmed, 3000);
+  }
+  updateInputUI();
+
   function connect() {
     ws = new WebSocket((location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/term-ws");
     ws.binaryType = "arraybuffer";
     ws.onopen = function () {
       ws.send(JSON.stringify({ type: "auth", token: TOKEN, paneId: paneId }));
       document.getElementById("dot").className = "ok";
+      refreshArmed();
     };
     ws.onclose = function () {
       document.getElementById("dot").className = "";

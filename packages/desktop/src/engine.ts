@@ -397,7 +397,8 @@ export const buildSlashCommand = (dir: string, name: string, body: string) =>
 
 // ---------- Pairing / remote cockpit (Epic G §3.2) ----------
 
-export type TokenScope = "view" | "steer";
+// "terminal" is the RCE-class scope (type into armed panes); never implied by steer (V5 Phase 2).
+export type TokenScope = "view" | "steer" | "terminal";
 export interface PairCode {
   code: string;
   scope: TokenScope;
@@ -429,6 +430,15 @@ export const remoteStatus = () => engineRpc<RemoteInfo>("remoteStatus", {});
 
 /** The engine's localhost endpoint (port + token), for building the cockpit URL. */
 export const engineEndpoint = () => invoke<{ port: number; token: string }>("engine_endpoint");
+
+// ---------- Remote terminal input arming (V5 Phase 2) ----------
+// Per-pane opt-in for phone keystrokes. Default OFF; the Rust core is the authoritative gate.
+
+/** Arm / disarm a single pane for remote (phone) input. */
+export const setPaneArmed = (paneId: string, armed: boolean) =>
+  invoke<void>("pty_set_armed", { paneId, armed });
+/** Kill switch: disarm every pane at once; returns the pane ids that were armed. */
+export const disarmAllPanes = () => invoke<string[]>("pty_disarm_all", {});
 
 // Frontend mirror of @glaudecode/engine's filterSessions. Behavior is verified by
 // that package's tests (test/filter.test.ts); kept in sync deliberately rather than
