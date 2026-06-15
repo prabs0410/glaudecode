@@ -21,6 +21,12 @@ export function scopeSatisfies(held: TokenScope, required: TokenScope): boolean 
   return SCOPE_RANK[held] >= SCOPE_RANK[required];
 }
 
+/** Validate an untrusted scope string before minting (audit L4) — so a client can't pass e.g.
+ *  "Terminal" or garbage and have it cast silently to a non-terminal 24h token / a junk device. */
+export function isTokenScope(s: unknown): s is TokenScope {
+  return s === "view" || s === "steer" || s === "terminal";
+}
+
 /** Generate a pairing code: uppercased hex of `len` chars (V5 Phase 0.3 widened 8→10 — ~16^10
  *  ≈ 1.1e12 keyspace; the rate limiter on /pair is the primary brute-force defense). */
 export function genPairCode(len = 10): string {

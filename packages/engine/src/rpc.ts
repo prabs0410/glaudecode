@@ -32,7 +32,7 @@ import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
 import { KeybindingStore, validateKeys } from "./keybindings";
 import { PromptStore, SlashCommandWriter } from "./prompt";
-import { scopeSatisfies, type PairingService, type TokenScope } from "./pairing";
+import { isTokenScope, scopeSatisfies, type PairingService, type TokenScope } from "./pairing";
 import { SearchIndex } from "./searchIndex";
 import type { PaneInfo } from "./paneHub";
 import type { SessionMessage } from "./types";
@@ -611,9 +611,13 @@ export async function dispatch(
       return { command: await (deps.slashWriter ?? defaultSlashWriter).write(req(p.dir, "dir"), req(p.name, "name"), req(p.body, "body")) };
     case "listSlashCommands":
       return (deps.slashWriter ?? defaultSlashWriter).list(req(p.dir, "dir"));
-    case "createPairCode":
+    case "createPairCode": {
       if (!deps.pairing) throw new Error("pairing unavailable");
-      return deps.pairing.createPairCode((p.scope as TokenScope) ?? "steer");
+      // Validate the client-supplied scope; never silently cast garbage to a scope (audit L4).
+      const scope = p.scope === undefined ? "steer" : p.scope;
+      if (!isTokenScope(scope)) throw new Error(`invalid scope: ${String(scope)}`);
+      return deps.pairing.createPairCode(scope);
+    }
     case "listDevices":
       return deps.pairing?.listDevices() ?? [];
     case "revokeDevice":

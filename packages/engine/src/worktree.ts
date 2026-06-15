@@ -52,6 +52,9 @@ export class WorktreeManager {
 
   /** Create a worktree on a new branch under <repoDir>/.glaudecode/worktrees/<branch>. */
   async createWorktree(repoDir: string, branch: string, path?: string): Promise<string> {
+    // The branch is passed unsanitized to `git worktree add -b` and is reachable by a steer phone,
+    // so reject a leading-dash (flag injection) / ref-format-illegal name before it hits git (L5).
+    if (!isValidBranchName(branch)) throw new Error(`invalid branch name: ${branch}`);
     const target = path ?? `${repoDir}/.glaudecode/worktrees/${sanitizeBranch(branch)}`;
     await git(["worktree", "add", target, "-b", branch], repoDir);
     return target;
@@ -66,4 +69,20 @@ export class WorktreeManager {
 
 function sanitizeBranch(branch: string): string {
   return branch.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+/** A conservative `git check-ref-format`-style guard (audit L5): non-empty, no leading '-' (which
+ *  `git ... -b` would read as a flag), no whitespace or git-illegal chars, no `..`, no trailing
+ *  '/' or '.lock'. git itself enforces the full rules; this rejects the dangerous cases early. */
+export function isValidBranchName(branch: string): boolean {
+  return (
+    branch.length > 0 &&
+    !branch.startsWith("-") &&
+    !branch.startsWith("/") &&
+    !branch.endsWith("/") &&
+    !branch.endsWith(".lock") &&
+    !branch.includes("..") &&
+    !branch.includes("@{") &&
+    !/[\s~^:?*[\\]/.test(branch)
+  );
 }
