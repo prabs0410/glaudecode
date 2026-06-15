@@ -12,6 +12,22 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
+/**
+ * Remove every bracketed-paste marker from clipboard text before we wrap it (audit H4). A SINGLE
+ * replace pass is bypassable: deleting an inner \x1b[201~ can splice its neighbours into a fresh
+ * marker, so we loop to a FIXPOINT — afterwards the string provably contains no 200~/201~ marker and
+ * the wrapped paste can't be broken out of. Mirrors the engine's wrapForPaste scrub.
+ */
+function scrubPasteMarkers(text: string): string {
+  let clean = text;
+  let prev: string;
+  do {
+    prev = clean;
+    clean = clean.replace(/\x1b\[20[01]~/g, "");
+  } while (clean !== prev);
+  return clean;
+}
+
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
 
 // Terminal output is UNTRUSTED — a process can print a path to an executable/script/bundle
@@ -212,7 +228,7 @@ export function TerminalPane({
           .readText()
           // Strip any bracketed-paste markers inside the clipboard before wrapping, so a copied
           // \x1b[201~ can't end the paste early and run the rest as live keystrokes (audit H4).
-          .then((t) => t && invoke("pty_write", { paneId, data: `\x1b[200~${t.replace(/\x1b\[20[01]~/g, "")}\x1b[201~` }))
+          .then((t) => t && invoke("pty_write", { paneId, data: `\x1b[200~${scrubPasteMarkers(t)}\x1b[201~` }))
           .catch(() => {});
         return false;
       }

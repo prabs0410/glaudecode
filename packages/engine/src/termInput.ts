@@ -9,8 +9,16 @@ export function wrapForPaste(text: string): string {
   // Strip any bracketed-paste markers already inside the text BEFORE wrapping. Without this, an
   // embedded \x1b[201~ ends the paste early and the PTY runs the remainder as live keystrokes —
   // paste-jacking from a saved prompt file (~/.glaudecode/prompts), the typed textarea, or the
-  // desktop clipboard (audit H4). The byte-identical mirror in termPage.ts must match this exactly.
-  const clean = text.replace(/\x1b\[20[01]~/g, "");
+  // desktop clipboard (audit H4). A SINGLE pass is bypassable: removing an inner marker can splice
+  // its neighbours into a FRESH marker (e.g. "\x1b[20" + "\x1b[201~" + "1~" -> "\x1b[201~"), so we
+  // loop to a FIXPOINT — after this, `clean` provably contains no 200~/201~ marker. The
+  // byte-identical mirror in termPage.ts must match this exactly.
+  let clean = text;
+  let prev: string;
+  do {
+    prev = clean;
+    clean = clean.replace(/\x1b\[20[01]~/g, "");
+  } while (clean !== prev);
   return clean.includes("\n") ? `\x1b[200~${clean}\x1b[201~` : clean;
 }
 

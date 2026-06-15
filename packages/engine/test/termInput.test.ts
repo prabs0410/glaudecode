@@ -35,6 +35,15 @@ describe("wrapForPaste paste-jacking guard (audit H4)", () => {
     expect(wrapForPaste(`${E}[200~x\ny${E}[201~`)).toBe(`${E}[200~x\ny${E}[201~`);
   });
 
+  test("a SPLICE-reformed end-marker cannot survive (audit H4 fixpoint)", () => {
+    // The adversarial bypass: removing the inner \x1b[201~ leaves "\x1b[20" + "1~" which fuse into a
+    // FRESH \x1b[201~. A single pass leaks it; the fixpoint loop removes it. Output must have NO
+    // interior marker and must NOT be the broken "...head\n\x1b[201~tail\x1b[201~".
+    const out = wrapForPaste(`head\n${E}[20${E}[201~1~tail`);
+    expect(hasInteriorMarker(out)).toBe(false);
+    expect(out).toBe(`${E}[200~head\ntail${E}[201~`);
+  });
+
   test("no input can produce an interior bracketed-paste marker", () => {
     const battery = [
       "ls -la",
@@ -44,6 +53,10 @@ describe("wrapForPaste paste-jacking guard (audit H4)", () => {
       `a${E}[200~b\nc${E}[201~d`,
       `${E}[201~\n${E}[201~`,
       `multi\nline\nwith${E}[201~break\nout`,
+      // Splice-class: a removed marker fuses its neighbours into a new one (one or several layers).
+      `head\n${E}[20${E}[201~1~tail`,
+      `x\n${E}[2${E}[201~01~${E}[201~y`,
+      `${E}[20${E}[20${E}[201~1~1~\nz`,
     ];
     for (const input of battery) expect(hasInteriorMarker(wrapForPaste(input))).toBe(false);
   });
@@ -53,7 +66,9 @@ describe("wrapForPaste paste-jacking guard (audit H4)", () => {
 // as a verbatim mirror inside an inline <script>. Extract that mirror from the served HTML and prove
 // it is byte-for-byte equivalent to the engine source over a battery (incl. the H4 scrub).
 describe("termPage wrapForPaste mirrors the engine (audit H4 / no drift)", () => {
-  const m = TERM_HTML.match(/function wrapForPaste\(t\) \{[^}]*\}/);
+  // The mirror is a single line in the served HTML; greedy `.*` (no newline) captures the whole
+  // function including the inner do-while block (a `[^}]*` stops at the do-block's first `}`).
+  const m = TERM_HTML.match(/function wrapForPaste\(t\) \{.*\}/);
   test("the mirror is present in the served page", () => {
     expect(m).not.toBeNull();
   });
