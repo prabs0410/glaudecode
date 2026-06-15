@@ -84,16 +84,22 @@ fn decode(buf: &[u8]) -> Option<(u8, String, Vec<u8>)> {
 /// Start the bridge: spawn a thread that connects to the engine's /pane-bridge, authenticates with
 /// the engine bearer token, and pumps pre-encoded frames from the returned sender. Reconnects with
 /// a short backoff. Returns the sender (cloned into each PTY reader thread).
-pub fn start(port: u16, token: String) -> BridgeTx {
+pub fn start<F>(port: u16, token: String, on_connect: F) -> BridgeTx
+where
+    F: Fn() -> Vec<Vec<u8>> + Send + 'static,
+{
     let (tx, rx) = sync_channel::<Vec<u8>>(2048);
     thread::Builder::new()
         .name("pane-bridge".into())
-        .spawn(move || pump(port, token, rx))
+        .spawn(move || pump(port, token, rx, on_connect))
         .ok();
     tx
 }
 
-fn pump(port: u16, token: String, rx: Receiver<Vec<u8>>) {
+fn pump<F>(port: u16, token: String, rx: Receiver<Vec<u8>>, on_connect: F)
+where
+    F: Fn() -> Vec<Vec<u8>>,
+{
     let url = format!("ws://127.0.0.1:{port}/pane-bridge");
     let auth = serde_json::json!({ "type": "auth", "token": token }).to_string();
     loop {
@@ -102,8 +108,22 @@ fn pump(port: u16, token: String, rx: Receiver<Vec<u8>>) {
                 if ws.send(Message::Text(auth.clone().into())).is_err() {
                     let _ = ws.close(None);
                 } else {
+                    // Re-sync the engine mirror after every (re)connect: replay META+SIZE+ARM for each
+                    // live pane, so a pane armed BEFORE the blip stays typeable — the engine's input
+                    // gate needs the pane present + armed in its mirror (audit M13).
+                    let mut alive = true;
+                    for frame in on_connect() {
+                        if ws.send(Message::Binary(frame.into())).is_err() {
+                            alive = false;
+                            break;
+                        }
+                    }
                     // Drain frames → WS until the socket dies; then fall through to reconnect.
-                    while let Ok(buf) = rx.recv() {
+                    while alive {
+                        let buf = match rx.recv() {
+                            Ok(b) => b,
+                            Err(_) => break,
+                        };
                         if ws.send(Message::Binary(buf.into())).is_err() {
                             break;
                         }

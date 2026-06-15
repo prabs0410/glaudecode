@@ -35,6 +35,11 @@ struct PaneHandle {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn PtyChild + Send + Sync>,
+    // Last-known meta/size, so the bridge can replay META+SIZE+ARM for every live pane after a
+    // (re)connect and the engine mirror never loses an armed pane on a blip (audit M13).
+    title: String,
+    cols: u16,
+    rows: u16,
 }
 
 #[derive(Default)]
@@ -314,9 +319,10 @@ fn pty_spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    let title = cmd.clone().unwrap_or_else(|| "shell".to_string());
     registry.panes.lock().unwrap().insert(
         pane_id.clone(),
-        PaneHandle { writer, master: pair.master, child },
+        PaneHandle { writer, master: pair.master, child, title: title.clone(), cols, rows },
     );
 
     let out_event = format!("pty-output:{pane_id}");
@@ -327,7 +333,6 @@ fn pty_spawn(
     // terminal is unaffected.
     let bridge = engine.bridge.lock().unwrap().clone();
     if let Some(tx) = &bridge {
-        let title = cmd.clone().unwrap_or_else(|| "shell".to_string());
         let _ = tx.try_send(pane_bridge::encode_meta(&pane_id, &title));
         let _ = tx.try_send(pane_bridge::encode_size(&pane_id, cols, rows));
     }
@@ -412,9 +417,11 @@ fn pty_resize_internal(app: &AppHandle, pane_id: &str, cols: u16, rows: u16) {
     let cols = cols.clamp(1, 1000);
     let rows = rows.clamp(1, 1000);
     {
-        let panes = registry.panes.lock().unwrap();
-        if let Some(pane) = panes.get(pane_id) {
+        let mut panes = registry.panes.lock().unwrap();
+        if let Some(pane) = panes.get_mut(pane_id) {
             let _ = pane.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+            pane.cols = cols; // remember for the M13 reconnect replay
+            pane.rows = rows;
         }
     }
     if let Some(tx) = app.state::<EngineState>().bridge.lock().unwrap().as_ref() {
@@ -496,13 +503,16 @@ fn pty_resize(
     rows: u16,
     cols: u16,
 ) -> Result<(), String> {
-    let panes = registry.panes.lock().unwrap();
+    let mut panes = registry.panes.lock().unwrap();
     let pane = panes
-        .get(&pane_id)
+        .get_mut(&pane_id)
         .ok_or_else(|| format!("no such pane: {pane_id}"))?;
     pane.master
         .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| e.to_string())?;
+    pane.cols = cols; // remember for the M13 reconnect replay
+    pane.rows = rows;
+    drop(panes);
     // Mirror the new size to the phone so its xterm re-renders correctly (V5 Phase 1).
     if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
         let _ = tx.try_send(pane_bridge::encode_size(&pane_id, cols, rows));
@@ -602,7 +612,21 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     *state.child.lock().unwrap() = Some(child);
     // Start the pane bridge so PTY output can mirror to phones via the engine (V5 Phase 1). It
     // connects to this engine's /pane-bridge with the bearer token; PTY reader threads tee into it.
-    *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone()));
+    // The bridge replays META+SIZE+ARM for every live pane on each (re)connect (audit M13). Lock
+    // `armed` first (clone + release), THEN `panes`, so we never nest the two locks (no deadlock).
+    let app_for_resync = app.clone();
+    *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone(), move || {
+        let registry = app_for_resync.state::<PtyRegistry>();
+        let armed: HashSet<String> = registry.armed.lock().unwrap().clone();
+        let panes = registry.panes.lock().unwrap();
+        let mut frames = Vec::with_capacity(panes.len() * 3);
+        for (id, h) in panes.iter() {
+            frames.push(pane_bridge::encode_meta(id, &h.title));
+            frames.push(pane_bridge::encode_size(id, h.cols, h.rows));
+            frames.push(pane_bridge::encode_arm(id, armed.contains(id)));
+        }
+        frames
+    }));
     // Start the INPUT bridge (V5 Phase 2): the engine pushes phone keystrokes back over a second,
     // bearer-only socket; each lands in pty_write_internal, which re-checks arming before the PTY.
     let app_for_input = app.clone();
