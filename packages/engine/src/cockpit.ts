@@ -106,6 +106,14 @@ function gate(msg) {
       gate("could not reach the engine");
     }
   };
+  // QR / "Connect my phone" handoff: a #code=… fragment auto-fills + submits. The code rides in the
+  // FRAGMENT (never the query string), so it isn't logged/Referer-leaked; we strip it after reading.
+  const m = /[#&]code=([^&]+)/.exec(location.hash);
+  if (m) {
+    history.replaceState(null, "", location.pathname + location.search);
+    $("code").value = decodeURIComponent(m[1]).toUpperCase();
+    $("go").click();
+  }
 }
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }

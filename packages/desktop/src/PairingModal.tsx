@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import qrcode from "qrcode-generator";
 import {
   createPairCode,
   disableRemote,
@@ -18,6 +19,19 @@ import {
 // optionally expose the engine over Tailscale so a phone on your tailnet can reach the cockpit.
 // The remote listener binds ONLY your Tailscale IP (never the LAN or public internet); WireGuard
 // encrypts the traffic. List and revoke paired devices. The raw engine token is never shared.
+
+/** A QR data-URL for the "Connect my phone" handoff: the pair code rides in the URL FRAGMENT
+ *  (#code=…) so it never hits server logs / Referer, consistent with token-off-the-query-string. */
+function pairQr(cockpitUrl: string, code: string): string {
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(`${cockpitUrl}#code=${code}`);
+    qr.make();
+    return qr.createDataURL(5, 8);
+  } catch {
+    return "";
+  }
+}
 
 export function PairingModal({ onClose }: { onClose: () => void }) {
   const [scope, setScope] = useState<TokenScope>("steer");
@@ -164,9 +178,17 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
             <div className="muted-note">
               {code.scope} · expires {new Date(code.expiresAt).toLocaleTimeString()}
             </div>
+            {cockpitUrl && pairQr(cockpitUrl, code.code) && (
+              <img
+                className="pair-qr"
+                alt="Scan with your phone to connect"
+                src={pairQr(cockpitUrl, code.code)}
+                style={{ width: 180, height: 180, imageRendering: "pixelated", margin: "8px 0", background: "#fff", borderRadius: 6 }}
+              />
+            )}
             {cockpitUrl && (
               <div className="muted-note pair-url">
-                Open <code>{cockpitUrl}</code> on the device, enter the code.
+                Scan the QR, or open <code>{cockpitUrl}</code> and enter the code.
                 <button className="act mini" onClick={() => void copyUrl()}>
                   {copied ? "copied" : "Copy URL"}
                 </button>
