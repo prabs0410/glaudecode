@@ -561,18 +561,42 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("failed to spawn engine (bun {:?}): {}", entry, e))?;
 
     let stdout = child.stdout.take().ok_or("engine produced no stdout")?;
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .map_err(|e| format!("reading engine handshake: {}", e))?;
+    // Read the {port,token} handshake on a worker thread bounded by a timeout (audit M6): a
+    // wedged/never-printing engine must NOT block app launch forever. The same thread then keeps
+    // draining stdout so the pipe never backs up. The first line (or an error) comes back over a
+    // channel; we give it 10s.
+    let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => {
+                let _ = tx.send(Err("engine closed stdout before the handshake".to_string()));
+                return;
+            }
+            Ok(_) => {
+                let _ = tx.send(Ok(line));
+            }
+            Err(e) => {
+                let _ = tx.send(Err(format!("reading engine handshake: {e}")));
+                return;
+            }
+        }
+        for _ in reader.lines() {} // keep draining so the engine never blocks on a full pipe
+    });
+    let line = match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(l)) => l,
+        Ok(Err(e)) => {
+            let _ = child.kill();
+            return Err(e);
+        }
+        Err(_) => {
+            let _ = child.kill();
+            return Err("engine handshake timed out (10s)".to_string());
+        }
+    };
     let endpoint: EngineEndpoint = serde_json::from_str(line.trim())
         .map_err(|e| format!("bad engine handshake '{}': {}", line.trim(), e))?;
-
-    // Drain the rest of stdout so the pipe never blocks the engine.
-    thread::spawn(move || {
-        for _ in reader.lines() {}
-    });
 
     *state.endpoint.lock().unwrap() = Some(endpoint.clone());
     *state.child.lock().unwrap() = Some(child);
@@ -595,6 +619,43 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     // file so it keeps working across restarts (instead of pointing at the dead old engine).
     refresh_approval_endpoint(&endpoint);
     Ok(())
+}
+
+/// Watchdog for the engine sidecar (audit M6). Without it, a post-handshake engine crash silently
+/// disabled all remote/RPC with no signal (the bridges reconnect-loop forever, RPCs just fail). This
+/// thread polls the child; on exit it emits `engine-exit` (so the WebView can show a banner) and
+/// attempts a BOUNDED respawn. After too many failures it emits `engine-down` and stops, rather than
+/// crash-looping. It also brings the engine up if the initial launch failed (child is None).
+fn supervise_engine(app: AppHandle) {
+    thread::spawn(move || {
+        let mut restarts: u32 = 0;
+        loop {
+            thread::sleep(Duration::from_secs(2));
+            let needs_respawn = {
+                let state = app.state::<EngineState>();
+                let mut guard = state.child.lock().unwrap();
+                match guard.as_mut() {
+                    Some(child) => matches!(child.try_wait(), Ok(Some(_))), // exited
+                    None => true, // initial spawn failed — try to bring it up
+                }
+            };
+            if !needs_respawn {
+                continue;
+            }
+            if restarts >= 5 {
+                let _ = app.emit("engine-down", "engine unavailable — restart GlaudeCode");
+                return; // bounded — never crash-loop
+            }
+            restarts += 1;
+            let _ = app.emit("engine-exit", restarts);
+            match spawn_engine(&app) {
+                Ok(_) => {
+                    let _ = app.emit("engine-respawned", restarts);
+                }
+                Err(e) => eprintln!("[glaudecode] engine respawn failed: {e}"),
+            }
+        }
+    });
 }
 
 /// If the smart-approval hook is installed for the project, rewrite its endpoint file with this
@@ -850,9 +911,12 @@ pub fn run() {
         .manage(EngineState::default())
         .manage(keep_awake::KeepAwake::default())
         .setup(|app| {
-            if let Err(e) = spawn_engine(&app.handle().clone()) {
+            let handle = app.handle().clone();
+            if let Err(e) = spawn_engine(&handle) {
                 eprintln!("[glaudecode] engine sidecar failed: {e}");
+                let _ = handle.emit("engine-start-failed", e);
             }
+            supervise_engine(handle); // watchdog: detect a crash, emit a banner, bounded respawn (M6)
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

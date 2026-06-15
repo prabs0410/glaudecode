@@ -480,6 +480,21 @@ body,
 .rac-kill:hover {
   background: #d13438;
 }
+/* Engine-sidecar lifecycle banner (audit M6) — a crash is no longer silent. */
+.engine-banner {
+  padding: 7px 14px;
+  font-size: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+.engine-banner.warn {
+  background: #3a2d12;
+  color: #e3b341;
+}
+.engine-banner.error {
+  background: #3a1212;
+  color: #ff7b72;
+}
 .wsl-note {
   display: flex;
   align-items: center;
