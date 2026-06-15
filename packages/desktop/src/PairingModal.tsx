@@ -81,6 +81,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
           setServeUrl("");
         }
         if (remote?.enabled) setRemote(await disableRemote());
+        await invoke("set_keep_awake", { on: false }).catch(() => {}); // let the Mac sleep again
       } else {
         // Prefer Tailscale Serve (real TLS on the MagicDNS name → installable PWA + clean wss). The
         // engine stays localhost-only; Serve proxies it. Fall back to the plain tailnet bind.
@@ -96,6 +97,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
           }
           setRemote(await enableRemote(ip));
         }
+        await invoke("set_keep_awake", { on: true }).catch(() => {}); // keep the Mac awake while reachable
       }
     } catch (e: any) {
       setError(String(e?.message ?? e));

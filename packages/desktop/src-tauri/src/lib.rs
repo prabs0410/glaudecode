@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod keep_awake;
 mod pane_bridge;
 
 // ---------- PTY registry (Epic A — multi-session orchestration) ----------
@@ -590,6 +591,18 @@ fn tailscale_serve_start(port: u16) -> Result<String, String> {
     Ok(format!("https://{dns}"))
 }
 
+/// Hold / release the keep-awake inhibitor (V5 Phase 5). The desktop calls this when remote access
+/// is toggled, so the machine stays reachable from a phone while remote is on, and sleeps normally
+/// when it's off. Idempotent + ref-counted in `KeepAwake`.
+#[tauri::command]
+fn set_keep_awake(keep: State<keep_awake::KeepAwake>, on: bool) {
+    if on {
+        keep.acquire();
+    } else {
+        keep.release();
+    }
+}
+
 /// Turn off the Tailscale Serve handler on :443 for this node (V5 Phase 5).
 #[tauri::command]
 fn tailscale_serve_stop() -> Result<(), String> {
@@ -617,6 +630,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(PtyRegistry::default())
         .manage(EngineState::default())
+        .manage(keep_awake::KeepAwake::default())
         .setup(|app| {
             if let Err(e) = spawn_engine(&app.handle().clone()) {
                 eprintln!("[glaudecode] engine sidecar failed: {e}");
@@ -636,7 +650,8 @@ pub fn run() {
             tailscale_dns_name,
             tailscale_serve_start,
             tailscale_serve_stop,
-            tailscale_serve_status
+            tailscale_serve_status,
+            set_keep_awake
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -647,6 +662,7 @@ pub fn run() {
             // behind that gates (and, when the engine is down, denies) tools. Defense in
             // depth — GLAUDECODE_MANAGED scoping already spares non-managed sessions.
             uninstall_approval_hook_on_exit();
+            app_handle.state::<keep_awake::KeepAwake>().release(); // drop the caffeinate inhibitor
             if let Some(mut child) = app_handle.state::<EngineState>().child.lock().unwrap().take() {
                 let _ = child.kill();
             }
