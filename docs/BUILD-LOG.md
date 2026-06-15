@@ -293,11 +293,26 @@ oss-at-scale-strategy,secure-mirror-tech-stack,cross-project-session-view}.md`);
     New `RESIZE` ops (termProtocol 0x04, bridge 0x06) gated by a **shared `gateTerminal`** (identical to the
     INPUT gate) + a created `pty_resize_internal` (authoritative armed re-check); test proves a steer RESIZE
     is dropped. (4.5.2 real-device QA = HUMAN-GATE.)
-- **Status:** Phases 0–2 + **Phase 4** built end-to-end (engine **321 tests** green; Rust `cargo check`
-  clean; `tsc` clean). Phase 4's HUMAN-GATEs (real iOS/Android QA of the key-bar pinning + all three input
-  modes) and Phase-2 on-device verification remain. **Next in the me-first order: Phase 5 (transport &
-  onboarding).** Then Phases 3 (crypto), 6 (multi-OS), 7 (governance). **Public release** still gates on the
-  Phase 3 independent crypto review + the Phase 7 signing trust-root per `docs/goal-v5/README.md`.
+- **Phase 5 — Transport & onboarding (`feat/v5-transport`, me-first #2)** — make the blessed remote path
+  one-scan and installable.
+  - **5.1** `0308459`/`18cc749` — Tailscale **Serve** as the default: a Rust serve lifecycle
+    (`tailscale_serve_start/stop/status` + a single `run_tailscale` candidate-runner) proxies
+    `https://<node>.ts.net:443` → the **localhost** engine, so the engine never opens a second listener
+    (cleaner + more secure than binding the tailnet IP). The remote toggle prefers Serve, falls back to
+    the plain bind; the cockpit manifest gains id/scope + an SVG icon + iOS standalone metas (installable).
+  - **5.2** `d460f77` — QR onboarding: a QR (tiny MIT `qrcode-generator`) encodes `{url}#code=…` in the
+    **fragment** (never logged); the cockpit auto-pairs from `#code=` (same `/pair` rate-limiter, no bypass).
+  - **5.3** `070ee61` — keep-awake: a cross-platform, ref-counted `keep_awake.rs` (macOS `caffeinate`;
+    Linux `systemd-inhibit` slots in at Phase 6/6.2) held while remote is on, released on toggle-off + exit.
+  - **5.4** `99e0362` — `docs/design/transport-self-host-relay.md` (you-run-it recipe; plaintext-until-Phase-3)
+    + `transport-acl-hardening.md` (deny-by-default tailnet grant, a MUST on shared tailnets); in-app ACL pointer.
+- **Status:** Phases 0–2 + **4 + 5** built (engine **321 tests** green; `cargo check` + `tsc` + `vite
+  build` clean). Outstanding HUMAN-GATEs: Phase 4 real iOS/Android QA; Phase-2 on-device verify; Phase 5
+  needs a real tailnet (MagicDNS+certs for Serve, the PWA install, the ACL snippet on a shared tailnet).
+  **Next in the me-first order: Phase 3 (app-layer E2E crypto).** Then Phase 6 (multi-OS), Phase 7
+  (governance). **Public release** still gates on the Phase 3 independent crypto review + the Phase 7
+  signing trust-root per `docs/goal-v5/README.md`. New `docs/design/*` files → INDEX lines flagged for the
+  founder (`transport-self-host-relay.md`, `transport-acl-hardening.md`).
 
 ---
 
