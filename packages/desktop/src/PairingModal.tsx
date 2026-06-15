@@ -49,6 +49,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   // First-run "remote shell is RCE" consent before the first remote bind (V5 Phase 7.5.1).
   const [showConsent, setShowConsent] = useState(false);
   const [showTermConsent, setShowTermConsent] = useState(false);
+  const [keepWarn, setKeepWarn] = useState<string | null>(null);
 
   const reloadDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
   useEffect(() => {
@@ -114,6 +115,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
           setServeUrl("");
         }
         if (remote?.enabled) setRemote(await disableRemote());
+        setKeepWarn(null);
         await invoke("set_keep_awake", { on: false }).catch(() => {}); // let the Mac sleep again
       } else {
         // Prefer Tailscale Serve (real TLS on the MagicDNS name → installable PWA + clean wss). The
@@ -138,7 +140,12 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
               ")",
           );
         }
-        await invoke("set_keep_awake", { on: true }).catch(() => {}); // keep the Mac awake while reachable
+        // Keep the Mac awake while reachable; warn (don't fail the toggle) if the inhibitor can't
+        // start, since the box may then sleep and drop the remote link (audit M19).
+        setKeepWarn(null);
+        await invoke("set_keep_awake", { on: true }).catch((e) =>
+          setKeepWarn("Couldn't keep this Mac awake (" + String(e) + ") — it may sleep and drop the remote link."),
+        );
       }
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -215,6 +222,11 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
             <div className="muted-note">
               ⚠ On a <strong>shared</strong> tailnet, lock the engine to your phone's node —
               see <code>docs/design/transport-acl-hardening.md</code>.
+            </div>
+          )}
+          {keepWarn && (
+            <div className="muted-note" style={{ color: "#e3b341" }}>
+              ⚠ {keepWarn}
             </div>
           )}
         </div>

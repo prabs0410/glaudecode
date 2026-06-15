@@ -896,11 +896,19 @@ async fn tailscale_serve_start(app: AppHandle) -> Result<String, String> {
 /// is toggled, so the machine stays reachable from a phone while remote is on, and sleeps normally
 /// when it's off. Idempotent + ref-counted in `KeepAwake`.
 #[tauri::command]
-fn set_keep_awake(keep: State<keep_awake::KeepAwake>, on: bool) {
-    if on {
-        keep.acquire();
-    } else {
+fn set_keep_awake(app: AppHandle, keep: State<keep_awake::KeepAwake>, on: bool) -> Result<(), String> {
+    if !on {
         keep.release();
+        return Ok(());
+    }
+    match keep.acquire() {
+        Ok(_) => Ok(()), // held, or an expected no-op on a backend-less OS
+        Err(e) => {
+            // Don't fail silently (audit M19): the machine may sleep and drop the remote link.
+            eprintln!("[glaudecode] keep-awake failed: {e}");
+            let _ = app.emit("keep-awake-failed", e.clone());
+            Err(e)
+        }
     }
 }
 

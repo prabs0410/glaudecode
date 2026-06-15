@@ -5,7 +5,8 @@
 //   - Linux  : `systemd-inhibit` — Phase 6 / Story 6.2 fills `spawn_inhibitor` for linux.
 //   - other  : graceful no-op.
 // Idempotent so toggling Serve vs the plain bind doesn't double-acquire. Default = held only while
-// remote is enabled, released otherwise (the founder-decision default).
+// remote is enabled, released otherwise (the founder-decision default). Single-slot (one inhibitor
+// child held at a time), NOT counted — acquire is idempotent rather than nesting.
 
 use std::process::{Child, Command};
 use std::sync::Mutex;
@@ -16,34 +17,50 @@ pub struct KeepAwake {
 }
 
 impl KeepAwake {
-    /// Acquire the inhibitor (no-op if already held, or if the OS backend is a no-op).
-    pub fn acquire(&self) {
+    /// Acquire the inhibitor. Returns Ok(true) when the machine is now held awake, Ok(false) when
+    /// this OS has no backend (an expected no-op), or Err when a backend exists but failed to start —
+    /// so a SILENT failure can't let the box sleep while remote is "on" (audit M19).
+    pub fn acquire(&self) -> Result<bool, String> {
         let mut guard = self.inner.lock().unwrap();
         if guard.is_some() {
-            return;
+            return Ok(true); // already held (idempotent)
         }
-        *guard = spawn_inhibitor();
+        match spawn_inhibitor() {
+            Ok(Some(child)) => {
+                *guard = Some(child);
+                Ok(true)
+            }
+            Ok(None) => Ok(false), // no backend on this OS — intentional no-op
+            Err(e) => Err(e),
+        }
     }
 
-    /// Release the inhibitor (kills the backend child). Safe to call when not held.
+    /// Release the inhibitor (kills + REAPS the backend child). Safe to call when not held.
     pub fn release(&self) {
         if let Some(mut child) = self.inner.lock().unwrap().take() {
             let _ = child.kill();
+            let _ = child.wait(); // reap — without this each toggle cycle leaks a zombie (audit L17)
         }
     }
 }
 
 #[cfg(target_os = "macos")]
-fn spawn_inhibitor() -> Option<Child> {
+fn spawn_inhibitor() -> Result<Option<Child>, String> {
     // -d display, -i idle, -m disk, -s system: prevent sleep; the assertion holds until the child dies.
-    Command::new("caffeinate").arg("-dimsu").spawn().ok()
+    // caffeinate ships with macOS, so a spawn failure here is a real, report-worthy problem.
+    Command::new("caffeinate")
+        .arg("-dimsu")
+        .spawn()
+        .map(Some)
+        .map_err(|e| format!("caffeinate failed to start: {e}"))
 }
 
 #[cfg(target_os = "linux")]
-fn spawn_inhibitor() -> Option<Child> {
+fn spawn_inhibitor() -> Result<Option<Child>, String> {
     // Hold a sleep+idle inhibitor lock for the lifetime of the child (killed on release). On a
-    // non-systemd distro `systemd-inhibit` is absent → spawn fails → graceful no-op (V5 Phase 6.2.1).
-    Command::new("systemd-inhibit")
+    // non-systemd distro `systemd-inhibit` is absent → treat as an expected no-op (Ok(None)), not an
+    // error, so we don't warn on every toggle there (V5 Phase 6.2.1).
+    match Command::new("systemd-inhibit")
         .args([
             "--what=sleep:idle",
             "--why=GlaudeCode remote access",
@@ -52,10 +69,13 @@ fn spawn_inhibitor() -> Option<Child> {
             "infinity",
         ])
         .spawn()
-        .ok()
+    {
+        Ok(child) => Ok(Some(child)),
+        Err(_) => Ok(None), // absent / non-systemd → graceful no-op
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn spawn_inhibitor() -> Option<Child> {
-    None // other OSes (incl. native Windows): keep-awake is a graceful no-op
+fn spawn_inhibitor() -> Result<Option<Child>, String> {
+    Ok(None) // other OSes (incl. native Windows): keep-awake is a graceful no-op
 }
