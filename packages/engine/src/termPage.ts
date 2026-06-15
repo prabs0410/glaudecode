@@ -39,11 +39,16 @@ export const TERM_HTML = `<!doctype html>
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
   #rawbtn.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-  #textrow { display: flex; gap: 6px; }
+  #textrow { display: flex; gap: 6px; align-items: flex-end; }
   #tin { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
-    padding: 10px; font: 14px ui-monospace, Menlo, monospace; }
+    padding: 10px; font: 14px ui-monospace, Menlo, monospace; resize: none; line-height: 1.3;
+    min-height: 20px; max-height: 96px; overflow-y: auto; }
   #tin:disabled { opacity: 0.5; }
-  #send { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 0 16px; font-size: 14px; cursor: pointer; }
+  #insert { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
+    padding: 0 12px; height: 42px; font-size: 13px; cursor: pointer; }
+  #send { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 0 16px;
+    height: 42px; font-size: 14px; cursor: pointer; }
+  #insert:disabled, #send:disabled { opacity: 0.5; }
   #hint { margin-top: 4px; min-height: 14px; }
 </style>
 </head>
@@ -62,7 +67,8 @@ export const TERM_HTML = `<!doctype html>
       <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
     </div>
     <div id="textrow">
-      <input id="tin" placeholder="type a command — Enter to send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <textarea id="tin" rows="1" placeholder="message — Enter to send, Shift+Enter for a newline" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+      <button id="insert" title="Type into the pane without pressing Enter">Insert</button>
       <button id="send">Send</button>
     </div>
     <div id="hint" class="muted"></div>
@@ -132,6 +138,7 @@ export const TERM_HTML = `<!doctype html>
     bar.className = armed ? "" : "notarmed";
     document.getElementById("term").style.bottom = "118px";
     document.getElementById("tin").disabled = !armed;
+    document.getElementById("insert").disabled = !armed;
     document.getElementById("send").disabled = !armed;
     document.getElementById("rawbtn").disabled = !armed;
     document.getElementById("hint").textContent = armed ? "" : "Not armed — tap 📱 on this pane's tab in GlaudeCode to allow input.";
@@ -150,12 +157,29 @@ export const TERM_HTML = `<!doctype html>
     }).catch(function () {});
   }
 
+  // Mirror of engine \`termInput.wrapForPaste\` (tested in @glaudecode/engine): multi-line text is
+  // bracketed-pasted so the PTY treats it as one paste, never auto-submitting each line.
+  function wrapForPaste(t) { return t.indexOf("\\n") >= 0 ? "\\x1b[200~" + t + "\\x1b[201~" : t; }
+
   // Wire the input controls (terminal scope only).
   if (canTypeScope) {
     var tin = document.getElementById("tin");
-    function sendLine() { var v = tin.value; tin.value = ""; sendText(v + "\\r"); tin.focus(); }
-    document.getElementById("send").onclick = sendLine;
-    tin.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sendLine(); } });
+    function autoGrow() { tin.style.height = "auto"; tin.style.height = Math.min(tin.scrollHeight, 96) + "px"; }
+    tin.addEventListener("input", autoGrow);
+    // send(true)  = Send: bracketed-pasted text + Enter (run it).
+    // send(false) = Insert: type into the pane WITHOUT Enter (compose, then use the key bar).
+    function send(withEnter) {
+      var v = tin.value;
+      if (!v) return;
+      tin.value = ""; autoGrow();
+      sendText(wrapForPaste(v) + (withEnter ? "\\r" : ""));
+      tin.focus();
+    }
+    document.getElementById("send").onclick = function () { send(true); };
+    document.getElementById("insert").onclick = function () { send(false); };
+    tin.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(true); } // Shift+Enter = newline
+    });
 
     var KEYS = { "k-esc": "\\x1b", "k-tab": "\\t", "k-ctrlc": "\\x03",
       "k-up": "\\x1b[A", "k-down": "\\x1b[B", "k-left": "\\x1b[D", "k-right": "\\x1b[C" };
