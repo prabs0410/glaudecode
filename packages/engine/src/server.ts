@@ -116,6 +116,16 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // revoked device stops typing (and stops viewing) instead of running until its socket happens to
   // close (Phase 2 security review, finding #1).
   const termSockets = new Set<any>();
+  // Cap concurrent UNAUTHED sockets so an attacker can't exhaust resources by opening sockets that
+  // just sit until the 5s auth timeout (audit L2). Real clients authenticate in their first message.
+  const MAX_UNAUTHED = 64;
+  let unauthedSockets = 0;
+  const dropUnauthed = (ws: any) => {
+    if (ws.data?.unauthedCounted) {
+      ws.data.unauthedCounted = false;
+      unauthedSockets--;
+    }
+  };
   // Coarse, privacy-preserving audit of the RCE channel (V5 Phase 3.3.2): terminal auth, arming
   // changes, INPUT (paneId + byte COUNT, never bytes), and revoke/expiry/link-down disconnects.
   const audit = new AuditLog(() => Date.now());
@@ -220,7 +230,19 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   const serveConfig = {
     websocket: {
       open(ws: any) {
-        // Not authed yet — receive nothing, and auto-close if no valid auth frame arrives soon.
+        // Cap concurrent unauthed sockets (L2): reject immediately when over the limit.
+        if (unauthedSockets >= MAX_UNAUTHED) {
+          try {
+            ws.close(1013, "server busy");
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
+        unauthedSockets++;
+        ws.data.unauthedCounted = true;
+        // Not authed yet — receive nothing, and auto-close if no valid auth frame arrives soon. unref
+        // so this timer never holds the process open at shutdown (L2).
         ws.data.authTimer = setTimeout(() => {
           try {
             ws.close(4001, "auth timeout");
@@ -228,16 +250,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             /* already closed */
           }
         }, 5000);
+        ws.data.authTimer?.unref?.();
       },
       message(ws: any, raw: any) {
         const kind = ws.data.kind;
         if (!ws.data.authed) {
-          let msg: any;
-          try {
-            msg = JSON.parse(String(raw));
-          } catch {
-            return;
-          }
           const close = () => {
             try {
               ws.close(4003, "unauthorized");
@@ -245,6 +262,12 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
               /* already closed */
             }
           };
+          let msg: any;
+          try {
+            msg = JSON.parse(String(raw));
+          } catch {
+            return close(); // a non-JSON pre-auth frame → close, don't sit open until timeout (L11)
+          }
           if (msg?.type !== "auth") return close();
           const tok = String(msg.token ?? "");
           // AUTH BOUNDARY: the pane bridges are the Rust core only → they authenticate with the
@@ -261,12 +284,22 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             ws.data.deviceId = v.deviceId; // for the audit trail
           }
           ws.data.authed = true;
+          dropUnauthed(ws); // now authed — free its unauthed slot (L2)
           clearTimeout(ws.data.authTimer);
           if (kind === "approvals") {
             sockets.add(ws);
             ws.send(frameEvent("approvals", approvalsForScope(ws.data.scope), new Date().toISOString()));
           } else if (kind === "inbridge") {
-            // The Rust core's input delivery socket — the engine pushes phone keystrokes here.
+            // The Rust core's input delivery socket — the engine pushes phone keystrokes here. Close
+            // any stale bridge before replacing it, so a reconnect race can't leak the old socket or
+            // fan frames out to a dead one (audit L11).
+            if (inputBridge && inputBridge !== ws) {
+              try {
+                inputBridge.close(1012, "replaced by a new input bridge");
+              } catch {
+                /* already closed */
+              }
+            }
             inputBridge = ws;
           } else if (kind === "term") {
             const paneId = String(msg.paneId ?? "");
@@ -356,6 +389,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       },
       close(ws: any) {
         clearTimeout(ws.data?.authTimer);
+        dropUnauthed(ws); // free its unauthed slot if it closed before authenticating (L2)
         sockets.delete(ws);
         termSockets.delete(ws);
         if (ws === inputBridge) inputBridge = null; // Rust input sink gone (it reconnects)
