@@ -67,7 +67,7 @@ export const TERM_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><span id="pill" class="pill"></span></div>
+  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><a id="switch" href="#" title="Next terminal">⇄</a><span id="pill" class="pill"></span></div>
   <div id="term"></div>
   <div id="inputbar">
     <div id="modetabs">
@@ -114,7 +114,7 @@ export const TERM_HTML = `<!doctype html>
   if (!paneId) return;
 
   var canTypeScope = SCOPE === "terminal";
-  var armed = false, rawOn = false, ctrlArmed = false, ws = null;
+  var armed = false, rawOn = false, ctrlArmed = false, paused = false, ws = null;
 
   var term = new Terminal({
     fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
@@ -365,7 +365,7 @@ export const TERM_HTML = `<!doctype html>
     };
     ws.onclose = function () {
       document.getElementById("dot").className = "";
-      setTimeout(connect, 2000);
+      if (!paused) setTimeout(connect, 2000); // don't auto-reconnect while backgrounded (detached)
     };
     ws.onmessage = function (ev) {
       var b = new Uint8Array(ev.data);
@@ -383,6 +383,24 @@ export const TERM_HTML = `<!doctype html>
       }
     };
   }
+  // Explicit attach/detach: drop the socket while backgrounded (stop consuming the stream), and
+  // reconnect on return — the engine ring buffer replays the current screen (Phase 1).
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") { paused = true; if (ws) try { ws.close(); } catch (e) {} }
+    else if (paused) { paused = false; connect(); }
+  });
+  // Switch to the next live terminal (detach current, attach next).
+  document.getElementById("switch").onclick = function (e) {
+    e.preventDefault();
+    rpc("listPanes").then(function (b) {
+      var list = (b && b.result) || [];
+      if (list.length < 2) return;
+      var idx = -1;
+      for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) idx = i;
+      location.href = "/app/term?pane=" + encodeURIComponent(list[(idx + 1) % list.length].paneId);
+    }).catch(function () {});
+  };
+
   connect();
 })();
 </script>

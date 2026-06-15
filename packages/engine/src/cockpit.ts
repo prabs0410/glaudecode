@@ -119,11 +119,14 @@ function render() {
   // Live terminals you can mirror (V5 Phase 1) — plain anchors to the view-only terminal page; the
   // paneId is URL-encoded + HTML-escaped, no inline handlers (keeps the no-injection posture).
   const tHtml = panes.length
-    ? panes.map((p) =>
-        '<a class="sess termlink" href="/app/term?pane=' + encodeURIComponent(p.paneId) + '">' +
-        '<span class="state ok"></span><div><div>' + esc(p.title || p.paneId.slice(0, 8)) +
-        '</div><div class="muted">' + esc(p.cols + "x" + p.rows + (p.armed ? " · armed for input" : "")) + "</div></div></a>"
-      ).join("")
+    ? panes.map((p) => {
+        // For a Claude pane paneId === sessionId, so a pending approval/question is for this pane.
+        const waiting = p._waiting || approvals.some((a) => a.sessionId === p.paneId);
+        const badge = waiting ? '<span class="badge">needs you</span>' : "";
+        return '<a class="sess termlink" href="/app/term?pane=' + encodeURIComponent(p.paneId) + '">' +
+          '<span class="state ' + esc(p._state || "ok") + '"></span><div><div>' + esc(p.title || p.paneId.slice(0, 8)) + badge +
+          '</div><div class="muted">' + esc(p.cols + "x" + p.rows + (p.armed ? " · armed for input" : "")) + "</div></div></a>";
+      }).join("")
     : '<div class="empty">No live terminals — open a pane in GlaudeCode.</div>';
   $("app").innerHTML =
     "<h2>Approvals</h2>" + apHtml + "<h2>Terminals</h2>" + tHtml + "<h2>Sessions</h2>" + sHtml;
@@ -141,7 +144,17 @@ $("app").addEventListener("click", (ev) => {
 });
 
 async function refreshPanes() {
-  try { panes = await rpc("listPanes"); render(); } catch (e) {}
+  try {
+    panes = await rpc("listPanes");
+    // Join each pane to its session for a live state dot + a "needs you" badge (capped concurrency).
+    if (DIR) {
+      await Promise.all(panes.slice(0, 12).map(async (p) => {
+        try { p._state = (await rpc("agentState", { id: p.paneId, dir: DIR })).status; } catch (e) {}
+        try { p._waiting = (await rpc("promptState", { id: p.paneId, dir: DIR })).isWaiting; } catch (e) {}
+      }));
+    }
+    render();
+  } catch (e) {}
 }
 
 async function refreshSessions() {
