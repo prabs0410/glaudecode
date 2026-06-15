@@ -39,7 +39,16 @@ interface PaneState {
   ringBytes: number;
   cols: number;
   rows: number;
+  title: string;
   subs: Map<TermSubscriber, SubState>;
+}
+
+/** A pane the cockpit can attach to (for the phone's pane picker — listPanes RPC). */
+export interface PaneInfo {
+  paneId: string;
+  title: string;
+  cols: number;
+  rows: number;
 }
 
 export class PaneHub {
@@ -57,7 +66,7 @@ export class PaneHub {
   private ensure(paneId: string): PaneState {
     let p = this.panes.get(paneId);
     if (!p) {
-      p = { ring: [], ringBytes: 0, cols: 80, rows: 24, subs: new Map() };
+      p = { ring: [], ringBytes: 0, cols: 80, rows: 24, title: "", subs: new Map() };
       this.panes.set(paneId, p);
     }
     return p;
@@ -118,6 +127,21 @@ export class PaneHub {
     if (!p) return;
     for (const sub of p.subs.keys()) sub.close?.();
     this.panes.delete(paneId);
+  }
+
+  /** Human label for a pane (from the bridge META frame) — shown in the cockpit pane picker. */
+  setMeta(paneId: string, title: string): void {
+    this.ensure(paneId).title = title;
+  }
+
+  /** Panes the cockpit can attach to (for the listPanes RPC). */
+  list(): PaneInfo[] {
+    return [...this.panes.entries()].map(([paneId, p]) => ({
+      paneId,
+      title: p.title,
+      cols: p.cols,
+      rows: p.rows,
+    }));
   }
 
   /** Number of live subscribers on a pane (for tests / metrics). */

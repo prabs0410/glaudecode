@@ -15,6 +15,9 @@ import { createRpcHandler, type RemoteControl, type RemoteInfo } from "./rpc";
 import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
+import { PaneHub } from "./paneHub";
+import { decodeBridgeFrame } from "./bridgeProtocol";
+import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
 
@@ -23,6 +26,14 @@ import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
 function isWildcardHost(h: string): boolean {
   const x = h.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
   return x === "" || x === "0.0.0.0" || x === "::" || x === "*" || x === "::0" || x === "0:0:0:0:0:0:0:0";
+}
+
+/** Coerce a WebSocket binary message (Buffer / ArrayBuffer / typed array) to a Uint8Array. */
+function toU8(raw: unknown): Uint8Array | null {
+  if (raw instanceof Uint8Array) return raw;
+  if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
+  if (ArrayBuffer.isView(raw)) return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  return null;
 }
 
 export interface EngineServer {
@@ -70,6 +81,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
 
   // Live cockpit sockets; we push the approvals snapshot to them.
   const sockets = new Set<any>();
+  // Terminal-mirror relay (V5 Phase 1): the Rust core tees pane PTY bytes here over /pane-bridge,
+  // and cockpit phones attach over /term-ws to view them.
+  const paneHub = new PaneHub();
 
   // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
   // shares EVERYTHING with the localhost listener — same handler, token, pairing, sockets — so
@@ -107,7 +121,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     status: () => remoteInfo(),
   };
 
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote });
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub });
 
   // Shared Bun.serve config (websocket + fetch) reused by the localhost and remote listeners.
   const serveConfig = {
@@ -123,31 +137,84 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         }, 5000);
       },
       message(ws: any, raw: any) {
-        if (ws.data.authed) return; // after auth the stream is push-only; ignore client messages
-        let msg: any;
-        try {
-          msg = JSON.parse(String(raw));
-        } catch {
-          return;
-        }
-        // First message must be {type:"auth", token}. ONLY a paired token is accepted here — the
-        // local bearer (the engine's master credential) must never authenticate /ws (Phase 0.2).
-        if (msg?.type === "auth" && pairing.verify(String(msg.token ?? "")).ok) {
+        const kind = ws.data.kind;
+        if (!ws.data.authed) {
+          let msg: any;
+          try {
+            msg = JSON.parse(String(raw));
+          } catch {
+            return;
+          }
+          const close = () => {
+            try {
+              ws.close(4003, "unauthorized");
+            } catch {
+              /* already closed */
+            }
+          };
+          if (msg?.type !== "auth") return close();
+          const tok = String(msg.token ?? "");
+          // AUTH BOUNDARY: the pane-bridge is the Rust core only → it authenticates with the engine
+          // BEARER token (never a paired token), so a paired phone can never reach the PTY ingress,
+          // even on the remote listener. /ws + /term-ws accept PAIRED tokens only (never the bearer).
+          if (kind === "bridge") {
+            if (tok !== token) return close();
+          } else if (!pairing.verify(tok).ok) {
+            return close();
+          }
           ws.data.authed = true;
           clearTimeout(ws.data.authTimer);
-          sockets.add(ws);
-          ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
-        } else {
-          try {
-            ws.close(4003, "unauthorized");
-          } catch {
-            /* already closed */
+          if (kind === "approvals") {
+            sockets.add(ws);
+            ws.send(frameEvent("approvals", approvals.list(), new Date().toISOString()));
+          } else if (kind === "term") {
+            const paneId = String(msg.paneId ?? "");
+            if (!paneId) return close();
+            ws.data.paneId = paneId;
+            const sub = {
+              send: (frame: Uint8Array) => {
+                try {
+                  ws.send(frame);
+                } catch {
+                  /* socket gone */
+                }
+              },
+              close: () => {
+                try {
+                  ws.close(4002, "pane closed");
+                } catch {
+                  /* already closed */
+                }
+              },
+            };
+            ws.data.sub = sub;
+            ws.data.detach = paneHub.attach(paneId, sub);
+          }
+          return;
+        }
+        // Authed:
+        if (kind === "bridge") {
+          const buf = toU8(raw);
+          if (!buf) return;
+          const f = decodeBridgeFrame(buf);
+          if (f.type === "output") paneHub.ingest(f.paneId, f.data);
+          else if (f.type === "size") paneHub.setSize(f.paneId, f.cols, f.rows);
+          else if (f.type === "meta") paneHub.setMeta(f.paneId, f.title);
+          else if (f.type === "close") paneHub.closePane(f.paneId);
+        } else if (kind === "term") {
+          const buf = toU8(raw);
+          if (!buf) return;
+          const f = decodeFrame(buf);
+          if (f.type === "ack" && ws.data.paneId && ws.data.sub) {
+            paneHub.ack(ws.data.paneId, ws.data.sub, f.bytes);
           }
         }
+        // approvals: push-only — ignore any client messages.
       },
       close(ws: any) {
         clearTimeout(ws.data?.authTimer);
         sockets.delete(ws);
+        ws.data?.detach?.(); // detach a term subscriber from its pane
       },
     },
     async fetch(request: Request, srv: any): Promise<Response | undefined> {
@@ -180,12 +247,26 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         return Response.json(tok);
       }
 
+      // Rust-core pane bridge (V5 Phase 1): the Rust core tees pane PTY bytes here. ENGINE-BEARER
+      // only (enforced in websocket.message), so a paired phone can never reach the PTY ingress —
+      // the auth boundary, not the bind, is what protects it.
+      if (url.pathname === "/pane-bridge") {
+        if (srv.upgrade(request, { data: { kind: "bridge", authed: false } })) return undefined;
+        return new Response("expected websocket", { status: 426 });
+      }
+      // Cockpit terminal mirror (V5 Phase 1): a paired token + paneId in the first message attaches
+      // the phone to a pane and streams framed output (view-only).
+      if (url.pathname === "/term-ws") {
+        if (srv.upgrade(request, { data: { kind: "term", authed: false } })) return undefined;
+        return new Response("expected websocket", { status: 426 });
+      }
+
       // WebSocket event stream. The token is NOT in the URL (V5 Phase 0.2 — query strings leak via
       // history/Referer/proxy logs, and the local bearer must never ride on /ws). We upgrade
       // unauthenticated, then require a paired token in the FIRST message (see websocket.message);
       // the socket receives nothing until authed and is closed if it doesn't auth promptly.
       if (url.pathname === "/ws") {
-        if (srv.upgrade(request, { data: { authed: false } })) return undefined;
+        if (srv.upgrade(request, { data: { kind: "approvals", authed: false } })) return undefined;
         return new Response("expected websocket", { status: 426 });
       }
 

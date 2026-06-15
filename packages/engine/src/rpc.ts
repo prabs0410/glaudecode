@@ -32,6 +32,7 @@ import { KeybindingStore, validateKeys } from "./keybindings";
 import { PromptStore, SlashCommandWriter } from "./prompt";
 import type { PairingService, TokenScope } from "./pairing";
 import { SearchIndex } from "./searchIndex";
+import type { PaneInfo } from "./paneHub";
 import type { SessionMessage } from "./types";
 import { mkdir, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
@@ -102,6 +103,7 @@ export type RpcMethod =
   | "enableRemote"
   | "disableRemote"
   | "remoteStatus"
+  | "listPanes"
   | "defaultDir";
 
 const METHODS = new Set<RpcMethod>([
@@ -168,6 +170,7 @@ const METHODS = new Set<RpcMethod>([
   "enableRemote",
   "disableRemote",
   "remoteStatus",
+  "listPanes",
   "defaultDir",
 ]);
 
@@ -180,7 +183,7 @@ const VIEW_METHODS = new Set<string>([
   "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
   "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
   "listPrompts", "readPrompt", "listSlashCommands", "getKeybindings", "metaObservations",
-  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus", "defaultDir",
+  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus", "defaultDir", "listPanes",
 ]);
 const LOCAL_ONLY_METHODS = new Set<string>([
   "createPairCode", "listDevices", "revokeDevice",
@@ -266,6 +269,8 @@ export interface DispatchDeps {
   pairing?: PairingService;
   /** Starts/stops the engine's second (remote) listener — desktop-only (Epic G remote). */
   remoteControl?: RemoteControl;
+  /** Terminal-mirror relay — listPanes reads the panes the cockpit can attach to (V5 Phase 1). */
+  paneHub?: { list(): PaneInfo[] };
 }
 
 /** Snapshot of the remote (non-localhost) listener's state. */
@@ -589,6 +594,9 @@ export async function dispatch(
       return deps.remoteControl.disable();
     case "remoteStatus":
       return deps.remoteControl?.status() ?? { enabled: false, hostname: null, port: 0, url: null };
+    case "listPanes":
+      // The panes the cockpit can mirror (view-only). Empty until the Rust pane-bridge feeds them.
+      return deps.paneHub?.list() ?? [];
     case "defaultDir":
       // The engine sidecar runs in the project directory — the cockpit uses this to list
       // that project's sessions without Tauri.
@@ -624,6 +632,8 @@ export interface RpcHandlerDeps {
   pairing?: PairingService;
   /** Controls the optional remote listener (Epic G remote). */
   remoteControl?: RemoteControl;
+  /** Terminal-mirror relay — for listPanes (V5 Phase 1). */
+  paneHub?: { list(): PaneInfo[] };
   /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
   dispatchDeps?: DispatchDeps;
 }
@@ -727,6 +737,7 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
         endpoint: deps.endpoint,
         pairing: deps.pairing,
         remoteControl: deps.remoteControl,
+        paneHub: deps.paneHub,
         ...deps.dispatchDeps,
       });
       return Response.json({ result });
