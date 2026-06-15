@@ -126,8 +126,9 @@ export function Workspace({
         next ? n.add(paneId) : n.delete(paneId);
         return n;
       });
-    } catch {
-      /* command failed — leave UI state unchanged */
+    } catch (e) {
+      // A silent failure to DISARM is the dangerous direction — surface it (audit L1).
+      setError("Couldn't change arm state: " + String((e as Error)?.message ?? e));
     }
   };
 
@@ -169,9 +170,13 @@ export function Workspace({
     }
     const ids = new Set(panes.map((p) => p.paneId));
     setArmed((a) => (([...a].every((id) => ids.has(id))) ? a : new Set([...a].filter((id) => ids.has(id)))));
+    const timers = driveTimers.current;
     return () => {
       alive = false;
       unlistens.forEach((u) => u());
+      // Clear every pending drive-echo timer (audit L8) — otherwise they fire setDriving after the
+      // effect tears down (a leak + a setState-after-unmount on the last unmount).
+      for (const id of Object.keys(timers)) clearTimeout(timers[id]);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneIdsKey]);
@@ -238,6 +243,12 @@ export function Workspace({
               <span className="tab-title">{p.title}</span>
               <button
                 className={`tab-arm${armed.has(p.paneId) ? " on" : ""}${driving.has(p.paneId) ? " driving" : ""}`}
+                aria-pressed={armed.has(p.paneId)}
+                aria-label={
+                  armed.has(p.paneId)
+                    ? "Phone input allowed for this pane — click to disarm"
+                    : "Allow phone (remote) input for this pane — currently off"
+                }
                 title={
                   armed.has(p.paneId)
                     ? "Phone input ALLOWED for this pane — click to disarm"
@@ -248,7 +259,8 @@ export function Workspace({
                   void toggleArm(p.paneId);
                 }}
               >
-                📱
+                {/* Non-color armed cue (audit L15): a lock glyph in addition to the colored ring. */}
+                {armed.has(p.paneId) ? "📱🔓" : "📱"}
               </button>
               {panes.length > 1 && (
                 <button

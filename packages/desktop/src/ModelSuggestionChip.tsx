@@ -44,8 +44,11 @@ export function ModelSuggestionChip({ sessionId, dir, isLive }: Props) {
 
   const apply = () => {
     if (!isLive || !sessionId) return;
-    // Type the command in; the user reviews and presses Enter (no auto-submit).
-    void invoke("pty_write", { paneId: sessionId, data: `/model ${HAIKU} ` });
+    // Type the command in; the user reviews and presses Enter (no auto-submit). Catch so a failed
+    // write isn't an unhandled rejection (audit L13).
+    void invoke("pty_write", { paneId: sessionId, data: `/model ${HAIKU} ` }).catch((e) =>
+      console.error("[glaudecode] model-suggestion insert failed:", e),
+    );
   };
 
   return (

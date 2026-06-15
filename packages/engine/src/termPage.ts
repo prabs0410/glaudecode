@@ -35,6 +35,11 @@ export const TERM_HTML = `<!doctype html>
     border-top: 1px solid #1f2630; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     display: none; }
   #inputbar.notarmed { opacity: 0.6; }
+  /* When not armed, the action buttons (key bar, chips, snippets, smart answers) are disabled so they
+     don't silently no-op — only the mode tabs stay clickable (audit L16). */
+  #inputbar.notarmed #keys button, #inputbar.notarmed #rawbtn,
+  #inputbar.notarmed #smart-chips button, #inputbar.notarmed #smart-snippets button,
+  #inputbar.notarmed #smart-q button, #inputbar.notarmed #k-size { opacity: 0.4; pointer-events: none; }
   #modetabs { display: flex; gap: 4px; margin-bottom: 6px; }
   .modetab { background: transparent; color: #8b949e; border: none; border-bottom: 2px solid transparent;
     padding: 4px 10px; font-size: 13px; cursor: pointer; }
@@ -285,7 +290,12 @@ export const TERM_HTML = `<!doctype html>
     document.getElementById("rawbtn").disabled = !armed;
     document.getElementById("hint").textContent = armed ? "" : (connOk ? "Not armed — tap 📱 on this pane's tab in GlaudeCode to allow input." : "Reconnecting…");
     setPill(armed ? "armed" : "not armed", armed ? "on" : "off");
-    if (!armed && rawOn) { rawOn = false; term.options.disableStdin = true; document.getElementById("rawbtn").classList.remove("on"); }
+    if (!armed) {
+      // Reset transient input modes on disarm so they don't silently persist (audit L16).
+      if (rawOn) { rawOn = false; term.options.disableStdin = true; document.getElementById("rawbtn").classList.remove("on"); }
+      if (ctrlArmed) setCtrl(false); // drop sticky Ctrl
+      if (sizeOn) { sizeOn = false; var sb = document.getElementById("k-size"); if (sb) sb.classList.remove("on"); } // release "size taken"
+    }
   }
 
   function refreshArmed() {

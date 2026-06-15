@@ -407,12 +407,12 @@ body,
 .tab-arm {
   background: transparent;
   border: none;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
   padding: 0 2px;
   border-radius: 3px;
-  opacity: 0.35;
+  opacity: 0.55; /* raised from 0.35 for discoverability/contrast (audit L15) */
   filter: grayscale(1);
 }
 .tab-arm:hover {

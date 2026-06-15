@@ -569,9 +569,10 @@ export default function App() {
           onClose={() => setPromptsOpen(false)}
           activeIsClaude={panes.find((p) => p.paneId === activePaneId)?.kind === "claude"}
           onInsert={(text) => {
-            // Guard in case the active pane changed while the modal was open (V4-E3).
+            // Guard in case the active pane changed while the modal was open (V4-E3). Return the
+            // invoke promise so the modal only closes on a successful insert (audit L13).
             if (panes.find((p) => p.paneId === activePaneId)?.kind !== "claude") return;
-            void invoke("pty_write", { paneId: activePaneId, data: text });
+            return invoke<void>("pty_write", { paneId: activePaneId, data: text });
           }}
         />
       )}

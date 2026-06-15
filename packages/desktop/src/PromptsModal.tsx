@@ -34,7 +34,7 @@ function vars(body: string): string[] {
 interface Props {
   dir: string | null;
   onClose: () => void;
-  onInsert: (text: string) => void;
+  onInsert: (text: string) => void | Promise<void>;
   /** Whether the active pane is a Claude session — "Use → pane" is disabled otherwise (V4-E3),
    *  so a natural-language prompt is never typed into a shell where it would run as commands. */
   activeIsClaude: boolean;
@@ -71,14 +71,19 @@ export function PromptsModal({ dir, onClose, onInsert, activeIsClaude }: Props) 
     await reload();
   };
 
-  const use = () => {
+  const use = async () => {
     const { text, missing } = fill(body, values);
     if (missing.length) {
       setStatus(`Fill: ${missing.join(", ")}`);
       return;
     }
-    onInsert(text);
-    onClose();
+    // Only close on a SUCCESSFUL insert (audit L13) — a failed pty_write must not look like it worked.
+    try {
+      await onInsert(text);
+      onClose();
+    } catch (e) {
+      setStatus("Insert failed: " + String((e as Error)?.message ?? e));
+    }
   };
 
   const makeSlash = async () => {
@@ -157,7 +162,7 @@ export function PromptsModal({ dir, onClose, onInsert, activeIsClaude }: Props) 
                 className="act"
                 disabled={!body || !activeIsClaude}
                 title={activeIsClaude ? "Type into the active Claude pane" : "Focus a Claude session pane first"}
-                onClick={use}
+                onClick={() => void use()}
               >
                 Use → pane
               </button>
