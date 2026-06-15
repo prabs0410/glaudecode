@@ -108,7 +108,7 @@ export type RpcMethod =
   | "listPanes"
   | "defaultDir";
 
-const METHODS = new Set<RpcMethod>([
+export const METHODS = new Set<RpcMethod>([
   "listSessions",
   "getSessionInfo",
   "getSessionMessages",
@@ -180,18 +180,31 @@ const METHODS = new Set<RpcMethod>([
 // Remote-access scope policy (Epic G §6). FAIL-SAFE: only read-only methods are "view";
 // pairing admin is "local" (desktop bearer only); EVERYTHING ELSE defaults to "steer", so a
 // new mutating method is never accidentally exposed to a view-only remote token.
-const VIEW_METHODS = new Set<string>([
+export const VIEW_METHODS = new Set<string>([
   "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "promptState", "timeline", "sessionCost",
   "sessionChanges", "conflicts", "contextUsage", "pendingApprovals", "listMemory", "readMemory",
   "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
   "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
   "listPrompts", "readPrompt", "listSlashCommands", "getKeybindings", "metaObservations",
-  "modelSuggestion", "budgetStatus", "getBudget", "approvalHookStatus", "defaultDir", "listPanes",
+  "modelSuggestion", "budgetStatus", "getBudget", "defaultDir", "listPanes",
 ]);
-const LOCAL_ONLY_METHODS = new Set<string>([
+// Mutating methods, listed EXPLICITLY (V5 Phase 7.2) — so "fell through to the steer default" is
+// impossible to do silently; the 7.2.2 test asserts every METHODS member lands in exactly one tier.
+export const STEER_METHODS = new Set<string>([
+  "forkSession", "renameSession", "tagSession", "deleteSession", "createWorktree", "removeWorktree",
+  "handoff", "resolveApproval", "setBudget", "writeMemory", "writeProjectInstructions", "reindex",
+  "gitStage", "gitCommit", "gitRestore", "gitRevertHunk", "addBookmark", "removeBookmark",
+  "setKeybinding", "resetKeybindings", "savePrompt", "deletePrompt", "buildSlashCommand",
+]);
+// Forward-looking (V5 Phase 7.2.1): a PTY-input/arming RPC would go here so it MUST be classified
+// `terminal`, never silently `steer`. EMPTY by design today — terminal RCE is gated at the WS INPUT
+// handler, not via any RPC; pty_set_armed/pty_disarm_all are desktop-only Tauri commands, not RPCs.
+export const TERMINAL_ONLY_METHODS = new Set<string>([]);
+export const LOCAL_ONLY_METHODS = new Set<string>([
   "createPairCode", "listDevices", "revokeDevice",
   // Managing the project's PreToolUse hooks rewrites .claude/settings.json and a shell
-  // command — never reachable by a remote device, only the local desktop bearer.
+  // command — never reachable by a remote device, only the local desktop bearer. (Reading hook
+  // status is local too — a remote device has no business knowing the local hook config.)
   "installApprovalHook", "uninstallApprovalHook", "approvalHookStatus",
   // Turning remote access on/off is a desktop-only decision; a paired phone must never be able
   // to widen the engine's network exposure or read its bind config.
@@ -204,9 +217,12 @@ function shQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-export function methodScope(method: string): "view" | "steer" | "local" {
+export function methodScope(method: string): "view" | "steer" | "terminal" | "local" {
   if (LOCAL_ONLY_METHODS.has(method)) return "local";
+  if (TERMINAL_ONLY_METHODS.has(method)) return "terminal";
   if (VIEW_METHODS.has(method)) return "view";
+  // STEER_METHODS is the explicit steer set; "steer" is also the FAIL-SAFE default for anything
+  // unclassified (the 7.2.2 CI test ensures nothing actually is, so the fallback never fires in prod).
   return "steer";
 }
 
@@ -659,7 +675,7 @@ function tokenLevel(authHeader: string | null, engineToken: string, pairing?: Pa
   return null;
 }
 
-function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" | "local"): boolean {
+function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" | "terminal" | "local"): boolean {
   if (level === "local") return true; // the local bearer (desktop) can do anything
   if (required === "local") return false; // only the local bearer satisfies a local-only method
   return scopeSatisfies(level, required); // linear ladder: view < steer < terminal

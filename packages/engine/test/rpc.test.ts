@@ -10,7 +10,14 @@ import { CostStore } from "../src/budget";
 import { SearchIndex } from "../src/searchIndex";
 import type { GitManager } from "../src/gitManager";
 import { PairingService } from "../src/pairing";
-import { methodScope } from "../src/rpc";
+import {
+  methodScope,
+  METHODS,
+  VIEW_METHODS,
+  STEER_METHODS,
+  TERMINAL_ONLY_METHODS,
+  LOCAL_ONLY_METHODS,
+} from "../src/rpc";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -281,12 +288,35 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("agentState")).toBe("view");
     expect(methodScope("promptState")).toBe("view"); // read-only — Mode C sends via the input path, not RPC
     expect(methodScope("deleteSession")).toBe("steer");
+    expect(methodScope("forkSession")).toBe("steer");
     expect(methodScope("resolveApproval")).toBe("steer");
     expect(methodScope("createPairCode")).toBe("local");
     // Managing approval hooks rewrites settings.json + a shell command → local-only.
     expect(methodScope("installApprovalHook")).toBe("local");
     expect(methodScope("uninstallApprovalHook")).toBe("local");
     expect(methodScope("approvalHookStatus")).toBe("local");
+  });
+
+  test("every RPC method is classified in EXACTLY one scope tier — no silent steer default (V5 Phase 7.2.2)", () => {
+    const tiers: Record<string, Set<string>> = {
+      view: VIEW_METHODS,
+      steer: STEER_METHODS,
+      terminal: TERMINAL_ONLY_METHODS,
+      local: LOCAL_ONLY_METHODS,
+    };
+    const unclassified: string[] = [];
+    const inMultiple: string[] = [];
+    for (const m of METHODS) {
+      const hits = Object.values(tiers).filter((s) => s.has(m)).length;
+      if (hits === 0) unclassified.push(m); // a NEW method left unclassified FAILS the build
+      if (hits > 1) inMultiple.push(m); // a method in two tiers is ambiguous
+    }
+    expect(unclassified).toEqual([]);
+    expect(inMultiple).toEqual([]);
+  });
+
+  test("the terminal tier is empty-or-explicit — the WS handler is the only terminal ingress (V5 Phase 7.2.1)", () => {
+    expect([...TERMINAL_ONLY_METHODS]).toEqual([]); // empty is valid: terminal RCE is gated at /term-ws, not RPC
     // Controlling remote exposure must never be reachable by a paired device.
     expect(methodScope("enableRemote")).toBe("local");
     expect(methodScope("disableRemote")).toBe("local");
