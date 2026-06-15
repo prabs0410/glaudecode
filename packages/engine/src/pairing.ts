@@ -62,8 +62,12 @@ export interface PairingDeps {
   genToken: () => string;
   /** Pair-code lifetime (default 2 min — short, it's only for the handshake). */
   codeTtlMs?: number;
-  /** Remote-token lifetime (default 24h). */
+  /** view/steer remote-token lifetime (default 24h). */
   tokenTtlMs?: number;
+  /** `terminal`-scope (RCE) token lifetime — capped short (default 1h); rolled forward by refresh()
+   *  while a session is live, so a leaked terminal token that isn't continuously connected dies fast
+   *  (design R8 / V5 Phase 3.3.3). */
+  terminalTokenTtlMs?: number;
 }
 
 interface PendingCode {
@@ -79,6 +83,7 @@ interface ActiveToken {
 
 const DEFAULT_CODE_TTL = 2 * 60_000;
 const DEFAULT_TOKEN_TTL = 24 * 60 * 60_000;
+const DEFAULT_TERMINAL_TOKEN_TTL = 60 * 60_000; // 1h — RCE scope, kept short (R8)
 
 export class PairingService {
   private readonly codes = new Map<string, PendingCode>();
@@ -86,10 +91,17 @@ export class PairingService {
   private readonly devices = new Map<string, PairedDevice>();
   private readonly codeTtl: number;
   private readonly tokenTtl: number;
+  private readonly terminalTokenTtl: number;
 
   constructor(private readonly deps: PairingDeps) {
     this.codeTtl = deps.codeTtlMs ?? DEFAULT_CODE_TTL;
     this.tokenTtl = deps.tokenTtlMs ?? DEFAULT_TOKEN_TTL;
+    this.terminalTokenTtl = deps.terminalTokenTtlMs ?? DEFAULT_TERMINAL_TOKEN_TTL;
+  }
+
+  /** TTL for a scope's token — `terminal` is capped short (R8). */
+  private ttlFor(scope: TokenScope): number {
+    return scope === "terminal" ? this.terminalTokenTtl : this.tokenTtl;
   }
 
   /** Desktop-only: mint a short, single-use pair code for the requested scope. */
@@ -108,7 +120,7 @@ export class PairingService {
     if (this.deps.now() > pending.expiresAtMs) return null;
 
     const now = this.deps.now();
-    const expiresAtMs = now + this.tokenTtl;
+    const expiresAtMs = now + this.ttlFor(pending.scope); // terminal scope gets the short cap (R8)
     const deviceId = this.deps.genToken();
     const token = this.deps.genToken();
     this.tokens.set(token, { token, deviceId, scope: pending.scope, expiresAtMs });
@@ -120,6 +132,23 @@ export class PairingService {
       expiresAt: new Date(expiresAtMs).toISOString(),
     });
     return { token, scope: pending.scope, expiresAt: new Date(expiresAtMs).toISOString(), deviceId };
+  }
+
+  /** Roll an active token's expiry forward by its scope's TTL (silent refresh while a session is
+   *  live). Returns the new expiry, or null if unknown/expired. An IDLE terminal token gets no
+   *  refresh, so it still dies at its short cap (R8 / V5 Phase 3.3.3). */
+  refresh(token: string): { expiresAt: string } | null {
+    const t = this.tokens.get(token);
+    if (!t) return null;
+    const now = this.deps.now();
+    if (now > t.expiresAtMs) {
+      this.tokens.delete(t.token);
+      return null;
+    }
+    t.expiresAtMs = now + this.ttlFor(t.scope);
+    const device = this.devices.get(t.deviceId);
+    if (device) device.expiresAt = new Date(t.expiresAtMs).toISOString();
+    return { expiresAt: new Date(t.expiresAtMs).toISOString() };
   }
 
   /** Verify a token is active + unexpired; updates lastSeen. */

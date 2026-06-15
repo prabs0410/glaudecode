@@ -11,6 +11,7 @@ function harness(start = 1_000_000) {
     genToken: () => `tok-${n++}`,
     codeTtlMs: 1000,
     tokenTtlMs: 10_000,
+    terminalTokenTtlMs: 2000, // short cap for the RCE scope (R8)
   };
   return { deps, advance: (ms: number) => (t += ms), svc: new PairingService(deps) };
 }
@@ -70,6 +71,27 @@ describe("PairingService", () => {
     // but NOTHING below terminal can reach it — this is the RCE boundary
     expect(svc.requireScope(steer.token, "terminal").ok).toBe(false);
     expect(svc.requireScope(view.token, "terminal").ok).toBe(false);
+  });
+
+  test("terminal tokens get a short TTL; an idle one dies while view/steer live on (R8 / Phase 3.3.3)", () => {
+    const { svc, advance } = harness();
+    const terminal = svc.redeem(svc.createPairCode("terminal").code, "t")!;
+    const view = svc.redeem(svc.createPairCode("view").code, "v")!;
+    advance(2500); // past the 2000 terminal cap, within the 10000 view TTL
+    expect(svc.verify(terminal.token).ok).toBe(false); // idle terminal token expired
+    expect(svc.verify(view.token).ok).toBe(true);
+  });
+
+  test("refresh rolls an active terminal token forward, but returns null once expired", () => {
+    const { svc, advance } = harness();
+    const terminal = svc.redeem(svc.createPairCode("terminal").code, "t")!;
+    advance(1500);
+    expect(svc.refresh(terminal.token)).not.toBeNull(); // still active → rolled forward to now+2000
+    advance(1500); // 1500 since refresh (< 2000) → still alive
+    expect(svc.verify(terminal.token).ok).toBe(true);
+    advance(2500); // no refresh this window → past the cap
+    expect(svc.refresh(terminal.token)).toBeNull();
+    expect(svc.verify(terminal.token).ok).toBe(false);
   });
 
   test("revoke kills the device and its token immediately", () => {

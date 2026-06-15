@@ -16,6 +16,7 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
+import { AuditLog } from "./audit";
 import { decodeBridgeFrame, encodeBridgeInput, encodeBridgeResize } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
@@ -109,6 +110,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // revoked device stops typing (and stops viewing) instead of running until its socket happens to
   // close (Phase 2 security review, finding #1).
   const termSockets = new Set<any>();
+  // Coarse, privacy-preserving audit of the RCE channel (V5 Phase 3.3.2): terminal auth, arming
+  // changes, INPUT (paneId + byte COUNT, never bytes), and revoke/expiry/link-down disconnects.
+  const audit = new AuditLog(() => Date.now());
   // RCE gate shared by INPUT + RESIZE (V5 Phase 2/4): a /term-ws control frame may reach the PTY
   // only when the socket's scope is exactly "terminal", its token STILL verifies (so a revoked/
   // expired token is cut immediately, not just on the next socket close), and the target pane is
@@ -118,6 +122,8 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     if (ws.data.scope !== "terminal") return null;
     const rv = pairing.verify(ws.data.token ?? "");
     if (!rv.ok || rv.scope !== "terminal") {
+      audit.record({ type: "disconnect", deviceId: ws.data.deviceId, reason: "revoked-or-expired" });
+      console.error("[audit] terminal device cut (revoked/expired)");
       try {
         ws.close(4003, "token revoked or expired");
       } catch {
@@ -127,6 +133,28 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     }
     const paneId = ws.data.paneId;
     return paneId && paneHub.canInput(paneId) ? paneId : null;
+  };
+  // Forward a gated control frame to the Rust input sink, or FAIL CLOSED: if the sink is down, close
+  // the phone socket (4504) so the user isn't typing into a void — the phone reconnects when the
+  // bridge is back (Phase 2 deferred LOW / Phase 3 hardening 3.3.1).
+  const relayToBridge = (ws: any, frame: Uint8Array): void => {
+    if (!inputBridge) {
+      try {
+        ws.close(4504, "input link down");
+      } catch {
+        /* already closed */
+      }
+      return;
+    }
+    try {
+      inputBridge.send(frame);
+    } catch {
+      try {
+        ws.close(4504, "input link down");
+      } catch {
+        /* already closed */
+      }
+    }
   };
 
   // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
@@ -209,6 +237,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             if (!v.ok) return close();
             ws.data.scope = v.scope; // "view" | "steer" | "terminal" — gates INPUT (Phase 2)
             ws.data.token = tok; // kept so the token can be RE-verified later (revocation/expiry)
+            ws.data.deviceId = v.deviceId; // for the audit trail
           }
           ws.data.authed = true;
           clearTimeout(ws.data.authTimer);
@@ -241,6 +270,10 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             ws.data.sub = sub;
             ws.data.detach = paneHub.attach(paneId, sub);
             termSockets.add(ws); // so revocation/expiry can force-close this live mirror
+            if (ws.data.scope === "terminal") {
+              audit.record({ type: "terminal-auth", deviceId: ws.data.deviceId, paneId });
+              console.error("[audit] terminal device attached pane " + paneId.slice(0, 8));
+            }
           }
           return;
         }
@@ -253,7 +286,10 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
           else if (f.type === "size") paneHub.setSize(f.paneId, f.cols, f.rows);
           else if (f.type === "meta") paneHub.setMeta(f.paneId, f.title);
           else if (f.type === "close") paneHub.closePane(f.paneId);
-          else if (f.type === "arm") paneHub.setArmed(f.paneId, f.armed);
+          else if (f.type === "arm") {
+            paneHub.setArmed(f.paneId, f.armed);
+            audit.record({ type: f.armed ? "arm" : "disarm", paneId: f.paneId });
+          }
         } else if (kind === "term") {
           const buf = toU8(raw);
           if (!buf) return;
@@ -264,23 +300,14 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
             // RCE GATE (V5 Phase 2): keystrokes reach the PTY only via gateTerminal (terminal scope +
             // live token + armed pane). The Rust core re-checks arming before writing (defense in depth).
             const paneId = gateTerminal(ws);
-            if (paneId && inputBridge) {
-              try {
-                inputBridge.send(encodeBridgeInput(paneId, f.data));
-              } catch {
-                /* input sink gone — drop; the Rust core reconnects */
-              }
+            if (paneId) {
+              audit.record({ type: "input", deviceId: ws.data.deviceId, paneId, bytes: f.data.length });
+              relayToBridge(ws, encodeBridgeInput(paneId, f.data));
             }
           } else if (f.type === "resize") {
             // RESIZE is RCE-adjacent (mutates the desktop pane) — gated EXACTLY like INPUT (V5 Phase 4).
             const paneId = gateTerminal(ws);
-            if (paneId && inputBridge) {
-              try {
-                inputBridge.send(encodeBridgeResize(paneId, f.cols, f.rows));
-              } catch {
-                /* input sink gone — drop */
-              }
-            }
+            if (paneId) relayToBridge(ws, encodeBridgeResize(paneId, f.cols, f.rows));
           }
         }
         // approvals + inbridge: no inbound client messages to handle.
@@ -397,12 +424,16 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // tears down its LIVE session within ~2s, not only on the next frame (Phase 2 review #1).
   const broadcast = setInterval(() => {
     for (const ws of termSockets) {
-      if (!pairing.verify(ws.data?.token ?? "").ok) {
+      const tok = ws.data?.token ?? "";
+      const v = pairing.verify(tok);
+      if (!v.ok) {
         try {
           ws.close(4003, "token revoked or expired");
         } catch {
           /* already closed */
         }
+      } else if (v.scope === "terminal") {
+        pairing.refresh(tok); // a live terminal session rolls its short-TTL token forward (R8)
       }
     }
     if (sockets.size === 0) return;
