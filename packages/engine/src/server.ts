@@ -289,7 +289,17 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
               },
             };
             ws.data.sub = sub;
-            ws.data.detach = paneHub.attach(paneId, sub);
+            const detach = paneHub.attach(paneId, sub);
+            if (!detach) {
+              // Refuse a paneId the Rust bridge never announced — never conjure a phantom pane (M12).
+              try {
+                ws.close(4002, "no such pane");
+              } catch {
+                /* already closed */
+              }
+              return;
+            }
+            ws.data.detach = detach;
             termSockets.add(ws); // so revocation/expiry can force-close this live mirror
             if (ws.data.scope === "terminal") {
               audit.record({ type: "terminal-auth", deviceId: ws.data.deviceId, paneId });

@@ -36,8 +36,21 @@ describe("PaneHub", () => {
     expect(s.outputs()).toEqual([[1, 2, 3], [4, 5]]);
   });
 
+  test("refuses to attach to a pane the bridge never announced — no phantom panes (audit M12)", () => {
+    const hub = new PaneHub();
+    const s = makeSub();
+    expect(hub.attach("ghost", s.sub)).toBeNull(); // caller closes the socket (4002)
+    expect(hub.subscriberCount("ghost")).toBe(0);
+    expect(hub.list()).toHaveLength(0); // attach did NOT create a pane
+    // A real (bridge-announced) pane attaches fine.
+    hub.setMeta("real", "shell");
+    expect(hub.attach("real", s.sub)).not.toBeNull();
+    expect(hub.list().map((p) => p.paneId)).toEqual(["real"]);
+  });
+
   test("fans out to multiple independent subscribers", () => {
     const hub = new PaneHub();
+    hub.setMeta("p", ""); // the Rust bridge announces the pane before any phone attaches (M12)
     const a = makeSub();
     const c = makeSub();
     hub.attach("p", a.sub);
@@ -61,6 +74,7 @@ describe("PaneHub", () => {
 
   test("setSize notifies live subscribers", () => {
     const hub = new PaneHub();
+    hub.setMeta("p", ""); // bridge announces the pane first (M12)
     const s = makeSub();
     hub.attach("p", s.sub);
     hub.setSize("p", 120, 30);
@@ -69,6 +83,7 @@ describe("PaneHub", () => {
 
   test("flow control: a non-acking subscriber is paused, then resyncs (reset + replay) on catch-up", () => {
     const hub = new PaneHub({ ringMax: 8, highWater: 12, lowWater: 4 });
+    hub.setMeta("p", ""); // bridge announces the pane first (M12)
     const s = makeSub();
     hub.attach("p", s.sub);
     for (let i = 1; i <= 5; i++) hub.ingest("p", b(i, i, i, i)); // 5×4B, no ACK
@@ -95,8 +110,9 @@ describe("PaneHub", () => {
 
   test("detach stops delivery", () => {
     const hub = new PaneHub();
+    hub.setMeta("p", ""); // bridge announces the pane first (M12)
     const s = makeSub();
-    const detach = hub.attach("p", s.sub);
+    const detach = hub.attach("p", s.sub)!;
     hub.ingest("p", b(1));
     detach();
     hub.ingest("p", b(2));
@@ -106,6 +122,7 @@ describe("PaneHub", () => {
 
   test("closePane notifies + drops subscribers", () => {
     const hub = new PaneHub();
+    hub.setMeta("p", ""); // bridge announces the pane first (M12)
     const s = makeSub();
     hub.attach("p", s.sub);
     hub.closePane("p");

@@ -104,9 +104,13 @@ export class PaneHub {
     for (const sub of p.subs.keys()) sub.send(frame);
   }
 
-  /** Attach a subscriber: send current size, replay the ring (current screen), then go live. */
-  attach(paneId: string, sub: TermSubscriber): () => void {
-    const p = this.ensure(paneId);
+  /** Attach a subscriber to a REAL pane: send current size, replay the ring, go live. Returns the
+   *  detach fn, or null if the paneId was never announced by the Rust bridge — a phone must not be
+   *  able to conjure a phantom pane (which would pollute listPanes forever); `ensure()` stays for the
+   *  bridge-driven paths (ingest/setSize/setMeta/setArmed) only (audit M12). */
+  attach(paneId: string, sub: TermSubscriber): (() => void) | null {
+    const p = this.panes.get(paneId);
+    if (!p) return null; // phantom paneId — caller closes the socket (4002)
     const replayed = this.replay(p, sub);
     p.subs.set(sub, { sent: replayed, acked: 0, lagging: false });
     return () => p.subs.delete(sub);
