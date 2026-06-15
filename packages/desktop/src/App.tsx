@@ -11,6 +11,7 @@ import { KeybindingsModal } from "./KeybindingsModal";
 import { PromptsModal } from "./PromptsModal";
 import { NotificationService } from "./NotificationService";
 import { PairingModal } from "./PairingModal";
+import { RemoteArmedChips } from "./RemoteArmedChips";
 import { Splitter } from "./Splitter";
 import { ResumeBanner } from "./ResumeBanner";
 import { TERMINAL_THEMES, THEME_NAMES, DEFAULT_THEME } from "./terminalThemes";
@@ -453,6 +454,7 @@ export default function App() {
 
   return (
     <div className="app-root">
+      <RemoteArmedChips />
       {wslNote && (
         <div className="wsl-note">
           Windows is experimental — for full shell features (command badges, cwd, suggestions), run
