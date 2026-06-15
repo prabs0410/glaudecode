@@ -149,6 +149,12 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
               your tailnet (WireGuard-encrypted); prefers Tailscale Serve, falls back to a plain bind.
             </div>
           )}
+          {remoteOn && (
+            <div className="muted-note">
+              ⚠ On a <strong>shared</strong> tailnet, lock the engine to your phone's node —
+              see <code>docs/design/transport-acl-hardening.md</code>.
+            </div>
+          )}
         </div>
 
         {error && <div className="dock-error">{error}</div>}
