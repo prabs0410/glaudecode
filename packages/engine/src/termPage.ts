@@ -431,8 +431,10 @@ export const TERM_HTML = `<!doctype html>
       document.getElementById("dot").className = "ok";
       refreshArmed();
     };
-    ws.onclose = function () {
+    ws.onclose = function (ev) {
       document.getElementById("dot").className = "";
+      // 4003 = token revoked/expired → re-pair, don't reconnect-loop a dead token (audit L3).
+      if (ev.code === 4003) { repair(); return; }
       if (!paused) setTimeout(connect, 2000); // don't auto-reconnect while backgrounded (detached)
     };
     ws.onmessage = function (ev) {

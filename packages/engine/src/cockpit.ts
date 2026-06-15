@@ -79,7 +79,11 @@ let DIR = null;
 async function rpc(method, params) {
   const res = await fetch("/rpc", { method: "POST", headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" }, body: JSON.stringify({ method, params: params || {} }) });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || ("rpc " + method + " " + res.status));
+  if (!res.ok) {
+    const err = new Error(body.error || ("rpc " + method + " " + res.status));
+    err.status = res.status; // so callers can tell a dead token (401/403) from a transient error (L3)
+    throw err;
+  }
   return body.result;
 }
 
@@ -120,7 +124,12 @@ function gate(msg) {
 }
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-function summarize(input) { const i = input || {}; return i.command || i.file_path || i.notebook_path || JSON.stringify(i).slice(0, 160); }
+function summarize(input) {
+  const i = input || {};
+  if (i.command || i.file_path || i.notebook_path) return i.command || i.file_path || i.notebook_path;
+  // A circular / exotic input must NOT throw out of render() and blank the whole cockpit (audit L10).
+  try { return JSON.stringify(i).slice(0, 160); } catch (e) { return "[unviewable input]"; }
+}
 
 let approvals = [];
 let sessions = [];
@@ -229,7 +238,12 @@ function connectWs() {
   // Token goes in the FIRST message, never the URL (it would leak via history/Referer/logs).
   const ws = new WebSocket(proto + "://" + location.host + "/ws");
   ws.onopen = () => { ws.send(JSON.stringify({ type: "auth", token: TOKEN })); $("conn").className = "dot ok"; };
-  ws.onclose = () => { $("conn").className = "dot"; setTimeout(connectWs, 2000); };
+  ws.onclose = (ev) => {
+    $("conn").className = "dot";
+    // 4003 = token revoked/expired: re-pair instead of reconnect-looping with a dead token (L3).
+    if (ev.code === 4003) { sessionStorage.removeItem("ck.token"); return gate("session ended — pair again"); }
+    setTimeout(connectWs, 2000);
+  };
   ws.onmessage = (ev) => {
     try { const f = JSON.parse(ev.data); if (f.type === "approvals") { approvals = f.payload || []; render(); } } catch (e) {}
   };
@@ -246,8 +260,13 @@ async function start() {
     setInterval(refreshSessions, 5000);
     setInterval(refreshPanes, 4000);
   } catch (e) {
-    sessionStorage.removeItem("ck.token");
-    gate();
+    // Only drop the token + re-pair on a REAL auth failure; a transient error (engine restarting /
+    // offline) keeps the token and retries, so a blip doesn't force an unnecessary re-pair (L3).
+    if (e && (e.status === 401 || e.status === 403)) {
+      sessionStorage.removeItem("ck.token");
+      return gate("session ended — pair again");
+    }
+    setTimeout(start, 2000);
   }
 }
 
