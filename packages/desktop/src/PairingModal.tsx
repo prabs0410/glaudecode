@@ -46,6 +46,8 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // First-run "remote shell is RCE" consent before the first remote bind (V5 Phase 7.5.1).
+  const [showConsent, setShowConsent] = useState(false);
 
   const reloadDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
   useEffect(() => {
@@ -70,7 +72,18 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const acceptConsent = () => {
+    localStorage.setItem("glaude.remoteConsent", "1");
+    setShowConsent(false);
+    void toggleRemote(); // now consented → proceeds to enable
+  };
+
   const toggleRemote = async () => {
+    // First-run gate: enabling remote = exposing a remote shell (RCE). Require explicit consent once.
+    if (!remoteOn && localStorage.getItem("glaude.remoteConsent") !== "1") {
+      setShowConsent(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -127,6 +140,21 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
         <div className="keys-head">
           <span>Pair a device</span>
         </div>
+
+        {showConsent && (
+          <div className="consent">
+            <div className="dock-error">
+              ⚠ Enabling remote access lets a <strong>paired device run commands on this machine</strong> —
+              this is remote code execution. Pair only devices you control. Each terminal pane still
+              defaults to <strong>not</strong> accepting input (you arm it explicitly), and you can
+              disable remote or disarm everything at any time.
+            </div>
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="act danger" onClick={acceptConsent}>I understand — enable</button>
+              <button className="act" onClick={() => setShowConsent(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Remote access over Tailscale */}
         <div className="pair-remote">

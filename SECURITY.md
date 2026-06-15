@@ -23,7 +23,8 @@ you observed. A minimal PoC dramatically speeds triage.
   issues, sooner for actively-exploitable ones.
 - We'll **coordinate disclosure** with you and credit you (if you wish) in the advisory and release
   notes. Please give us a reasonable window before any public disclosure.
-- Confirmed vulnerabilities are published as **GitHub Security Advisories (GHSA)**.
+- Confirmed vulnerabilities are published as **GitHub Security Advisories (GHSA)** and indexed on our
+  [security bulletins page](docs/security/bulletins.md).
 
 ## Safe harbor
 
