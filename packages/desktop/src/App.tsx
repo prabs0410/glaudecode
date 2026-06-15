@@ -64,6 +64,12 @@ export default function App() {
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [quiet, setQuiet] = useState(() => localStorage.getItem("glaude.quiet") === "1");
   const [pairingOpen, setPairingOpen] = useState(false);
+  // Native-Windows "use WSL for full features" note (V5 Phase 6 / 6.3.3 — experimental tier).
+  const [wslNote, setWslNote] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem("glaude.wslNoteDismissed") === "1") return;
+    invoke<boolean>("os_is_windows").then((w) => setWslNote(!!w)).catch(() => {});
+  }, []);
   // Resizable panel widths, remembered across launches.
   const [sidebarW, setSidebarW] = useState(() => num(localStorage.getItem("glaude.sidebarW"), 260));
   const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
@@ -447,6 +453,21 @@ export default function App() {
 
   return (
     <div className="app-root">
+      {wslNote && (
+        <div className="wsl-note">
+          Windows is experimental — for full shell features (command badges, cwd, suggestions), run
+          GlaudeCode inside <strong>WSL</strong>.
+          <button
+            className="act mini"
+            onClick={() => {
+              localStorage.setItem("glaude.wslNoteDismissed", "1");
+              setWslNote(false);
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      )}
       {preview && (
         <ResumeBanner
           dir={preview.cwd ?? dir}

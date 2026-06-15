@@ -433,6 +433,19 @@ body,
 .arm-kill {
   margin-right: 6px;
 }
+.wsl-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #3a2d12;
+  color: #e3b341;
+  font-size: 13px;
+  border-bottom: 1px solid #5a4412;
+}
+.wsl-note button {
+  margin-left: auto;
+}
 .tab-new {
   display: flex;
   gap: 4px;

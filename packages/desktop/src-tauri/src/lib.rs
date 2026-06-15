@@ -628,6 +628,13 @@ fn project_dir() -> String {
     find_project_dir().to_string_lossy().into_owned()
 }
 
+/// True on native Windows (V5 Phase 6 / 6.3.3) — the UI uses this to surface a "use WSL for full
+/// features" note, since native Windows is the experimental tier (no shell OSC integration).
+#[tauri::command]
+fn os_is_windows() -> bool {
+    cfg!(target_os = "windows")
+}
+
 /// Tailscale CLI candidate paths — the SINGLE source (Phase 6 / 6.3.2 adds Windows paths here, and
 /// the serve helper reuses it). The CLI may be on PATH (standalone) or in the App Store app bundle.
 fn tailscale_candidates() -> &'static [&'static str] {
@@ -748,6 +755,7 @@ pub fn run() {
             pty_disarm_all,
             engine_endpoint,
             project_dir,
+            os_is_windows,
             tailscale_ip,
             tailscale_dns_name,
             tailscale_serve_start,
