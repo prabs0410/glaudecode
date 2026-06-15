@@ -48,6 +48,7 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   // First-run "remote shell is RCE" consent before the first remote bind (V5 Phase 7.5.1).
   const [showConsent, setShowConsent] = useState(false);
+  const [showTermConsent, setShowTermConsent] = useState(false);
 
   const reloadDevices = () => listDevices().then(setDevices).catch(() => setDevices([]));
   useEffect(() => {
@@ -63,13 +64,30 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
   // The URL to open on the device: Serve's HTTPS URL (PWA) > the plain tailnet bind > localhost.
   const cockpitUrl = serveUrl ? `${serveUrl}/app` : remote?.enabled && remote.url ? remote.url : localUrl;
 
-  const generate = async () => {
+  const mintCode = async () => {
     setError(null);
     try {
       setCode(await createPairCode(scope));
     } catch (e: any) {
       setError(String(e?.message ?? e));
     }
+  };
+
+  const generate = async () => {
+    // Minting a TERMINAL-scope code hands out remote code execution — gate it behind a dedicated,
+    // per-mint confirm, distinct from the once-ever remote-enable consent (audit M8). The remote
+    // toggle's consent acknowledges the capability exists; THIS confirms the deliberate act of
+    // handing it out, every time.
+    if (scope === "terminal") {
+      setShowTermConsent(true);
+      return;
+    }
+    await mintCode();
+  };
+
+  const acceptTermConsent = async () => {
+    setShowTermConsent(false);
+    await mintCode();
   };
 
   const acceptConsent = () => {
@@ -201,6 +219,21 @@ export function PairingModal({ onClose }: { onClose: () => void }) {
               ⚠ Terminal access lets this device run commands on your Mac — this is remote code
               execution. Only pair a device you personally control. Panes still default to NOT
               accepting input; you arm each pane explicitly (📱 on its tab), and can disarm all at once.
+            </div>
+          )}
+          {showTermConsent && (
+            <div className="consent" style={{ marginTop: 6 }}>
+              <div className="dock-error">
+                ⚠ You're about to mint a <strong>TERMINAL</strong> pairing code. A device that redeems
+                it can <strong>run commands on this Mac</strong> (remote code execution). Only hand
+                this code to a device you personally control, over a network you trust.
+              </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <button className="act danger" onClick={() => void acceptTermConsent()}>
+                  I understand — generate terminal code
+                </button>
+                <button className="act" onClick={() => setShowTermConsent(false)}>Cancel</button>
+              </div>
             </div>
           )}
           <button className="act" onClick={() => void generate()} style={{ marginTop: 6 }}>
