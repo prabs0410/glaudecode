@@ -122,7 +122,9 @@ export function TerminalPane({
     if (!term) return;
     term.options.fontSize = fontSize;
     fitRef.current?.fit();
-    void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols });
+    // .catch: on mount this can fire before the (async) pty_spawn registers the pane — a harmless
+    // "no such pane" until then; the spawn effect re-syncs the real size once the pane exists.
+    void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols }).catch(() => {});
   }, [fontSize, paneId]);
 
   // Apply cursor style / blink live.
@@ -257,6 +259,8 @@ export function TerminalPane({
     // spawned first, the shell banner / a fast first command could emit before the listener
     // attached and be lost. `disposed` guards a teardown that races the async setup.
     let disposed = false;
+    let spawned = false; // guard: don't write/resize a pane that doesn't exist yet (avoids the
+    // "no such pane" rejection when the ResizeObserver fires before pty_spawn resolves).
     let unlistenOut: UnlistenFn | undefined;
     let unlistenExit: UnlistenFn | undefined;
     void (async () => {
@@ -276,12 +280,17 @@ export function TerminalPane({
       unlistenOut = uo;
       unlistenExit = ue;
       await invoke("pty_spawn", { paneId, cwd, cmd, args, rows: term.rows, cols: term.cols });
+      spawned = true;
+      // Sync the real PTY size now that the pane exists (an earlier resize was a no-op).
+      void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols }).catch(() => {});
     })();
-    term.onData((d) => void invoke("pty_write", { paneId, data: d }));
+    term.onData((d) => {
+      if (spawned) void invoke("pty_write", { paneId, data: d }).catch(() => {});
+    });
 
     const refit = () => {
       fit.fit();
-      void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols });
+      if (spawned) void invoke("pty_resize", { paneId, rows: term.rows, cols: term.cols }).catch(() => {});
     };
     const ro = new ResizeObserver(refit);
     ro.observe(hostRef.current);
