@@ -41,6 +41,25 @@ describe("PairingService", () => {
     expect(svc.redeem(code.code, "a")).toBeNull();
   });
 
+  test("pairingLocked trips after a burst of failed redeems, then recovers (audit M3 backstop)", () => {
+    const { svc, advance } = harness();
+    expect(svc.pairingLocked()).toBe(false);
+    // The IP-independent backstop: 20 failed (unknown-code) redeems within the window lock pairing,
+    // regardless of source IP — so it still holds behind Tailscale Serve's shared 127.0.0.1 bucket.
+    for (let i = 0; i < 20; i++) expect(svc.redeem("WRONG-" + i, "x")).toBeNull();
+    expect(svc.pairingLocked()).toBe(true);
+    advance(60_001); // failures age out of the 60s window
+    expect(svc.pairingLocked()).toBe(false);
+  });
+
+  test("a successful redeem is never counted as a failure (audit M3)", () => {
+    const { svc } = harness();
+    for (let i = 0; i < 19; i++) svc.redeem("WRONG-" + i, "x"); // 19 failures, still under the cap
+    const code = svc.createPairCode("view");
+    expect(svc.redeem(code.code, "ok")).not.toBeNull();
+    expect(svc.pairingLocked()).toBe(false); // the success added nothing to the failure window
+  });
+
   test("an expired token fails verification", () => {
     const { svc, advance } = harness();
     const tok = svc.redeem(svc.createPairCode().code, "a")!;

@@ -85,10 +85,18 @@ const DEFAULT_CODE_TTL = 2 * 60_000;
 const DEFAULT_TOKEN_TTL = 24 * 60 * 60_000;
 const DEFAULT_TERMINAL_TOKEN_TTL = 60 * 60_000; // 1h — RCE scope, kept short (R8)
 
+// IP-INDEPENDENT brute-force backstop (audit M3): the per-IP /pair limiter collapses to ONE bucket
+// behind Tailscale Serve (every remote phone arrives from 127.0.0.1). This global sliding-window cap
+// on FAILED redeems holds regardless of source IP. Generous enough that a legit user (who pastes/scans
+// the code and rarely fails) never trips it, tight enough to bound an aggregate guessing burst.
+const FAILURE_WINDOW_MS = 60_000;
+const FAILURE_MAX = 20;
+
 export class PairingService {
   private readonly codes = new Map<string, PendingCode>();
   private readonly tokens = new Map<string, ActiveToken>();
   private readonly devices = new Map<string, PairedDevice>();
+  private readonly failures: number[] = []; // timestamps of recent failed redeems (M3 backstop)
   private readonly codeTtl: number;
   private readonly tokenTtl: number;
   private readonly terminalTokenTtl: number;
@@ -112,12 +120,27 @@ export class PairingService {
     return { code, scope, expiresAt: new Date(expiresAtMs).toISOString() };
   }
 
+  /** True if too many redeem attempts have FAILED recently — an IP-independent brute-force backstop
+   *  that still holds when Tailscale Serve collapses every remote phone to 127.0.0.1 (audit M3). The
+   *  /pair handler returns 429 when this trips, regardless of source IP. */
+  pairingLocked(): boolean {
+    const cutoff = this.deps.now() - FAILURE_WINDOW_MS;
+    while (this.failures.length && this.failures[0] < cutoff) this.failures.shift();
+    return this.failures.length >= FAILURE_MAX;
+  }
+
   /** Client: exchange a valid code for a scoped, expiring token. Code is single-use. */
   redeem(code: string, deviceName: string): RemoteToken | null {
     const pending = this.codes.get(code);
-    if (!pending) return null;
+    if (!pending) {
+      this.failures.push(this.deps.now()); // record a wrong/unknown code attempt (M3 backstop)
+      return null;
+    }
     this.codes.delete(code); // single-use, even if expired
-    if (this.deps.now() > pending.expiresAtMs) return null;
+    if (this.deps.now() > pending.expiresAtMs) {
+      this.failures.push(this.deps.now());
+      return null;
+    }
 
     const now = this.deps.now();
     const expiresAtMs = now + this.ttlFor(pending.scope); // terminal scope gets the short cap (R8)

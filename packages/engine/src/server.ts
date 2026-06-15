@@ -393,18 +393,29 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       // credential — single-use + expiring) for a scoped token. No bearer required here, so it's
       // rate-limited + audited per IP to make the short code un-brute-forceable (V5 Phase 0.3).
       if (request.method === "POST" && url.pathname === "/pair") {
-        const ip = srv.requestIP?.(request)?.address ?? "unknown";
-        if (!pairLimiter.hit(ip)) {
-          console.error(`[glaudecode] /pair rate-limited (${ip})`);
+        // Rate-limit key (audit M3): behind Tailscale Serve every phone arrives from 127.0.0.1, so a
+        // bare IP collapses to ONE shared bucket. Prefer the Tailscale identity header Serve injects
+        // (per-remote-device) so buckets aren't shared; fall back to the IP. `loopback` marks the
+        // shared/undistinguished case so we know not to clear it on success.
+        const tsId = request.headers.get("tailscale-user-login") || request.headers.get("tailscale-user-name");
+        const ip = srv.requestIP?.(request)?.address;
+        const key = tsId || ip || "loopback";
+        const shared = !tsId && (!ip || ip === "127.0.0.1" || ip === "::1"); // can't distinguish callers
+        // The per-key limiter is the first line; pairingLocked() is the IP-INDEPENDENT backstop that
+        // still holds when the key is the shared loopback bucket.
+        if (!pairLimiter.hit(key) || pairing.pairingLocked()) {
+          console.error(`[glaudecode] /pair rate-limited (${key})`);
           return Response.json({ error: "too many attempts — slow down" }, { status: 429 });
         }
         const body = await request.json().catch(() => null);
         const tok = pairing.redeem(String(body?.code ?? "").trim().toUpperCase(), String(body?.name ?? "device"));
         if (!tok) {
-          console.error(`[glaudecode] /pair failed redemption (${ip})`);
+          console.error(`[glaudecode] /pair failed redemption (${key})`);
           return Response.json({ error: "invalid or expired pairing code" }, { status: 401 });
         }
-        pairLimiter.reset(ip); // legit pair clears the counter so the user isn't locked out
+        // Clear the counter on a legit pair so the user isn't locked out — but NEVER for a shared
+        // loopback bucket, where one success would reset the limit for every caller (audit M3).
+        if (!shared) pairLimiter.reset(key);
         return Response.json(tok);
       }
 
