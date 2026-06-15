@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -681,10 +682,37 @@ fn tailscale_candidates() -> &'static [&'static str] {
     ]
 }
 
-/// Run the Tailscale CLI with `args`, returning the output of the first candidate that SUCCEEDS.
-fn run_tailscale(args: &[&str]) -> Option<std::process::Output> {
+/// Run the Tailscale CLI with `args`, returning the output of the first candidate that SUCCEEDS,
+/// bounded by `timeout` — a stalled tailscale (e.g. `serve --https` provisioning a cert when HTTPS
+/// certs aren't enabled in the tailnet) is KILLED and treated as a failure rather than hanging the
+/// caller. Without this a blocking shell-out from a synchronous Tauri command froze the whole UI.
+fn run_tailscale_timeout(args: &[&str], timeout: Duration) -> Option<std::process::Output> {
     for bin in tailscale_candidates() {
-        if let Ok(out) = Command::new(bin).args(args).output() {
+        let mut child = match Command::new(bin)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => continue, // binary not at this path → try the next candidate
+        };
+        let start = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break, // exited — fall through to read its output
+                Ok(None) => {
+                    if start.elapsed() > timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return None; // stalled → FAIL FAST so the caller can fall back, never hang
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => return None,
+            }
+        }
+        if let Ok(out) = child.wait_with_output() {
             if out.status.success() {
                 return Some(out);
             }
@@ -693,16 +721,29 @@ fn run_tailscale(args: &[&str]) -> Option<std::process::Output> {
     None
 }
 
+/// Run the Tailscale CLI, bounded by a default timeout. The status/ip/dns queries are quick; the
+/// generous cap is just a backstop against a wedged tailscaled.
+fn run_tailscale(args: &[&str]) -> Option<std::process::Output> {
+    run_tailscale_timeout(args, Duration::from_secs(6))
+}
+
 /// This machine's Tailscale IPv4 (e.g. 100.x.y.z), or None if Tailscale isn't installed/up.
 /// Used to bind the engine's remote listener to the tailnet (the zero-config fallback path).
 #[tauri::command]
-fn tailscale_ip() -> Option<String> {
-    let out = run_tailscale(&["ip", "-4"])?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|l| l.trim())
-        .find(|l| !l.is_empty())
-        .map(|s| s.to_string())
+async fn tailscale_ip() -> Option<String> {
+    // async + spawn_blocking: the shell-out must never run on the main thread (it would freeze the
+    // whole UI if tailscaled is slow/wedged). This is on the remote-enable fallback path.
+    tauri::async_runtime::spawn_blocking(|| {
+        let out = run_tailscale(&["ip", "-4"])?;
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| l.trim())
+            .find(|l| !l.is_empty())
+            .map(|s| s.to_string())
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// This node's MagicDNS name (e.g. my-mac.tailnet-xxxx.ts.net), trailing dot stripped, or None.
@@ -721,16 +762,24 @@ fn tailscale_dns_name() -> Option<String> {
 /// (the tailnet admin must enable MagicDNS + HTTPS certificates first). [Behavioral verify needs a
 /// real tailnet — HUMAN-GATE 5.1.1.]
 #[tauri::command]
-fn tailscale_serve_start(port: u16) -> Result<String, String> {
-    let target = format!("http://127.0.0.1:{port}");
-    run_tailscale(&["serve", "--bg", "--https=443", &target]).ok_or_else(|| {
+async fn tailscale_serve_start(port: u16) -> Result<String, String> {
+    // CRITICAL: async + spawn_blocking. `tailscale serve --https=443` provisions a TLS cert, which
+    // BLOCKS — and when HTTPS certs aren't enabled in the tailnet it can stall for a long time. As a
+    // synchronous Tauri command this ran on the MAIN THREAD and froze the entire UI (beachball). Now
+    // it runs off-thread and is timeout-bounded, so on failure it returns Err quickly and the
+    // PairingModal falls back to a plain tailnet-IP bind (which needs no certs).
+    let dns = tauri::async_runtime::spawn_blocking(move || {
+        let target = format!("http://127.0.0.1:{port}");
+        run_tailscale_timeout(&["serve", "--bg", "--https=443", &target], Duration::from_secs(10))?;
+        tailscale_dns_name() // resolve the MagicDNS name only after serve actually came up
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    dns.map(|d| format!("https://{d}")).ok_or_else(|| {
         "Couldn't start Tailscale Serve. Is Tailscale running, and are MagicDNS + HTTPS \
-         certificates enabled in your tailnet admin console?"
+         certificates enabled in your tailnet admin console? Falling back to a direct tailnet bind."
             .to_string()
-    })?;
-    let dns = tailscale_dns_name()
-        .ok_or_else(|| "Couldn't resolve this node's MagicDNS name — enable MagicDNS in the tailnet admin console.".to_string())?;
-    Ok(format!("https://{dns}"))
+    })
 }
 
 /// Hold / release the keep-awake inhibitor (V5 Phase 5). The desktop calls this when remote access
