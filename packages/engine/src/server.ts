@@ -214,7 +214,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     status: () => remoteInfo(),
   };
 
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub });
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub, audit });
 
   // Shared Bun.serve config (websocket + fetch) reused by the localhost and remote listeners.
   const serveConfig = {
@@ -470,6 +470,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       const tok = ws.data?.token ?? "";
       const v = pairing.verify(tok);
       if (!v.ok) {
+        audit.record({ type: "disconnect", deviceId: ws.data?.deviceId, reason: "revoked-or-expired" });
         try {
           ws.close(4003, "token revoked or expired");
         } catch {
@@ -489,6 +490,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       const tok = ws.data?.token ?? "";
       const v = pairing.verify(tok);
       if (!v.ok) {
+        audit.record({ type: "disconnect", deviceId: ws.data?.deviceId, reason: "revoked-or-expired" });
         try {
           ws.close(4003, "token revoked or expired");
         } catch {

@@ -6,6 +6,7 @@ import { createRpcHandler, dispatch } from "../src/rpc";
 import type { ClaudeCodeAdapter } from "../src/adapter";
 import type { WorktreeManager } from "../src/worktree";
 import { ApprovalQueue } from "../src/approvalQueue";
+import { AuditLog } from "../src/audit";
 import { CostStore } from "../src/budget";
 import { SearchIndex } from "../src/searchIndex";
 import type { GitManager } from "../src/gitManager";
@@ -295,6 +296,17 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("installApprovalHook")).toBe("local");
     expect(methodScope("uninstallApprovalHook")).toBe("local");
     expect(methodScope("approvalHookStatus")).toBe("local");
+    expect(methodScope("auditLog")).toBe("local"); // RCE-channel audit trail — local incident review only
+  });
+
+  test("auditLog returns the audit trail and is local-only (audit M7)", async () => {
+    const audit = new AuditLog(() => 1_700_000_000_000);
+    audit.record({ type: "terminal-auth", deviceId: "d1", paneId: "p1" });
+    audit.record({ type: "input", deviceId: "d1", paneId: "p1", bytes: 5 });
+    const out = (await dispatch(stubAdapter(), "auditLog", {}, { audit })) as any[];
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ type: "terminal-auth", deviceId: "d1", paneId: "p1" });
+    expect(out[1]).toMatchObject({ type: "input", bytes: 5 });
   });
 
   test("every RPC method is classified in EXACTLY one scope tier — no silent steer default (V5 Phase 7.2.2)", () => {

@@ -8,6 +8,7 @@
 // GET /health -> { ok: true } (no auth) for readiness checks.
 
 import { ClaudeCodeAdapter } from "./adapter";
+import type { AuditEvent } from "./audit";
 import { deriveAgentState } from "./agentState";
 import { derivePromptState } from "./promptState";
 import { buildTimeline } from "./timeline";
@@ -65,6 +66,7 @@ export type RpcMethod =
   | "installApprovalHook"
   | "uninstallApprovalHook"
   | "approvalHookStatus"
+  | "auditLog"
   | "budgetStatus"
   | "getBudget"
   | "setBudget"
@@ -133,6 +135,7 @@ export const METHODS = new Set<RpcMethod>([
   "installApprovalHook",
   "uninstallApprovalHook",
   "approvalHookStatus",
+  "auditLog",
   "budgetStatus",
   "getBudget",
   "setBudget",
@@ -209,6 +212,9 @@ export const LOCAL_ONLY_METHODS = new Set<string>([
   // Turning remote access on/off is a desktop-only decision; a paired phone must never be able
   // to widen the engine's network exposure or read its bind config.
   "enableRemote", "disableRemote", "remoteStatus",
+  // The RCE-channel audit trail (who armed/typed/was-cut, byte counts — never the bytes) is for the
+  // local desktop's incident review only; a remote device must never read it (audit M7).
+  "auditLog",
 ]);
 
 /** POSIX shell-quote a path so metacharacters/spaces in it can't break or inject into the
@@ -290,6 +296,8 @@ export interface DispatchDeps {
   remoteControl?: RemoteControl;
   /** Terminal-mirror relay — listPanes reads the panes the cockpit can attach to (V5 Phase 1). */
   paneHub?: { list(): PaneInfo[] };
+  /** RCE-channel audit log — local-only readback for incident review (audit M7). */
+  audit?: { list(): AuditEvent[] };
 }
 
 /** Snapshot of the remote (non-localhost) listener's state. */
@@ -446,6 +454,9 @@ export async function dispatch(
       return { ok: true };
     case "approvalHookStatus":
       return { installed: await new ApprovalHookInstaller().isInstalled(req(p.dir, "dir")) };
+    case "auditLog":
+      // Local-only readback of the RCE-channel audit trail for incident review (M7).
+      return deps.audit?.list() ?? [];
     case "budgetStatus": {
       // Today's spend = sum of the live sessions' estimated cost; total = that plus the
       // persisted prior-day rollup. Evaluate against the project's configured budget.
@@ -658,6 +669,8 @@ export interface RpcHandlerDeps {
   remoteControl?: RemoteControl;
   /** Terminal-mirror relay — for listPanes (V5 Phase 1). */
   paneHub?: { list(): PaneInfo[] };
+  /** RCE-channel audit log — local-only readback (audit M7). */
+  audit?: { list(): AuditEvent[] };
   /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
   dispatchDeps?: DispatchDeps;
 }
@@ -761,6 +774,7 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
         pairing: deps.pairing,
         remoteControl: deps.remoteControl,
         paneHub: deps.paneHub,
+        audit: deps.audit,
         ...deps.dispatchDeps,
       });
       return Response.json({ result });
