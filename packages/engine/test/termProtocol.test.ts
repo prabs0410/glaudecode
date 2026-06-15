@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decodeFrame, encodeAck, encodeInput, encodeOutput, encodeSize, TermOp } from "../src/termProtocol";
+import { decodeFrame, encodeAck, encodeInput, encodeOutput, encodeResize, encodeSize, TermOp } from "../src/termProtocol";
 
 describe("termProtocol", () => {
   test("OUTPUT round-trips arbitrary bytes (incl. zero/high bytes)", () => {
@@ -40,6 +40,16 @@ describe("termProtocol", () => {
     const d = decodeFrame(encodeInput(new Uint8Array(0)));
     expect(d.type).toBe("input");
     if (d.type === "input") expect(d.data.length).toBe(0);
+  });
+
+  test("RESIZE round-trips cols/rows (phone → server, V5 Phase 4)", () => {
+    const f = encodeResize(120, 40);
+    expect(f[0]).toBe(TermOp.RESIZE);
+    expect(decodeFrame(f)).toEqual({ type: "resize", cols: 120, rows: 40 });
+  });
+
+  test("truncated RESIZE doesn't mis-decode", () => {
+    expect(decodeFrame(new Uint8Array([TermOp.RESIZE, 0, 1]))).toEqual({ type: "unknown", op: TermOp.RESIZE });
   });
 
   test("unknown opcode is reported, not thrown", () => {

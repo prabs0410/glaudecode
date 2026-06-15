@@ -8,11 +8,13 @@
 //   0x03 CLOSE  : payload = empty — the pane ended                (Rust -> engine)
 //   0x04 INPUT  : payload = raw bytes to write to the PTY         (engine -> Rust; V5 Phase 2)
 //   0x05 ARM    : payload = 1 byte (0/1) "remote input allowed"   (Rust -> engine; V5 Phase 2)
+//   0x06 RESIZE : payload = cols (uint16 BE), rows (uint16 BE)    (engine -> Rust; V5 Phase 4)
 // Pure codec, unit-tested; the engine decodes these into PaneHub calls, the Rust side encodes them.
 // Phase 2 makes the bridge duplex: INPUT flows engine -> Rust (over a separate input connection),
-// ARM flows Rust -> engine to mirror per-pane arming so the engine can gate input early.
+// ARM flows Rust -> engine to mirror per-pane arming so the engine can gate input early. Phase 4
+// adds RESIZE (engine -> Rust) on the same input connection when a phone takes control of size.
 
-export const BridgeOp = { OUTPUT: 0x00, SIZE: 0x01, META: 0x02, CLOSE: 0x03, INPUT: 0x04, ARM: 0x05 } as const;
+export const BridgeOp = { OUTPUT: 0x00, SIZE: 0x01, META: 0x02, CLOSE: 0x03, INPUT: 0x04, ARM: 0x05, RESIZE: 0x06 } as const;
 
 function frame(op: number, paneId: string, payload: Uint8Array): Uint8Array {
   const id = new TextEncoder().encode(paneId);
@@ -49,6 +51,14 @@ export function encodeBridgeInput(paneId: string, data: Uint8Array): Uint8Array 
 export function encodeBridgeArm(paneId: string, armed: boolean): Uint8Array {
   return frame(BridgeOp.ARM, paneId, new Uint8Array([armed ? 1 : 0]));
 }
+/** engine -> Rust: a phone-originated resize for a pane (V5 Phase 4), gated like INPUT. */
+export function encodeBridgeResize(paneId: string, cols: number, rows: number): Uint8Array {
+  const p = new Uint8Array(4);
+  const dv = new DataView(p.buffer);
+  dv.setUint16(0, cols & 0xffff, false);
+  dv.setUint16(2, rows & 0xffff, false);
+  return frame(BridgeOp.RESIZE, paneId, p);
+}
 
 export type BridgeFrame =
   | { type: "output"; paneId: string; data: Uint8Array }
@@ -57,6 +67,7 @@ export type BridgeFrame =
   | { type: "close"; paneId: string }
   | { type: "input"; paneId: string; data: Uint8Array }
   | { type: "arm"; paneId: string; armed: boolean }
+  | { type: "resize"; paneId: string; cols: number; rows: number }
   | { type: "unknown"; op: number };
 
 export function decodeBridgeFrame(buf: Uint8Array): BridgeFrame {
@@ -82,6 +93,9 @@ export function decodeBridgeFrame(buf: Uint8Array): BridgeFrame {
     case BridgeOp.ARM:
       if (payload.length < 1) return { type: "unknown", op };
       return { type: "arm", paneId, armed: payload[0] !== 0 };
+    case BridgeOp.RESIZE:
+      if (payload.length < 4) return { type: "unknown", op };
+      return { type: "resize", paneId, cols: dv().getUint16(0, false), rows: dv().getUint16(2, false) };
     default:
       return { type: "unknown", op };
   }

@@ -16,7 +16,7 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
-import { decodeBridgeFrame, encodeBridgeInput } from "./bridgeProtocol";
+import { decodeBridgeFrame, encodeBridgeInput, encodeBridgeResize } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
@@ -109,6 +109,25 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // revoked device stops typing (and stops viewing) instead of running until its socket happens to
   // close (Phase 2 security review, finding #1).
   const termSockets = new Set<any>();
+  // RCE gate shared by INPUT + RESIZE (V5 Phase 2/4): a /term-ws control frame may reach the PTY
+  // only when the socket's scope is exactly "terminal", its token STILL verifies (so a revoked/
+  // expired token is cut immediately, not just on the next socket close), and the target pane is
+  // armed. Returns the paneId, or null (closing the socket on revocation). The Rust core re-checks
+  // arming authoritatively before touching the PTY (defense in depth).
+  const gateTerminal = (ws: any): string | null => {
+    if (ws.data.scope !== "terminal") return null;
+    const rv = pairing.verify(ws.data.token ?? "");
+    if (!rv.ok || rv.scope !== "terminal") {
+      try {
+        ws.close(4003, "token revoked or expired");
+      } catch {
+        /* already closed */
+      }
+      return null;
+    }
+    const paneId = ws.data.paneId;
+    return paneId && paneHub.canInput(paneId) ? paneId : null;
+  };
 
   // Optional second listener bound to a network interface (e.g. the Mac's Tailscale IP). It
   // shares EVERYTHING with the localhost listener — same handler, token, pairing, sockets — so
@@ -242,30 +261,24 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
           if (f.type === "ack" && ws.data.paneId && ws.data.sub) {
             paneHub.ack(ws.data.paneId, ws.data.sub, f.bytes);
           } else if (f.type === "input") {
-            // RCE GATE (V5 Phase 2): forward a phone's keystrokes to the PTY ONLY when BOTH hold:
-            //   1. the token's scope is exactly "terminal" (never view/steer — defense vs scope creep)
-            //   2. the target pane is armed (the desktop opted this pane in; default OFF)
-            // The Rust core re-checks arming authoritatively before writing the PTY (defense in
-            // depth) — even a bug here cannot type into an unarmed pane.
-            if (ws.data.scope !== "terminal") return;
-            // Re-verify the token on every keystroke so an EXPIRED or REVOKED terminal token is cut
-            // immediately, not just on the next socket close (Phase 2 security review, finding #1).
-            const rv = pairing.verify(ws.data.token ?? "");
-            if (!rv.ok || rv.scope !== "terminal") {
-              try {
-                ws.close(4003, "token revoked or expired");
-              } catch {
-                /* already closed */
-              }
-              return;
-            }
-            const paneId = ws.data.paneId;
-            if (!paneId || !paneHub.canInput(paneId)) return;
-            if (inputBridge) {
+            // RCE GATE (V5 Phase 2): keystrokes reach the PTY only via gateTerminal (terminal scope +
+            // live token + armed pane). The Rust core re-checks arming before writing (defense in depth).
+            const paneId = gateTerminal(ws);
+            if (paneId && inputBridge) {
               try {
                 inputBridge.send(encodeBridgeInput(paneId, f.data));
               } catch {
                 /* input sink gone — drop; the Rust core reconnects */
+              }
+            }
+          } else if (f.type === "resize") {
+            // RESIZE is RCE-adjacent (mutates the desktop pane) — gated EXACTLY like INPUT (V5 Phase 4).
+            const paneId = gateTerminal(ws);
+            if (paneId && inputBridge) {
+              try {
+                inputBridge.send(encodeBridgeResize(paneId, f.cols, f.rows));
+              } catch {
+                /* input sink gone — drop */
               }
             }
           }

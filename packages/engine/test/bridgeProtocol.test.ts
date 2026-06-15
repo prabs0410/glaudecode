@@ -6,6 +6,7 @@ import {
   encodeBridgeInput,
   encodeBridgeMeta,
   encodeBridgeOutput,
+  encodeBridgeResize,
   encodeBridgeSize,
 } from "../src/bridgeProtocol";
 
@@ -53,6 +54,10 @@ describe("bridgeProtocol", () => {
   test("ARM round-trips the armed flag (Rust -> engine, V5 Phase 2)", () => {
     expect(decodeBridgeFrame(encodeBridgeArm(PANE, true))).toEqual({ type: "arm", paneId: PANE, armed: true });
     expect(decodeBridgeFrame(encodeBridgeArm(PANE, false))).toEqual({ type: "arm", paneId: PANE, armed: false });
+  });
+
+  test("RESIZE round-trips cols/rows (engine -> Rust, V5 Phase 4)", () => {
+    expect(decodeBridgeFrame(encodeBridgeResize(PANE, 100, 30))).toEqual({ type: "resize", paneId: PANE, cols: 100, rows: 30 });
   });
 
   test("truncated / unknown frames don't mis-decode", () => {

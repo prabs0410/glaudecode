@@ -52,7 +52,7 @@ export const TERM_HTML = `<!doctype html>
   #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
-  #rawbtn.on, #k-ctrl.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  #rawbtn.on, #k-ctrl.on, #k-size.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
   #textrow { display: flex; gap: 6px; align-items: flex-end; }
   #tin { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
     padding: 10px; font: 14px ui-monospace, Menlo, monospace; resize: none; line-height: 1.3;
@@ -99,6 +99,7 @@ export const TERM_HTML = `<!doctype html>
       <button id="k-left">←</button>
       <button id="k-right">→</button>
       <button id="k-enter">⏎</button>
+      <button id="k-size" title="Take control of size: fit the terminal to this phone">⤢ size</button>
       <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
     </div>
     <div id="hint" class="muted"></div>
@@ -114,7 +115,7 @@ export const TERM_HTML = `<!doctype html>
   if (!paneId) return;
 
   var canTypeScope = SCOPE === "terminal";
-  var armed = false, rawOn = false, ctrlArmed = false, paused = false, ws = null;
+  var armed = false, rawOn = false, ctrlArmed = false, paused = false, sizeOn = false, ws = null;
 
   var term = new Terminal({
     fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
@@ -297,6 +298,26 @@ export const TERM_HTML = `<!doctype html>
       if (rawOn) term.focus();
     };
 
+    // Take control of size (V5 Phase 4): fit the terminal to this phone + send RESIZE (gated like
+    // INPUT server-side). Default OFF = desktop-authoritative. Cell metrics are approximate (no fit
+    // addon vendored) — the real-device QA gate (4.5.2) tunes them.
+    function fitAndSend() {
+      if (!sizeOn) return;
+      var el = document.getElementById("term");
+      var cols = Math.max(20, Math.floor((el.clientWidth - 12) / (13 * 0.6)));
+      var rows = Math.max(6, Math.floor((el.clientHeight - 12) / (13 * 1.3)));
+      try { term.resize(cols, rows); } catch (e) {}
+      if (ws && ws.readyState === 1 && armed) {
+        var f = new Uint8Array(5); f[0] = 4; // RESIZE
+        var dv = new DataView(f.buffer); dv.setUint16(1, cols & 0xffff, false); dv.setUint16(3, rows & 0xffff, false);
+        try { ws.send(f); } catch (e) {}
+      }
+    }
+    document.getElementById("k-size").onclick = function () {
+      sizeOn = !sizeOn; this.classList.toggle("on", sizeOn);
+      if (sizeOn) fitAndSend(); // take control → fit now (desktop reasserts its size when toggled off)
+    };
+
     // Message / Smart tab switch (the persistent key bar stays under both). Last tab is remembered.
     var activeTab = sessionStorage.getItem("ck.tab") || "msg";
     function setTab(t) {
@@ -318,6 +339,7 @@ export const TERM_HTML = `<!doctype html>
       var pin = function () {
         document.getElementById("inputbar").style.transform = "translateY(-" + kbHeight() + "px)";
         layout();
+        fitAndSend(); // re-fit when the keyboard changes the visible area (no-op unless size taken)
       };
       vv.addEventListener("resize", pin);
       vv.addEventListener("scroll", pin);
@@ -379,7 +401,8 @@ export const TERM_HTML = `<!doctype html>
       } else if (op === 1 && b.length >= 5) { // SIZE
         var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
         var cols = dv.getUint16(1, false), rows = dv.getUint16(3, false);
-        if (cols && rows) { try { term.resize(cols, rows); } catch (e) {} }
+        // Desktop-authoritative by default; ignored while the phone has "taken control" of size.
+        if (!sizeOn && cols && rows) { try { term.resize(cols, rows); } catch (e) {} }
       }
     };
   }

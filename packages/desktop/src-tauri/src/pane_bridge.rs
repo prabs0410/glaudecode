@@ -28,8 +28,10 @@ const OP_OUTPUT: u8 = 0;
 const OP_SIZE: u8 = 1;
 const OP_META: u8 = 2;
 const OP_CLOSE: u8 = 3;
-const OP_INPUT: u8 = 4;
+// Inbound (engine -> Rust) ops the input pump dispatches; pub so lib.rs can match them.
+pub const OP_INPUT: u8 = 4;
 const OP_ARM: u8 = 5;
+pub const OP_RESIZE: u8 = 6;
 
 fn frame(op: u8, pane_id: &str, payload: &[u8]) -> Vec<u8> {
     let id = pane_id.as_bytes();
@@ -127,39 +129,37 @@ fn is_disconnected(rx: &Receiver<Vec<u8>>) -> bool {
     matches!(rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Disconnected))
 }
 
-/// Start the INPUT bridge (V5 Phase 2): spawn a thread that connects to /pane-input-bridge,
-/// authenticates with the engine bearer token, and blocking-reads INPUT frames the engine pushes
-/// (a phone's keystrokes, already gated by the engine for terminal scope + an armed pane). Each
-/// decoded INPUT calls `on_input(paneId, bytes)`, which re-checks arming authoritatively before
-/// writing the PTY. Reconnects with a short backoff. The thread is a daemon — it dies with the
-/// process on app exit (the engine child is killed there).
-pub fn start_input<F>(port: u16, token: String, on_input: F)
+/// Start the INPUT bridge (V5 Phase 2/4): spawn a thread that connects to /pane-input-bridge,
+/// authenticates with the engine bearer token, and blocking-reads inbound frames the engine pushes
+/// (a phone's keystrokes / resizes, already gated by the engine for terminal scope + an armed pane).
+/// Each decoded frame calls `on_frame(op, paneId, payload)`, which re-checks arming authoritatively
+/// before touching the PTY. Reconnects with a short backoff. The thread is a daemon — it dies with
+/// the process on app exit (the engine child is killed there).
+pub fn start_input<F>(port: u16, token: String, on_frame: F)
 where
-    F: Fn(&str, &[u8]) + Send + 'static,
+    F: Fn(u8, &str, &[u8]) + Send + 'static,
 {
     thread::Builder::new()
         .name("pane-input-bridge".into())
-        .spawn(move || pump_input(port, token, on_input))
+        .spawn(move || pump_input(port, token, on_frame))
         .ok();
 }
 
-fn pump_input<F>(port: u16, token: String, on_input: F)
+fn pump_input<F>(port: u16, token: String, on_frame: F)
 where
-    F: Fn(&str, &[u8]),
+    F: Fn(u8, &str, &[u8]),
 {
     let url = format!("ws://127.0.0.1:{port}/pane-input-bridge");
     let auth = serde_json::json!({ "type": "auth", "token": token }).to_string();
     loop {
         if let Ok((mut ws, _resp)) = connect(&url) {
             if ws.send(Message::Text(auth.clone().into())).is_ok() {
-                // Block reading keystroke frames until the socket dies, then reconnect.
+                // Block reading inbound frames until the socket dies, then reconnect.
                 loop {
                     match ws.read() {
                         Ok(Message::Binary(b)) => {
                             if let Some((op, pane_id, payload)) = decode(&b) {
-                                if op == OP_INPUT {
-                                    on_input(&pane_id, &payload);
-                                }
+                                on_frame(op, &pane_id, &payload);
                             }
                         }
                         Ok(Message::Close(_)) | Err(_) => break,

@@ -10,7 +10,7 @@ import {
   encodeBridgeOutput,
   encodeBridgeSize,
 } from "../src/bridgeProtocol";
-import { decodeFrame, encodeInput } from "../src/termProtocol";
+import { decodeFrame, encodeInput, encodeResize } from "../src/termProtocol";
 
 function asU8(d: unknown): Uint8Array {
   if (d instanceof Uint8Array) return d;
@@ -333,6 +333,43 @@ describe("engine server", () => {
     sink.ws.close();
     bridge.close();
     term.close();
+  });
+
+  test("a terminal+armed RESIZE relays to the Rust sink; a steer RESIZE is dropped (V5 Phase 4)", async () => {
+    const paneId = "pane-resize";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeArm(paneId, true));
+    await sleep(40);
+
+    // A steer token's RESIZE is dropped (same gate as INPUT — terminal scope required).
+    const steer = server.pairing.redeem(server.pairing.createPairCode("steer").code, "p")!.token;
+    const t1 = await openWs("/term-ws");
+    t1.send(JSON.stringify({ type: "auth", token: steer, paneId }));
+    await sleep(40);
+    t1.send(encodeResize(120, 40));
+    await sleep(50);
+    expect(sink.frames.some((f) => f.type === "resize")).toBe(false);
+    t1.close();
+
+    // A terminal token's RESIZE on an armed pane relays through as a bridge resize frame.
+    const term = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "p")!.token;
+    const t2 = await openWs("/term-ws");
+    t2.send(JSON.stringify({ type: "auth", token: term, paneId }));
+    await sleep(40);
+    t2.send(encodeResize(120, 40));
+    await sleep(50);
+    const rz = sink.frames.find((f) => f.type === "resize" && f.paneId === paneId);
+    expect(rz).toBeTruthy();
+    if (rz && rz.type === "resize") {
+      expect(rz.cols).toBe(120);
+      expect(rz.rows).toBe(40);
+    }
+    sink.ws.close();
+    bridge.close();
+    t2.close();
   });
 
   // Last: this consumes 127.0.0.1's /pair budget. Other tests redeem via server.pairing directly,

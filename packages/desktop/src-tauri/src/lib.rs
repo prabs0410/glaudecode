@@ -292,6 +292,28 @@ fn pty_write_internal(app: &AppHandle, pane_id: &str, data: &[u8]) {
     }
 }
 
+/// Resize a pane's PTY from a PHONE that has taken control of size (V5 Phase 4) — the authoritative
+/// arming gate, exactly like `pty_write_internal`. Called from the input-bridge thread with a size
+/// the engine already gated (terminal scope + armed pane). We re-check arming HERE, resize the
+/// master, then mirror the new size back to the engine (output bridge) so the phone + any other
+/// viewer re-render. Silently drops for an unarmed/unknown pane.
+fn pty_resize_internal(app: &AppHandle, pane_id: &str, cols: u16, rows: u16) {
+    let registry = app.state::<PtyRegistry>();
+    if !registry.armed.lock().unwrap().contains(pane_id) {
+        return; // not armed → never resizes the desktop pane
+    }
+    {
+        let panes = registry.panes.lock().unwrap();
+        if let Some(pane) = panes.get(pane_id) {
+            let _ = pane.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+        }
+    }
+    if let Some(tx) = app.state::<EngineState>().bridge.lock().unwrap().as_ref() {
+        let _ = tx.try_send(pane_bridge::encode_size(pane_id, cols, rows));
+    }
+    let _ = app.emit(&format!("pane-remote-input:{pane_id}"), ()); // live "phone is driving" echo
+}
+
 /// Arm / disarm a pane for remote (phone) input (V5 Phase 2). Default is disarmed; this is a
 /// deliberate, local desktop action. Mirrors the new state to the engine so it can gate input early
 /// + reflect armed state on the phone. The Rust `armed` set remains authoritative.
@@ -425,8 +447,14 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     // Start the INPUT bridge (V5 Phase 2): the engine pushes phone keystrokes back over a second,
     // bearer-only socket; each lands in pty_write_internal, which re-checks arming before the PTY.
     let app_for_input = app.clone();
-    pane_bridge::start_input(endpoint.port, endpoint.token.clone(), move |pane_id, data| {
-        pty_write_internal(&app_for_input, pane_id, data);
+    pane_bridge::start_input(endpoint.port, endpoint.token.clone(), move |op, pane_id, data| {
+        if op == pane_bridge::OP_INPUT {
+            pty_write_internal(&app_for_input, pane_id, data);
+        } else if op == pane_bridge::OP_RESIZE && data.len() >= 4 {
+            let cols = u16::from_be_bytes([data[0], data[1]]);
+            let rows = u16::from_be_bytes([data[2], data[3]]);
+            pty_resize_internal(&app_for_input, pane_id, cols, rows);
+        }
     });
     // Each launch gets a fresh port; if the approval hook is installed, refresh its endpoint
     // file so it keeps working across restarts (instead of pointing at the dead old engine).
