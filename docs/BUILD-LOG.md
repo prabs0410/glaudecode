@@ -274,13 +274,30 @@ oss-at-scale-strategy,secure-mirror-tech-stack,cross-project-session-view}.md`);
     sockets are **swept every 2s** against revocation/expiry. Deferred to the public-release track
     (Phase 3/7, not blockers for personal use): an RPC `TERMINAL_ONLY_METHODS` tier + a "every method
     classified" test, lifecycle audit logging, and fail-closed-on-input-bridge-reconnect.
-- **Status:** Phases 0–2 built end-to-end (engine **302 tests** green; Rust `cargo check` clean; desktop
-  `tsc` + `vite build` clean). Verdict from the review: **safe for personal use over your own Tailscale**
-  (your machine, your keys, your trusted phone; arming is deliberate + default-off; kill switch is
-  instant). **Next is the human gate: on-device verification** — pair a *terminal*-scope device, open the
-  cockpit, arm a pane (📱 on its tab), type. Then Phases 3–7 (app-layer E2E [SPAKE2 + Noise/AEAD] · mobile
-  input UX · transport/onboarding · multi-OS · OSS launch governance) — none started. **Public release**
-  still gates on Phase 3 (independent crypto review) + Phase 7 (governance) per `docs/GOAL-V5.md`.
+- **Phase 4 — Mobile input UX (`feat/v5-mobile-ux`, me-first #1, autonomous `/goal` run of `docs/goal-v5/`)** —
+  the phone goes from "watch + type a line" to genuinely thumb-drivable. Pure logic unit-tested in the
+  engine; the phone page is a served string (behavioral verify = the real-device QA gate).
+  - **4.1** `5e5da99`/`1be7c7f` — Mode A: a multi-line textarea with Send (text+Enter) vs Insert (no
+    Enter), multi-line bracketed-pasted (`wrapForPaste`, tested); Message/Smart tabs with a **persistent**
+    key bar (a deliberate deviation from a literal 3rd "Keys" tab — the design mandates the keys always be
+    reachable); the hardcoded 118px offset becomes a measured `layout()`.
+  - **4.2** `8f31c93` — Mode B: the bar pins above the soft keyboard (VisualViewport, feature-detected),
+    taps don't dismiss the keyboard; sticky/chainable Ctrl (`ctrlByte`, tested), Shift-Tab, Enter, Ctrl-arrows.
+  - **4.3** `ae04fa9`/`bd2c0f7` — Mode C: a new read-only `promptState` RPC (`derivePromptState`, tested)
+    surfaces a live AskUserQuestion as tappable option buttons (down-arrow×i + Enter), plus chips
+    (yes/continue/Esc) and one-tap PromptStore snippets. `permissionMode` omitted (not derivable from JSONL).
+  - **4.4** `121e641` — multi-session steering: terminal rows show an `agentState` dot + a "needs you"
+    badge (pending approval/question); the term socket detaches while backgrounded (ring-replay on return);
+    a ⇄ switcher.
+  - **4.5** `790e319` — resize authority: a phone "⤢ size" take-control toggle (default desktop-authoritative).
+    New `RESIZE` ops (termProtocol 0x04, bridge 0x06) gated by a **shared `gateTerminal`** (identical to the
+    INPUT gate) + a created `pty_resize_internal` (authoritative armed re-check); test proves a steer RESIZE
+    is dropped. (4.5.2 real-device QA = HUMAN-GATE.)
+- **Status:** Phases 0–2 + **Phase 4** built end-to-end (engine **321 tests** green; Rust `cargo check`
+  clean; `tsc` clean). Phase 4's HUMAN-GATEs (real iOS/Android QA of the key-bar pinning + all three input
+  modes) and Phase-2 on-device verification remain. **Next in the me-first order: Phase 5 (transport &
+  onboarding).** Then Phases 3 (crypto), 6 (multi-OS), 7 (governance). **Public release** still gates on the
+  Phase 3 independent crypto review + the Phase 7 signing trust-root per `docs/goal-v5/README.md`.
 
 ---
 
