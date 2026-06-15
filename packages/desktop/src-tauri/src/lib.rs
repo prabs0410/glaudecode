@@ -532,26 +532,81 @@ fn project_dir() -> String {
     find_project_dir().to_string_lossy().into_owned()
 }
 
-/// This machine's Tailscale IPv4 (e.g. 100.x.y.z), or None if Tailscale isn't installed/up.
-/// Used to bind the engine's remote listener to the tailnet only (Epic G remote).
-#[tauri::command]
-fn tailscale_ip() -> Option<String> {
-    // The CLI may be on PATH (standalone install) or inside the App Store app bundle.
-    let candidates = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
-    for bin in candidates {
-        if let Ok(out) = Command::new(bin).args(["ip", "-4"]).output() {
+/// Tailscale CLI candidate paths — the SINGLE source (Phase 6 / 6.3.2 adds Windows paths here, and
+/// the serve helper reuses it). The CLI may be on PATH (standalone) or in the App Store app bundle.
+fn tailscale_candidates() -> &'static [&'static str] {
+    &["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]
+}
+
+/// Run the Tailscale CLI with `args`, returning the output of the first candidate that SUCCEEDS.
+fn run_tailscale(args: &[&str]) -> Option<std::process::Output> {
+    for bin in tailscale_candidates() {
+        if let Ok(out) = Command::new(bin).args(args).output() {
             if out.status.success() {
-                if let Some(ip) = String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .map(|l| l.trim())
-                    .find(|l| !l.is_empty())
-                {
-                    return Some(ip.to_string());
-                }
+                return Some(out);
             }
         }
     }
     None
+}
+
+/// This machine's Tailscale IPv4 (e.g. 100.x.y.z), or None if Tailscale isn't installed/up.
+/// Used to bind the engine's remote listener to the tailnet (the zero-config fallback path).
+#[tauri::command]
+fn tailscale_ip() -> Option<String> {
+    let out = run_tailscale(&["ip", "-4"])?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// This node's MagicDNS name (e.g. my-mac.tailnet-xxxx.ts.net), trailing dot stripped, or None.
+#[tauri::command]
+fn tailscale_dns_name() -> Option<String> {
+    let out = run_tailscale(&["status", "--json"])?;
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let name = v.get("Self")?.get("DNSName")?.as_str()?.trim_end_matches('.').to_string();
+    if name.is_empty() { None } else { Some(name) }
+}
+
+/// Front the LOCALHOST engine port on this node's MagicDNS name over real TLS via Tailscale Serve
+/// (V5 Phase 5). Serve proxies `https://<node>.ts.net:443` → `http://127.0.0.1:<port>`, staying
+/// private to the tailnet — so the engine itself stays localhost-only (no second listener, more
+/// secure than binding the tailnet IP). Returns the `https://<node>.ts.net` URL, or a clear error
+/// (the tailnet admin must enable MagicDNS + HTTPS certificates first). [Behavioral verify needs a
+/// real tailnet — HUMAN-GATE 5.1.1.]
+#[tauri::command]
+fn tailscale_serve_start(port: u16) -> Result<String, String> {
+    let target = format!("http://127.0.0.1:{port}");
+    run_tailscale(&["serve", "--bg", "--https=443", &target]).ok_or_else(|| {
+        "Couldn't start Tailscale Serve. Is Tailscale running, and are MagicDNS + HTTPS \
+         certificates enabled in your tailnet admin console?"
+            .to_string()
+    })?;
+    let dns = tailscale_dns_name()
+        .ok_or_else(|| "Couldn't resolve this node's MagicDNS name — enable MagicDNS in the tailnet admin console.".to_string())?;
+    Ok(format!("https://{dns}"))
+}
+
+/// Turn off the Tailscale Serve handler on :443 for this node (V5 Phase 5).
+#[tauri::command]
+fn tailscale_serve_stop() -> Result<(), String> {
+    run_tailscale(&["serve", "--https=443", "off"])
+        .map(|_| ())
+        .ok_or_else(|| "tailscale serve off failed".to_string())
+}
+
+/// The MagicDNS https URL if a Serve handler appears active on this node, else None (V5 Phase 5).
+#[tauri::command]
+fn tailscale_serve_status() -> Option<String> {
+    let out = run_tailscale(&["serve", "status", "--json"])?;
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    // Serve status JSON shape varies by version; treat any non-empty TCP/Web config as "active".
+    let active = v.get("TCP").map(|t| !t.is_null()).unwrap_or(false)
+        || v.get("Web").map(|w| !w.is_null()).unwrap_or(false);
+    if active { tailscale_dns_name().map(|d| format!("https://{d}")) } else { None }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -577,7 +632,11 @@ pub fn run() {
             pty_disarm_all,
             engine_endpoint,
             project_dir,
-            tailscale_ip
+            tailscale_ip,
+            tailscale_dns_name,
+            tailscale_serve_start,
+            tailscale_serve_stop,
+            tailscale_serve_status
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
