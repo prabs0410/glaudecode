@@ -65,6 +65,23 @@ describe("wrapForPaste paste-jacking guard (audit H4)", () => {
 // Drift guard: the cockpit term page (termPage.ts) can't import this module — it ships wrapForPaste
 // as a verbatim mirror inside an inline <script>. Extract that mirror from the served HTML and prove
 // it is byte-for-byte equivalent to the engine source over a battery (incl. the H4 scrub).
+describe("termPage served script parses (regression)", () => {
+  // A \" inside termPage's template literal collapses to "" in the served JS and breaks the WHOLE
+  // inline script (blank page). Extract every inline <script> and assert it PARSES. SAFE: the only
+  // input is our own compile-time TERM_HTML constant (never untrusted), and `new Function(body)` is
+  // used purely to PARSE — the function is constructed, never called, so the body never executes.
+  // Catches this entire class of escaping bug.
+  test("every inline <script> in the served term page parses without a SyntaxError", () => {
+    const scripts = [...TERM_HTML.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const body of scripts) {
+      if (!body.trim()) continue;
+      // eslint-disable-next-line no-new-func
+      expect(() => new Function(body)).not.toThrow();
+    }
+  });
+});
+
 describe("termPage input bar actually shows (regression)", () => {
   // The #inputbar CSS default is `display: none`. updateInputUI used `bar.style.display = ""` to
   // "show" it — but "" reverts to the CSS rule (none), so the input bar NEVER appeared for a

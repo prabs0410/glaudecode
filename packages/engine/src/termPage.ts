@@ -291,7 +291,7 @@ export const TERM_HTML = `<!doctype html>
       bar.style.display = "none";
       setPill("view-only", "");
       if (note) {
-        note.textContent = "View-only — this device is paired as \"" + SCOPE + "\". To type into a pane, re-pair with “Terminal” access on the Mac (Pair a device → Device access → Terminal), then arm the pane (📱 on its tab).";
+        note.textContent = "View-only — this device is paired as " + SCOPE + ". To type, re-pair with Terminal access on the Mac (Pair a device → Device access → Terminal), then arm the pane (tap 📱 on its tab).";
         note.style.display = "block";
       }
       return;
