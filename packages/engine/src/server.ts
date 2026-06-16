@@ -510,6 +510,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // mirror sockets whose token no longer verifies (revoked/expired) — so de-authorizing a device
   // tears down its LIVE session within ~2s, not only on the next frame (Phase 2 review #1).
   const broadcast = setInterval(() => {
+    // Self-heal any mirror sub parked `lagging` whose recovery ACK never arrived (deterministic
+    // recovery that doesn't depend on the phone sending a final ACK) — see PaneHub.resyncStalled.
+    paneHub.resyncStalled();
     for (const ws of termSockets) {
       const tok = ws.data?.token ?? "";
       const v = pairing.verify(tok);

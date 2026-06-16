@@ -108,6 +108,44 @@ describe("PaneHub", () => {
     expect(s.outputs().at(-1)).toEqual([8]);
   });
 
+  test("resyncStalled self-heals a stuck lagging sub WITHOUT a client ACK (server-driven recovery)", () => {
+    const hub = new PaneHub({ ringMax: 8, highWater: 12, lowWater: 4 });
+    hub.setMeta("p", "");
+    const s = makeSub();
+    hub.attach("p", s.sub);
+    for (let i = 1; i <= 5; i++) hub.ingest("p", b(i, i, i, i)); // races past highWater → lagging
+    hub.ingest("p", b(9, 9, 9, 9)); // still behind → dropped
+    const before = s.frames.length;
+    // The stuck case: NO ACK ever arrives (e.g. sent bytes dropped at the socket cap), so ack() can
+    // never recover it. One sweep is not enough — recovery waits 2 ticks to avoid racing the fast path.
+    hub.resyncStalled();
+    expect(s.frames.length).toBe(before); // first tick — no repaint yet
+    // Second sweep → force RESET + ring replay + resume, with NO client ACK at all.
+    hub.resyncStalled();
+    const resetSeen = s.outputs().some((o) => o[0] === 0x1b && o[1] === 0x63);
+    expect(resetSeen).toBe(true);
+    const afterResync = s.frames.length;
+    hub.ingest("p", b(8)); // resumed → delivered live again
+    expect(s.frames.length).toBeGreaterThan(afterResync);
+    expect(s.outputs().at(-1)).toEqual([8]);
+  });
+
+  test("setSize is NOT sent to a lagging sub (a resize would wipe its xterm with no repaint to follow)", () => {
+    const hub = new PaneHub({ ringMax: 8, highWater: 12, lowWater: 4 });
+    hub.setMeta("p", "");
+    const s = makeSub();
+    hub.attach("p", s.sub);
+    for (let i = 1; i <= 5; i++) hub.ingest("p", b(i, i, i, i)); // → lagging
+    const sizesBefore = s.sizes().length;
+    hub.setSize("p", 120, 50); // must be suppressed while lagging
+    expect(s.sizes().length).toBe(sizesBefore);
+    // After a resync the sub is live again; its replay carries the current size, so resize resumes.
+    hub.resyncStalled();
+    hub.resyncStalled();
+    hub.setSize("p", 130, 60);
+    expect(s.sizes().at(-1)).toEqual({ type: "size", cols: 130, rows: 60 });
+  });
+
   test("detach stops delivery", () => {
     const hub = new PaneHub();
     hub.setMeta("p", ""); // bridge announces the pane first (M12)

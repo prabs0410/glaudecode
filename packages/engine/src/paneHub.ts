@@ -32,6 +32,7 @@ interface SubState {
   sent: number; // cumulative OUTPUT payload bytes sent to this subscriber
   acked: number; // cumulative bytes the subscriber reports consumed
   lagging: boolean; // true once we've skipped a live frame for it (needs resync on recovery)
+  stalledTicks: number; // consecutive sweeps spent lagging without an ACK-driven recovery
 }
 
 interface PaneState {
@@ -87,7 +88,13 @@ export class PaneHub {
     const frame = encodeOutput(bytes);
     for (const [sub, st] of p.subs) {
       if (st.sent - st.acked > this.hi) {
-        st.lagging = true; // behind — drop live frames for it; it will resync once it catches up
+        // behind — drop live frames for it; it resyncs once it catches up (ack) or after a stall
+        // (resyncStalled). Reset the stall counter on the lagging transition so the slow-path timer
+        // measures THIS stall, not a previous one.
+        if (!st.lagging) {
+          st.lagging = true;
+          st.stalledTicks = 0;
+        }
         continue;
       }
       sub.send(frame);
@@ -95,13 +102,16 @@ export class PaneHub {
     }
   }
 
-  /** Update a pane's size and notify subscribers (phone renders at this size; view-only). */
+  /** Update a pane's size and notify subscribers (phone renders at this size; view-only). A SIZE
+   *  resizes the phone's xterm (reflow/clear), so we MUST NOT send it to a lagging sub whose live
+   *  OUTPUT is currently suppressed — it would wipe the screen with no repaint to follow. A lagging
+   *  sub gets the current size at resync instead (replay leads with a SIZE frame). */
   setSize(paneId: string, cols: number, rows: number): void {
     const p = this.ensure(paneId);
     p.cols = cols;
     p.rows = rows;
     const frame = encodeSize(cols, rows);
-    for (const sub of p.subs.keys()) sub.send(frame);
+    for (const [sub, st] of p.subs) if (!st.lagging) sub.send(frame);
   }
 
   /** Attach a subscriber to a REAL pane: send current size, replay the ring, go live. Returns the
@@ -112,7 +122,7 @@ export class PaneHub {
     const p = this.panes.get(paneId);
     if (!p) return null; // phantom paneId — caller closes the socket (4002)
     const replayed = this.replay(p, sub);
-    p.subs.set(sub, { sent: replayed, acked: 0, lagging: false });
+    p.subs.set(sub, { sent: replayed, acked: 0, lagging: false, stalledTicks: 0 });
     return () => p.subs.delete(sub);
   }
 
@@ -122,12 +132,33 @@ export class PaneHub {
     const st = p?.subs.get(sub);
     if (!p || !st) return;
     st.acked = Math.max(st.acked, totalBytes);
-    if (st.lagging && st.sent - st.acked <= this.lo) {
-      sub.send(encodeOutput(RESET));
-      const replayed = this.replay(p, sub);
-      st.sent = st.acked + RESET.length + replayed;
-      st.lagging = false;
+    if (st.lagging && st.sent - st.acked <= this.lo) this.resync(p, sub, st);
+  }
+
+  /** Server-driven recovery (no client-ACK gate). The fast path (ack) resyncs a sub the instant it
+   *  drains back under the low watermark. But a sub can stay parked `lagging` FOREVER when bytes the
+   *  engine counted as `sent` were dropped before the phone got them (e.g. at the WebSocket
+   *  backpressure cap) — then its ACK can never reach `<= lo` and ack() never fires. Called from the
+   *  engine's periodic sweep: a sub still stuck after ~2 sweeps is force-repainted from the ring and
+   *  resumed, WITHOUT waiting on a client ACK. Bounded: at most one ring (≤ ringMax) per repaint, and
+   *  re-armed only when the next live frame re-lags it — so a pathologically slow link can't pile up. */
+  resyncStalled(): void {
+    for (const p of this.panes.values()) {
+      for (const [sub, st] of p.subs) {
+        if (st.lagging && ++st.stalledTicks >= 2) this.resync(p, sub, st);
+      }
     }
+  }
+
+  /** Reset the phone's xterm and replay the current ring, then resume live delivery for `st`. Shared
+   *  by the ACK-driven (ack) and timer-driven (resyncStalled) recovery paths so the byte accounting
+   *  stays identical on both — the phone's `received` counter must track `st.sent` exactly. */
+  private resync(p: PaneState, sub: TermSubscriber, st: SubState): void {
+    sub.send(encodeOutput(RESET));
+    const replayed = this.replay(p, sub);
+    st.sent = st.acked + RESET.length + replayed;
+    st.lagging = false;
+    st.stalledTicks = 0;
   }
 
   /** Pane ended on the host → tell subscribers and drop the pane. */
