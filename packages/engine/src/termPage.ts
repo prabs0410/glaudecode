@@ -35,6 +35,9 @@ export const TERM_HTML = `<!doctype html>
     border-top: 1px solid #1f2630; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     display: none; }
   #inputbar.notarmed { opacity: 0.6; }
+  /* Shown only to a view/steer device (can't type) — explains how to get terminal access. */
+  #scopenote { position: fixed; left: 0; right: 0; bottom: 0; display: none; padding: 10px 14px;
+    background: #16263a; color: #79c0ff; border-top: 1px solid #1f6feb; font-size: 13px; line-height: 1.4; }
   /* When not armed, the action buttons (key bar, chips, snippets, smart answers) are disabled so they
      don't silently no-op — only the mode tabs stay clickable (audit L16). */
   #inputbar.notarmed #keys button, #inputbar.notarmed #rawbtn,
@@ -109,6 +112,7 @@ export const TERM_HTML = `<!doctype html>
     </div>
     <div id="hint" class="muted"></div>
   </div>
+  <div id="scopenote"></div>
 <script src="/app/xterm.js"></script>
 <script>
 (function () {
@@ -280,7 +284,19 @@ export const TERM_HTML = `<!doctype html>
 
   function updateInputUI() {
     var bar = document.getElementById("inputbar");
-    if (!canTypeScope) { bar.style.display = "none"; setPill("view-only", ""); return; }
+    var note = document.getElementById("scopenote");
+    if (!canTypeScope) {
+      // This device is paired view/steer — it can't type. Tell the user HOW to get terminal access
+      // instead of leaving a dead "view-only" page.
+      bar.style.display = "none";
+      setPill("view-only", "");
+      if (note) {
+        note.textContent = "View-only — this device is paired as \"" + SCOPE + "\". To type into a pane, re-pair with “Terminal” access on the Mac (Pair a device → Device access → Terminal), then arm the pane (📱 on its tab).";
+        note.style.display = "block";
+      }
+      return;
+    }
+    if (note) note.style.display = "none";
     bar.style.display = "";
     bar.className = armed ? "" : "notarmed";
     layout();
