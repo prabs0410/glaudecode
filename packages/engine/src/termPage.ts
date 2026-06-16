@@ -297,7 +297,9 @@ export const TERM_HTML = `<!doctype html>
       return;
     }
     if (note) note.style.display = "none";
-    bar.style.display = "";
+    // Must be an explicit value, NOT "" — the #inputbar CSS default is display:none, so clearing the
+    // inline style reverts to hidden. This is why the input bar never appeared (Phase-4 QA bug).
+    bar.style.display = "block";
     bar.className = armed ? "" : "notarmed";
     layout();
     document.getElementById("tin").disabled = !armed;

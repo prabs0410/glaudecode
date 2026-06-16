@@ -65,6 +65,17 @@ describe("wrapForPaste paste-jacking guard (audit H4)", () => {
 // Drift guard: the cockpit term page (termPage.ts) can't import this module — it ships wrapForPaste
 // as a verbatim mirror inside an inline <script>. Extract that mirror from the served HTML and prove
 // it is byte-for-byte equivalent to the engine source over a battery (incl. the H4 scrub).
+describe("termPage input bar actually shows (regression)", () => {
+  // The #inputbar CSS default is `display: none`. updateInputUI used `bar.style.display = ""` to
+  // "show" it — but "" reverts to the CSS rule (none), so the input bar NEVER appeared for a
+  // terminal-scope device (the core "type from your phone" feature). It must set an explicit value.
+  test("the input bar is shown with an explicit display, not '' (which stays hidden)", () => {
+    expect(TERM_HTML).toContain("#inputbar { position: fixed"); // the rule whose default is display:none
+    expect(TERM_HTML).not.toMatch(/bar\.style\.display = "";/); // the buggy show that stayed hidden
+    expect(TERM_HTML).toContain('bar.style.display = "block"'); // explicit show — actually visible
+  });
+});
+
 describe("termPage wrapForPaste mirrors the engine (audit H4 / no drift)", () => {
   // The mirror is a single line in the served HTML; greedy `.*` (no newline) captures the whole
   // function including the inner do-while block (a `[^}]*` stops at the do-block's first `}`).
