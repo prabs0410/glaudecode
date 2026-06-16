@@ -125,6 +125,7 @@ export const TERM_HTML = `<!doctype html>
 
   var canTypeScope = SCOPE === "terminal";
   var armed = false, rawOn = false, ctrlArmed = false, paused = false, sizeOn = false, ws = null;
+  var reconnectTimer = null; // single pending reconnect, so a background/foreground race can't dupe sockets
   var connOk = true, repairing = false; // connOk: last listPanes succeeded (so "not armed" is real)
 
   var term = new Terminal({
@@ -452,20 +453,49 @@ export const TERM_HTML = `<!doctype html>
   updateInputUI();
 
   function connect() {
-    ws = new WebSocket((location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/term-ws");
-    ws.binaryType = "arraybuffer";
-    ws.onopen = function () {
-      ws.send(JSON.stringify({ type: "auth", token: TOKEN, paneId: paneId }));
+    // Fresh attach: the engine builds a NEW per-socket subscriber (sent/acked from 0) and replays the
+    // ring, so the phone's cumulative ACK counters must restart in lockstep — else flow control
+    // desyncs. Clear xterm too, so a stale frame from a prior connection isn't mistaken for live
+    // output; the replay repaints the current screen. (mirror fixes #2/#4)
+    received = 0; acked = 0;
+    if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    try { term.reset(); } catch (e) {}
+    // Retire any previous socket so its late onclose/onmessage can't mutate shared state or schedule
+    // a duplicate reconnect (the background↔foreground double-socket race).
+    if (ws) { try { ws.onopen = ws.onclose = ws.onmessage = null; ws.close(); } catch (e) {} }
+    var sock = new WebSocket((location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/term-ws");
+    ws = sock;
+    sock.binaryType = "arraybuffer";
+    sock.onopen = function () {
+      if (ws !== sock) return; // superseded by a newer socket — ignore
+      sock.send(JSON.stringify({ type: "auth", token: TOKEN, paneId: paneId }));
       document.getElementById("dot").className = "ok";
       refreshArmed();
     };
-    ws.onclose = function (ev) {
+    sock.onclose = function (ev) {
+      if (ws !== sock) return; // stale socket — its events must not touch the live UI
       document.getElementById("dot").className = "";
       // 4003 = token revoked/expired → re-pair, don't reconnect-loop a dead token (audit L3).
       if (ev.code === 4003) { repair(); return; }
-      if (!paused) setTimeout(connect, 2000); // don't auto-reconnect while backgrounded (detached)
+      if (ev.code === 4002) {
+        // Pane not (yet) known to the engine. A respawn race re-registers it within ~2s, but a pane
+        // genuinely closed on the Mac would loop forever on a dead id — so check it still exists and
+        // retry it; otherwise jump to a live pane (or back to the list) instead of a blank loop.
+        rpc("listPanes").then(function (list) {
+          list = list || [];
+          var here = false, first = "";
+          for (var i = 0; i < list.length; i++) { if (!first) first = list[i].paneId; if (list[i].paneId === paneId) here = true; }
+          if (here) { if (!paused) reconnectTimer = setTimeout(connect, 1500); }
+          else if (first) { location.href = "/app/term?pane=" + encodeURIComponent(first); }
+          else { location.href = "/app"; }
+        }).catch(function () { if (!paused) reconnectTimer = setTimeout(connect, 2000); });
+        return;
+      }
+      if (!paused) reconnectTimer = setTimeout(connect, 2000); // don't auto-reconnect while backgrounded
     };
-    ws.onmessage = function (ev) {
+    sock.onmessage = function (ev) {
+      if (ws !== sock) return; // stale socket — ignore
       var b = new Uint8Array(ev.data);
       if (!b.length) return;
       var op = b[0];
@@ -485,8 +515,11 @@ export const TERM_HTML = `<!doctype html>
   // Explicit attach/detach: drop the socket while backgrounded (stop consuming the stream), and
   // reconnect on return — the engine ring buffer replays the current screen (Phase 1).
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden") { paused = true; if (ws) try { ws.close(); } catch (e) {} }
-    else if (paused) { paused = false; connect(); }
+    if (document.visibilityState === "hidden") {
+      paused = true;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; } // don't reconnect while hidden
+      if (ws) try { ws.close(); } catch (e) {}
+    } else if (paused) { paused = false; connect(); }
   });
   // Switch to the next live terminal (detach current, attach next).
   document.getElementById("switch").onclick = function (e) {
