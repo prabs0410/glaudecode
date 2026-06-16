@@ -324,11 +324,9 @@ fn pty_spawn(
     let out_event = format!("pty-output:{pane_id}");
     let exit_event = format!("pty-exit:{pane_id}");
 
-    // Tee this pane to the phone mirror (V5 Phase 1): announce it (META + SIZE) and clone the
-    // bridge sender into the reader thread. Best-effort — if the bridge isn't up, the local
-    // terminal is unaffected.
-    let bridge = engine.bridge.lock().unwrap().clone();
-    if let Some(tx) = &bridge {
+    // Tee this pane to the phone mirror (V5 Phase 1): announce it (META + SIZE) to the CURRENT bridge.
+    // Best-effort — if the bridge isn't up, the local terminal is unaffected.
+    if let Some(tx) = engine.bridge.lock().unwrap().as_ref() {
         let _ = tx.try_send(pane_bridge::encode_meta(&pane_id, &title));
         let _ = tx.try_send(pane_bridge::encode_size(&pane_id, cols, rows));
     }
@@ -340,7 +338,12 @@ fn pty_spawn(
                 Ok(0) => break,
                 Ok(n) => {
                     let _ = app.emit(&out_event, buf[..n].to_vec());
-                    if let Some(tx) = &bridge {
+                    // Resolve the LIVE sender per chunk (never a captured clone): after an engine
+                    // respawn the sender is swapped, and an already-open pane must follow the NEW
+                    // engine or it goes permanently blank on the phone (mirror fix #1). try_send still
+                    // drops-on-full, so a slow/disconnected engine never stalls the local PTY. The
+                    // lock is held only for this non-blocking try_send — microseconds, no I/O under it.
+                    if let Some(tx) = app.state::<EngineState>().bridge.lock().unwrap().as_ref() {
                         let _ = tx.try_send(pane_bridge::encode_output(&pane_id, &buf[..n]));
                     }
                 }
@@ -349,7 +352,7 @@ fn pty_spawn(
         }
         // PTY closed: the child exited (or was killed). Tell the mirror, drop the handle so the
         // registry doesn't leak, then notify the pane.
-        if let Some(tx) = &bridge {
+        if let Some(tx) = app.state::<EngineState>().bridge.lock().unwrap().as_ref() {
             let _ = tx.try_send(pane_bridge::encode_close(&pane_id));
         }
         let reg = app.state::<PtyRegistry>();
@@ -548,10 +551,15 @@ struct EngineState {
     endpoint: Mutex<Option<EngineEndpoint>>,
     child: Mutex<Option<Child>>,
     /// Sender into the pane bridge — tees PTY output to the engine for the phone mirror (V5 Phase 1).
+    /// PTY reader threads resolve THIS (the current sender) per chunk — never a captured clone — so
+    /// an engine respawn that swaps the sender is transparent to already-open panes (mirror fix #1).
     bridge: Mutex<Option<pane_bridge::BridgeTx>>,
     /// Stop flag for the current input-bridge thread, so a respawn can retire the old one instead of
     /// leaving it to reconnect-loop forever against the dead port (audit M6 GAP B).
     input_stop: Mutex<Option<Arc<AtomicBool>>>,
+    /// Stop flag for the current OUTPUT-bridge pump, retired on respawn for the same reason — without
+    /// it the orphaned pump reconnect-loops the dead port and drains-and-discards output (mirror #1).
+    output_stop: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 fn engine_entry_path() -> PathBuf {
@@ -618,8 +626,15 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     // connects to this engine's /pane-bridge with the bearer token; PTY reader threads tee into it.
     // The bridge replays META+SIZE+ARM for every live pane on each (re)connect (audit M13). Lock
     // `armed` first (clone + release), THEN `panes`, so we never nest the two locks (no deadlock).
+    // Retire the PREVIOUS output-bridge pump first (on respawn) so it stops reconnecting to the dead
+    // port; with the per-chunk sender resolve below, existing panes then tee to the NEW engine.
+    if let Some(old_stop) = state.output_stop.lock().unwrap().take() {
+        old_stop.store(true, Ordering::SeqCst);
+    }
+    let output_stop = Arc::new(AtomicBool::new(false));
+    *state.output_stop.lock().unwrap() = Some(output_stop.clone());
     let app_for_resync = app.clone();
-    *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone(), move || {
+    *state.bridge.lock().unwrap() = Some(pane_bridge::start(endpoint.port, endpoint.token.clone(), output_stop, move || {
         let registry = app_for_resync.state::<PtyRegistry>();
         let armed: HashSet<String> = registry.armed.lock().unwrap().clone();
         let panes = registry.panes.lock().unwrap();
@@ -687,13 +702,18 @@ fn supervise_engine(app: AppHandle) {
             }
             healthy_ticks = 0;
             if restarts >= 5 {
+                eprintln!("[glaudecode] engine down after {restarts} respawn attempts — giving up");
                 let _ = app.emit("engine-down", "engine unavailable — restart GlaudeCode");
                 return; // bounded — never crash-loop
             }
             restarts += 1;
+            // Logged to stderr (not only the WebView event) so a respawn is visible in `tauri dev`
+            // output — it's the trigger for the mirror-blank class of bugs, so we want it on the record.
+            eprintln!("[glaudecode] engine sidecar exited — respawn attempt #{restarts}");
             let _ = app.emit("engine-exit", restarts);
             match spawn_engine(&app) {
                 Ok(_) => {
+                    eprintln!("[glaudecode] engine respawned (#{restarts}); existing panes re-tee to the new sender");
                     let _ = app.emit("engine-respawned", restarts);
                 }
                 Err(e) => eprintln!("[glaudecode] engine respawn failed: {e}"),

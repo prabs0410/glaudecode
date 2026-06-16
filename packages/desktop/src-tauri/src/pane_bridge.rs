@@ -16,7 +16,7 @@
 // stalls the local terminal — the engine's per-pane ring buffer replays the screen on (re)attach.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -96,26 +96,30 @@ fn decode(buf: &[u8]) -> Option<(u8, String, Vec<u8>)> {
 
 /// Start the bridge: spawn a thread that connects to the engine's /pane-bridge, authenticates with
 /// the engine bearer token, and pumps pre-encoded frames from the returned sender. Reconnects with
-/// a short backoff. Returns the sender (cloned into each PTY reader thread).
-pub fn start<F>(port: u16, token: String, on_connect: F) -> BridgeTx
+/// a short backoff. Returns the sender. `stop` retires the pump on an engine respawn so it stops
+/// reconnecting to the dead port instead of looping forever (mirror of the input pump's stop flag).
+pub fn start<F>(port: u16, token: String, stop: Arc<AtomicBool>, on_connect: F) -> BridgeTx
 where
     F: Fn() -> Vec<Vec<u8>> + Send + 'static,
 {
     let (tx, rx) = sync_channel::<Vec<u8>>(2048);
     thread::Builder::new()
         .name("pane-bridge".into())
-        .spawn(move || pump(port, token, rx, on_connect))
+        .spawn(move || pump(port, token, rx, stop, on_connect))
         .ok();
     tx
 }
 
-fn pump<F>(port: u16, token: String, rx: Receiver<Vec<u8>>, on_connect: F)
+fn pump<F>(port: u16, token: String, rx: Receiver<Vec<u8>>, stop: Arc<AtomicBool>, on_connect: F)
 where
     F: Fn() -> Vec<Vec<u8>>,
 {
     let url = format!("ws://127.0.0.1:{port}/pane-bridge");
     let auth = serde_json::json!({ "type": "auth", "token": token }).to_string();
     loop {
+        if stop.load(Ordering::Relaxed) {
+            return; // retired by a respawn — stop reconnecting to a dead port (output-pump GAP)
+        }
         match connect(&url) {
             Ok((mut ws, _resp)) => {
                 if ws.send(Message::Text(auth.clone().into())).is_err() {
@@ -131,28 +135,36 @@ where
                             break;
                         }
                     }
-                    // Drain frames → WS until the socket dies; then fall through to reconnect.
+                    // Drain frames → WS until the socket dies or we're retired; then reconnect/exit.
+                    // recv_timeout (not recv) so a respawn's `stop` is honored even while idle, instead
+                    // of blocking on recv() until the next PTY byte arrives.
                     while alive {
-                        let buf = match rx.recv() {
-                            Ok(b) => b,
-                            Err(_) => break,
-                        };
-                        if ws.send(Message::Binary(buf.into())).is_err() {
-                            break;
+                        if stop.load(Ordering::Relaxed) {
+                            return;
                         }
-                    }
-                    // rx closed (app shutting down) vs send error: if rx is closed, recv() keeps
-                    // erroring, so a quick probe distinguishes "shutdown" (exit) from "reconnect".
-                    if rx.try_recv().is_err() && is_disconnected(&rx) {
-                        return;
+                        match rx.recv_timeout(Duration::from_millis(500)) {
+                            Ok(buf) => {
+                                if ws.send(Message::Binary(buf.into())).is_err() {
+                                    break;
+                                }
+                            }
+                            Err(RecvTimeoutError::Timeout) => {} // idle — loop to re-check `stop`
+                            Err(RecvTimeoutError::Disconnected) => return, // app shutdown
+                        }
                     }
                 }
             }
             Err(_) => {}
         }
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
         // Drain any backlog we can't deliver while disconnected, so memory stays bounded and the
         // phone resyncs from the engine ring buffer on reconnect rather than replaying a huge gap.
         while rx.try_recv().is_ok() {}
+        if is_disconnected(&rx) {
+            return; // all senders dropped (app shutting down) → don't busy-reconnect forever
+        }
         thread::sleep(Duration::from_secs(2));
     }
 }
