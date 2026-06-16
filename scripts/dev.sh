@@ -54,7 +54,9 @@ status() {
 
 start() {
   echo "▶ starting GlaudeCode (tauri dev) — Ctrl-C to stop"
-  cd "$ROOT" && exec bun run desktop
+  # Run tauri dev from the desktop package directly. (The root `bun run desktop` script's
+  # `bun --cwd packages/desktop run tauri dev` mis-parses on this bun version, so don't rely on it.)
+  cd "$ROOT/packages/desktop" && exec bun run tauri dev
 }
 
 case "${1:-}" in
