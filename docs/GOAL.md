@@ -284,10 +284,9 @@ the session tooling — lean into those.
 
 ## How this gets executed (the loop)
 **V1, V2 (epics A–G), and V3 (terminal polish A–E) are all COMPLETE.** No active backlog remains in
-this file. **The active backlog is now [`docs/GOAL-V4.md`](GOAL-V4.md)** — the dogfood quality pass
-that fixes audit-found disconnects (namesake-class panels, search scope, split panes, empty states).
-Run it with `/goal @docs/GOAL-V4.md`. All work is committed per-item on `feat/*` branches; PRs remain
-blocked on `prabs0410` GitHub auth (see memory).
+this file. New work should be added as a new versioned section (e.g. V4) with the same guardrails +
+definition-of-done before the loop resumes. All work is committed per-item on `feat/*` branches;
+PRs remain blocked on `prabs0410` GitHub auth (see memory).
 
 PRs are currently blocked on `prabs0410` GitHub auth (commits land on the branch correctly as
 prabs0410; opening PRs needs `gh auth login` as prabs0410 — see memory). Until then the loop commits

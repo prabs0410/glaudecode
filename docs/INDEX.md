@@ -30,8 +30,7 @@ These live at `docs/` root (not in a subfolder) because they're updated constant
 
 | File | Purpose | Update cadence |
 |---|---|---|
-| `docs/GOAL.md` | **North-star + V1/V2/V3 autonomous-build backlog** (acceptance criteria + guardrails). The original target an automated build loop works against. | When scope or goal changes |
-| `docs/GOAL-V4.md` | **V4 backlog — dogfood quality pass** ("make every surface honest"). Standalone `/goal` target fixing audit-found disconnects (namesake panels, search scope, split panes, empty states). | When V4 scope changes |
+| `docs/GOAL.md` | **North-star + V1 autonomous-build backlog** (acceptance criteria + guardrails). The single target an automated build loop works against. | When scope or goal changes |
 | `docs/state.md` | **Where we are right now.** Locked decisions, in-flight work, immediate next actions. | End of every meaningful work unit |
 | `docs/open-questions.md` | Running list of unresolved decisions with status (OPEN / DEFERRED / ANSWERED). | Whenever a question surfaces or resolves |
 | `docs/BUILD-LOG.md` | **Complete build record** — everything shipped across V1/V2/V3 + fixes, the architecture, security log, third-party, quality status, branch/PR state, and commit lineage. | When a phase completes |
@@ -55,6 +54,7 @@ consequences. Naming: `NNNN-kebab-case-title.md`, sequential, never reused.
 ### `docs/handoffs/` — Session transition documents
 Terminal-state captures when a session ends. Frozen-in-time snapshots that let a fresh agent or returning human pick up cold. Naming: `YYYY-MM-DD-headline-slug.md`. Never edited after the writing session.
 - `2026-05-18-bootstrap-to-glaudecode.md` — bootstrap handoff that opened the constitution-ratification session
+- `2026-06-16-mobile-mirror-and-audit-remediation.md` — V5 audit remediation (44/45) + the 4 live mobile-UX bug fixes + the phone↔terminal mirror root-cause fix (test-first pass) + next-session plan
 - README: [handoffs/README.md](handoffs/README.md)
 
 ### `docs/notes/` — Working-memory topic files
@@ -130,6 +130,14 @@ versioned with the code.
 - *(empty — first artifact is the 2026-05-22 heartbeat post)*
 - README: [marketing/README.md](marketing/README.md)
 
+### `docs/security/` — Security artifacts
+Threat model, audits, and supply-chain/disclosure records. Created early (V5 remote-cockpit work
+exposes the engine over a network, so the security surface needed documenting before v1.0).
+- `audit-2026-06-15.md` — full-codebase security audit + per-finding remediation tracker (44/45 fixed; M15/CSP deferred)
+- `threat-model.md` — public threat model for the OSS cockpit
+- `supply-chain.md` — dependency/build supply-chain notes
+- `bulletins.md` — security bulletins
+
 ---
 
 ## Future folders (anticipated, NOT yet created)
@@ -138,7 +146,6 @@ Create on the trigger event listed. Avoid pre-creating to prevent dead-tree clut
 
 | Folder | Trigger to create | First likely contents |
 |---|---|---|
-| `docs/security/` | Before v1.0 release, or before first paid customer (whichever first) | Threat model, security policy, vulnerability disclosure process |
 | `docs/legal/` | When first external contributor lands meaningful work | CLA discussion, third-party license review, attribution policy |
 | `docs/branding/` | When public website launches | Logo files, color palette, typography, voice & tone |
 | `docs/feedback/` | When first non-founder user surfaces feedback | User interview notes, support patterns, feature-request triage |

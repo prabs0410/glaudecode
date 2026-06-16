@@ -195,5 +195,5 @@ test the served pages in a **laptop browser** is what cracked the big one.)
 
 **Branch `fix/v5-audit` is pushed.** The PR is blocked only on `gh auth login` as `prabs0410`.
 
-> _Add a one-line pointer to this file in `docs/INDEX.md` (founder-curated — flagged, not auto-edited):_
-> `| [HANDOFF-2026-06-16.md](HANDOFF-2026-06-16.md) | Session status: audit remediation + mobile-UX bugs + next-session plan |`
+> _Listed in `docs/INDEX.md` under `docs/handoffs/`. Relocated here from `docs/HANDOFF-2026-06-16.md` to match
+> the handoffs naming convention (`YYYY-MM-DD-headline-slug.md`)._
