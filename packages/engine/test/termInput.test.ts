@@ -92,6 +92,16 @@ describe("termPage touch-scroll is contained (V6 Phase 1.1)", () => {
   });
 });
 
+describe("termPage session switcher (V6 Phase 1.6)", () => {
+  test("the ⇄ button opens a pane picker with live state + needs-you flag", () => {
+    expect(TERM_HTML).toContain('id="switcher"');
+    expect(TERM_HTML).toContain("function renderSwitcher(");
+    expect(TERM_HTML).toContain('rpc("agentState"'); // live state dot
+    expect(TERM_HTML).toContain("s.isWaiting"); // "needs you" flag
+    expect(TERM_HTML).not.toContain("(idx + 1) % list.length"); // the old blind-cycle is gone
+  });
+});
+
 describe("termPage key bar — quick-insert chips + scrollback (V6 Phase 1.5)", () => {
   test("has the Claude-Code quick-insert chips and scrollback keys", () => {
     expect(TERM_HTML).toContain('id="qchips"');

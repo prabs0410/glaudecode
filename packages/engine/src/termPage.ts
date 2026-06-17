@@ -33,6 +33,17 @@ export const TERM_HTML = `<!doctype html>
     background: #21262d; color: #8b949e; }
   .pill.on { background: #12331f; color: #3fb950; }
   .pill.off { background: #3a2d12; color: #d29922; }
+  /* In-page session switcher (V6 P1.6): tap ⇄ to pick a pane; dots show live state + "needs you". */
+  #switcher { position: absolute; top: 38px; left: 0; right: 0; max-height: 60vh; overflow-y: auto;
+    background: #11161d; border-bottom: 1px solid #1f2630; display: none; z-index: 5; }
+  .srow { display: flex; align-items: center; gap: 8px; padding: 11px 14px; cursor: pointer;
+    border-bottom: 1px solid #1f2630; color: #c9d1d9; }
+  .srow:active { background: #1f2630; }
+  .srow.cur { color: #79c0ff; }
+  .sdot { width: 9px; height: 9px; border-radius: 50%; background: #6e7681; flex: 0 0 auto; }
+  .sdot.busy { background: #d29922; }
+  .sdot.idle { background: #3fb950; }
+  .sneed { margin-left: auto; font-size: 11px; color: #d29922; }
   /* xterm's own .xterm-viewport is the single scroll surface — #term just clips. touch-action:pan-y
      lets a vertical drag scroll the buffer; overscroll-behavior:contain stops the gesture reaching the
      document (no pull-to-refresh). overflow-x:hidden so wide output wraps instead of side-scrolling (V6 P1.1). */
@@ -90,6 +101,7 @@ export const TERM_HTML = `<!doctype html>
 <body>
   <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><a id="switch" href="#" title="Next terminal">⇄</a><span id="pill" class="pill"></span></div>
   <div id="term"></div>
+  <div id="switcher"></div>
   <div id="inputbar">
     <div id="modetabs">
       <button id="tab-msg" class="modetab active">Message</button>
@@ -573,16 +585,40 @@ export const TERM_HTML = `<!doctype html>
       if (ws) try { ws.close(); } catch (e) {}
     } else if (paused) { paused = false; connect(); }
   });
-  // Switch to the next live terminal (detach current, attach next).
-  document.getElementById("switch").onclick = function (e) {
-    e.preventDefault();
+  // Session switcher (V6 P1.6): tap ⇄ → a picker of all live panes with a live state dot (idle/busy)
+  // and a "needs you" flag (a pending AskUserQuestion), so you jump straight to the one that wants you
+  // instead of blind-cycling. Reuses listPanes + agentState + promptState (the sessions page's joins).
+  function renderSwitcher(box) {
     rpc("listPanes").then(function (list) {
       list = list || [];
-      if (list.length < 2) return;
-      var idx = -1;
-      for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) idx = i;
-      location.href = "/app/term?pane=" + encodeURIComponent(list[(idx + 1) % list.length].paneId);
+      box.innerHTML = "";
+      list.forEach(function (p) {
+        var row = document.createElement("div"); row.className = "srow" + (p.paneId === paneId ? " cur" : "");
+        var dot = document.createElement("span"); dot.className = "sdot"; row.appendChild(dot);
+        var label = document.createElement("span"); label.textContent = p.title || p.paneId.slice(0, 8); row.appendChild(label);
+        row.onclick = function () {
+          if (p.paneId === paneId) { box.style.display = "none"; return; }
+          location.href = "/app/term?pane=" + encodeURIComponent(p.paneId);
+        };
+        box.appendChild(row);
+        if (DIR) {
+          rpc("agentState", { id: p.paneId, dir: DIR }).then(function (s) {
+            var st = s && s.status;
+            dot.className = "sdot" + (st === "idle" ? " idle" : (st ? " busy" : ""));
+          }).catch(function () {});
+          rpc("promptState", { id: p.paneId, dir: DIR }).then(function (s) {
+            if (s && s.isWaiting) { var nn = document.createElement("span"); nn.className = "sneed"; nn.textContent = "needs you"; row.appendChild(nn); }
+          }).catch(function () {});
+        }
+      });
+      box.style.display = "block";
     }).catch(function () {});
+  }
+  document.getElementById("switch").onclick = function (e) {
+    e.preventDefault();
+    var box = document.getElementById("switcher");
+    if (box.style.display === "block") { box.style.display = "none"; return; }
+    renderSwitcher(box);
   };
 
   connect();
