@@ -114,6 +114,7 @@ export const TERM_HTML = `<!doctype html>
   </div>
   <div id="scopenote"></div>
 <script src="/app/xterm.js"></script>
+<script src="/app/addon-fit.js"></script>
 <script>
 (function () {
   var TOKEN = sessionStorage.getItem("ck.token") || "";

@@ -36,6 +36,9 @@ function readVendor(name: string): string | null {
 }
 const XTERM_JS = readVendor("xterm.js");
 const XTERM_CSS = readVendor("xterm.css");
+// xterm FitAddon (UMD, exposes globalThis.FitAddon.FitAddon) — sizes cols/rows to the phone viewport
+// so mobile output isn't cropped (V6 Phase 1.2). Served like xterm.js; the served term page can't import.
+const ADDON_FIT_JS = readVendor("addon-fit.js");
 
 /** Refuse to bind a wildcard interface (all interfaces) for the remote listener — only a
  *  specific address (e.g. the Mac's Tailscale IP) is allowed (V5 Phase 0.1). */
@@ -431,6 +434,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         return XTERM_CSS
           ? new Response(XTERM_CSS, { headers: { "content-type": "text/css; charset=utf-8" } })
           : new Response("", { status: 503 });
+      }
+      if (request.method === "GET" && url.pathname === "/app/addon-fit.js") {
+        return ADDON_FIT_JS
+          ? new Response(ADDON_FIT_JS, { headers: { "content-type": "text/javascript; charset=utf-8" } })
+          : new Response("addon-fit.js not vendored", { status: 503 });
       }
 
       // Pairing redemption: an unpaired client exchanges a short code (which IS the

@@ -82,6 +82,14 @@ describe("termPage served script parses (regression)", () => {
   });
 });
 
+describe("termPage loads the FitAddon (V6 Phase 1.2 prep)", () => {
+  // The served page can't import; FitAddon must be loaded via a <script src> like xterm.js so the
+  // page can fit cols/rows to the phone viewport. The route /app/addon-fit.js is served in server.ts.
+  test("the term page includes the vendored addon-fit script tag", () => {
+    expect(TERM_HTML).toContain('<script src="/app/addon-fit.js">');
+  });
+});
+
 describe("termPage input bar actually shows (regression)", () => {
   // The #inputbar CSS default is `display: none`. updateInputUI used `bar.style.display = ""` to
   // "show" it — but "" reverts to the CSS rule (none), so the input bar NEVER appeared for a
