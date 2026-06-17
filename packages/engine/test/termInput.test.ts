@@ -92,6 +92,12 @@ describe("termPage touch-scroll is contained (V6 Phase 1.1)", () => {
   });
 });
 
+describe("termPage soft-keyboard handling (V6 Phase 1.3)", () => {
+  test("the viewport opts into interactive-widget=resizes-content", () => {
+    expect(TERM_HTML).toContain("interactive-widget=resizes-content");
+  });
+});
+
 describe("termPage fits to the viewport via FitAddon (V6 Phase 1.2)", () => {
   // The served page can't import; FitAddon is loaded via a <script src> like xterm.js, then used to
   // size the xterm grid to the phone viewport so output isn't cropped.

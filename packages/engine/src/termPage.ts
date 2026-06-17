@@ -13,7 +13,10 @@ export const TERM_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<!-- interactive-widget=resizes-content (V6 P1.3): Android Chrome shrinks the layout viewport for the
+     soft keyboard, so kbHeight() naturally → 0 there (no double-count with the translateY lift). iOS
+     ignores it and keeps the VisualViewport path below. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content" />
 <title>GlaudeCode Terminal</title>
 <link rel="stylesheet" href="/app/xterm.css" />
 <style>
