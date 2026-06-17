@@ -4,6 +4,36 @@
 > implements Phases 1→6 in order, one task at a time, committing on per-phase branches with the
 > per-commit gate green, **flagging (not failing on) human-gates**. Modeled on `docs/goal-v5/README.md`.
 
+## ⛔️ RUN MODE — NON-STOP (no checkpoints, build to the last phase)
+
+**Do NOT stop. Build every automatable task across ALL of Phases 1→6 in one continuous run.** There are
+**no checkpoints, no "ready to proceed?" pauses, no waiting for approval, no end-of-phase halts.** Finish
+a task → commit (gate green) → immediately start the next → at the end of a phase → immediately start the
+next phase → continue until **Phase 6 is complete**. The only acceptable end state is "every automatable
+task is done (or explicitly flagged)."
+
+This non-stop mandate **never overrides quality or safety** — it changes *when you stop* (never for a
+checkpoint), not *what you ship*:
+
+- **Quality is non-negotiable.** Every change is verified (its Verify gate + the per-commit gate green) and
+  reviewed before commit. **Never commit broken code, never skip a test to "keep moving," never weaken a
+  security gate to make something pass.** A green gate is the price of a commit — keep it green.
+- **On a failing gate:** fix it and retry. If a single task genuinely can't pass after a bounded effort
+  (~3 attempts), **revert that task's partial work, record it in the "Blocked" list below, and MOVE ON to
+  the next task** — do **not** halt the loop, do **not** commit it broken, do **not** thrash it forever.
+  The loop keeps building; one stuck task never stops the run.
+- **Human-gates are flagged-and-skipped, NEVER a stop.** Some steps are *physically impossible* for an
+  automated agent (enabling MagicDNS/certs in a web console, plugging in a phone for a `[DEVICE-GATE]`,
+  provisioning a VAPID key, `gh auth`/opening PRs). For each: build everything *around* it, leave the code
+  ready, tick it into the Master human-gate checklist, and **continue**. A human-gate is never a failure
+  and never a stop.
+- **Dependency-gated phases still build:** if Phase 2's HTTPS isn't enabled yet (a human-gate), still
+  **write and commit** all of P3/P4/P5's code behind it (the runtime `[DEVICE-GATE]` verification is the
+  human's later step) — never skip building a phase because its *runtime* prerequisite is human-gated.
+
+Keep a running **"Blocked"** note at the end of the run listing anything flagged (human-gate or
+couldn't-pass-after-3) so the founder sees exactly what remains — but the run itself goes to the end.
+
 ## Context
 
 V5 proved you can drive your Mac's terminal + Claude Code from your phone; the mirror is now reliable
@@ -42,7 +72,7 @@ and the research: `docs/research/mobile-cockpit-ux-2026-06-17.md`,
 4. **Per-commit gate (all green):** `cd packages/engine && bun test` · `bunx tsc --noEmit` per package · `bunx vite build` (desktop) · `cargo check`/`cargo test` (`src-tauri`).
 5. **All Claude Code access via `ClaudeCodeAdapter`** (Constitution Principle XI) — never raw `~/.claude` JSONL, no tight polling.
 6. **One task at a time, in phase order.** Don't start the next until the current is committed + green.
-7. **Stop after 2 consecutive failed attempts** on a task; leave a note; move on or await the founder.
+7. **Never halt the loop.** If a task can't pass its gate after ~3 attempts, revert its partial work, add it to the "Blocked" note, and **move on to the next task** — do not stop the run, do not commit it broken, do not thrash it. (See RUN MODE.)
 8. **Keep docs honest:** update `AGENTS.md`/`docs/INDEX.md`/`docs/state.md` as relevant (Principle IX). These three are founder-curated — make **minimal, flagged** edits.
 9. **Design-doc-first + TDD:** read the phase's design doc before building; pure logic tested in `@glaudecode/engine`; **mirrored fns (`ctrlByte`/`wrapForPaste`/`coalesceNotifications`) change in BOTH places**.
 10. **Security invariants:** never bind `0.0.0.0`; TLS-or-refuse for non-loopback; the served phone pages are template literals (a `\"` breaks the whole script — the parse-guard test catches it).
@@ -50,8 +80,9 @@ and the research: `docs/research/mobile-cockpit-ux-2026-06-17.md`,
 
 ## Master human-gate checklist (loop flags + skips — **never a loop failure**)
 
-A task needing external action is flagged and skipped, not failed. **Only a failed CI gate or a
-2-attempt limit on an automatable task counts as a failure and stops the loop.**
+A task needing external action is flagged and skipped, not failed — **the loop never stops for it.**
+A task that can't pass its gate is reverted, added to the "Blocked" note, and skipped — **the loop never
+stops for that either.** Nothing here halts the run; see RUN MODE at the top.
 
 - [ ] **[BLOCKING PRE-GATE for P2]** Founder enables Tailscale **MagicDNS + HTTPS certs** in the admin console.
 - [ ] **Keep-awake reachability:** `caffeinate` keeps a desk Mac (lid open) reachable — enough for P2/P3. Lid-closed away needs Amphetamine / `sudo pmset disablesleep` (human). A managed pmset-root mode is deferred (built on the P1.7a display-power hook).
@@ -129,6 +160,8 @@ The raw terminal stays the trusted core, one tap away, the auto-fallback.
 
 ## How this gets executed (the loop)
 
-Phase 0 prep is committed. The loop runs Phases 1→6 in order on per-phase branches, per-commit gate
-green, flagging human-gates into the checklist above (never stalling). The founder device-tests each
-phase's `[DEVICE-GATE]` items and runs `gh auth login` as `prabs0410` to open/merge PRs when ready.
+Phase 0 prep is committed. The loop runs **continuously, with no checkpoints, until Phase 6 is
+complete** (see RUN MODE) — Phases 1→6 in order on per-phase branches, per-commit gate green, flagging
+human-gates + any couldn't-pass tasks into the "Blocked" note as it goes, **never stopping**. When the
+run ends, the founder works the Blocked note: device-tests each `[DEVICE-GATE]`, enables MagicDNS/certs,
+and runs `gh auth login` as `prabs0410` to open/merge PRs.
