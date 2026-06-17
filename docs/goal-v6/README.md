@@ -57,6 +57,23 @@ and the research: `docs/research/mobile-cockpit-ux-2026-06-17.md`,
   release prerequisite), the managed pmset-root lid-closed keep-awake mode, the Epic-G threat-model
   review + ACL/Tailnet-Lock hardening, VAPID/cert provisioning, real-device QA, opening PRs.
 
+## Progress (updated as the loop runs)
+
+- ✅ **Phase 0** — P0a `bec8191`, P0b `0a14f5d`. P0c is a `[DEVICE-GATE]` (founder).
+- ✅ **Phase 1 — mobile-native terminal (COMPLETE, branch `feat/v6-p1-mobile-ux`, pushed):**
+  1.1 touch-scroll `0354e93` · 1.2 fit-to-width `3dc7181` · 1.3 soft-keyboard `ee0d863` ·
+  1.4 readable font `5240179` · 1.5 key-bar chips+scrollback `4ec2815` · 1.6 session switcher `d9fa366` ·
+  1.7 resize authority `c072162`. Engine 365 tests + tsc×2 + vite + cargo green. `[DEVICE-GATE]`s pending founder QA.
+- 🔨 **Phase 2 — transport (branch `feat/v6-p2-serve`):** 2.3 ACL/Tailnet-Lock + MagicDNS hardening warning `e07594d`.
+  **2.0/2.1 = `[HUMAN-GATE]`** (enable Tailscale MagicDNS+certs → HTTPS canonical URL; a Tailscale admin toggle).
+  The bare-IP bind is WireGuard-encrypted but not a browser secure context, so clipboard/install/push (P3/P4) wait on it.
+- ⏭️ **Next:** Phase 3 (PWA + self-hosted Web Push) — VAPID keygen/persist + the scoped `/push-subscribe`
+  endpoint + the notify policy, built behind the HTTPS gate.
+
+**Blocked / human-gates collected:** enable Tailscale MagicDNS+certs (unblocks P2/P3/P4 HTTPS) · VAPID
+provisioning (P3) · real-device `[DEVICE-GATE]` QA (P1+) · deny-by-default ACL + Tailnet Lock · `gh auth` as
+`prabs0410` for PRs · E2E crypto (out of scope).
+
 ## Phase 0 — prep (DONE, committed on `feat/v6-p0-setup`)
 
 - ✅ **P0a** — `"question"` `NotificationKind` added (engine + desktop mirror) for push-on-AskUserQuestion (`bec8191`).
