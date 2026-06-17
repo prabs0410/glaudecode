@@ -31,6 +31,7 @@ These live at `docs/` root (not in a subfolder) because they're updated constant
 | File | Purpose | Update cadence |
 |---|---|---|
 | `docs/GOAL.md` | **North-star + V1 autonomous-build backlog** (acceptance criteria + guardrails). The single target an automated build loop works against. | When scope or goal changes |
+| `docs/goal-v6/README.md` | **Runnable V6 build goal** — "phone cockpit, usable + private" (mobile-native terminal → Serve/HTTPS → PWA+push → clipboard → conversation view). `/goal @docs/goal-v6/README.md`. | While V6 is building |
 | `docs/state.md` | **Where we are right now.** Locked decisions, in-flight work, immediate next actions. | End of every meaningful work unit |
 | `docs/open-questions.md` | Running list of unresolved decisions with status (OPEN / DEFERRED / ANSWERED). | Whenever a question surfaces or resolves |
 | `docs/BUILD-LOG.md` | **Complete build record** — everything shipped across V1/V2/V3 + fixes, the architecture, security log, third-party, quality status, branch/PR state, and commit lineage. | When a phase completes |
@@ -55,6 +56,7 @@ consequences. Naming: `NNNN-kebab-case-title.md`, sequential, never reused.
 Terminal-state captures when a session ends. Frozen-in-time snapshots that let a fresh agent or returning human pick up cold. Naming: `YYYY-MM-DD-headline-slug.md`. Never edited after the writing session.
 - `2026-05-18-bootstrap-to-glaudecode.md` — bootstrap handoff that opened the constitution-ratification session
 - `2026-06-16-mobile-mirror-and-audit-remediation.md` — V5 audit remediation (44/45) + the 4 live mobile-UX bug fixes + the phone↔terminal mirror root-cause fix (test-first pass) + next-session plan
+- `2026-06-17-v6-mobile-cockpit-goal.md` — opens the V6 build (phone cockpit usable + private); locked decisions + Phase-0 prep state + the immediate next action (`/goal @docs/goal-v6/README.md`)
 - README: [handoffs/README.md](handoffs/README.md)
 
 ### `docs/notes/` — Working-memory topic files
@@ -76,6 +78,7 @@ data model, edge cases, security, test plan, acceptance, open questions.
   D memory&knowledge, E session-tooling, F terminal-UX, G cockpit)
 - `v3-e1-split-panes.md` — V3 split-panes design note (the 🏗 V3 items get a short note first)
 - `v3-e2-shell-integration.md` — V3 OSC 133/7 shell-integration design note (duration/exit badges + live cwd)
+- V6 (2026-06-17): `mobile-native-terminal.md` (P1 — touch-scroll/fit/keyboard/font/keys/resize-authority), `pwa-push.md` (P3 — PWA + self-hosted VAPID Web Push), `clipboard-bridge.md` (P4–5 — phone→Mac + gated Mac→phone), `conversation-view.md` (P6 — optional upgrade-on-top)
 - README: [design/README.md](design/README.md)
 
 ### `docs/research/` — Investigation outputs
@@ -95,6 +98,9 @@ Research outputs that inform design decisions. Three subfolders:
   - `spike-tauri-terminal-rendering.md` — verified spike (2026-06-01): Tauri 2 + xterm.js +
     portable-pty runs a real shell and Claude Code's TUI renders correctly (visual evidence)
   - README: [research/technical/README.md](research/technical/README.md)
+- `docs/research/` (root) — V6 mobile-cockpit research (2026-06-17):
+  - `mobile-cockpit-ux-2026-06-17.md` — UX directions + the table-stakes mobile terminal fixes
+  - `mobile-platform-transport-clipboard-2026-06-17.md` — PWA-vs-native, transport (Tailscale Serve), and clipboard decisions
 
 README at root: [research/README.md](research/README.md)
 
