@@ -72,8 +72,8 @@ export const TERM_HTML = `<!doctype html>
   #rawbtn.on, #k-ctrl.on, #k-size.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
   #textrow { display: flex; gap: 6px; align-items: flex-end; }
   #tin { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
-    padding: 10px; font: 14px ui-monospace, Menlo, monospace; resize: none; line-height: 1.3;
-    min-height: 20px; max-height: 96px; overflow-y: auto; }
+    padding: 10px; font: 16px ui-monospace, Menlo, monospace; resize: none; line-height: 1.3;
+    min-height: 20px; max-height: 96px; overflow-y: auto; } /* 16px: below it iOS auto-zooms on focus (V6 P1.4) */
   #tin:disabled { opacity: 0.5; }
   #insert { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
     padding: 0 12px; height: 42px; font-size: 13px; cursor: pointer; }
@@ -116,7 +116,9 @@ export const TERM_HTML = `<!doctype html>
       <button id="k-left">←</button>
       <button id="k-right">→</button>
       <button id="k-enter">⏎</button>
-      <button id="k-size" title="Take control of size: fit the terminal to this phone">⤢ size</button>
+      <button id="k-fdec" title="Smaller text">A−</button>
+      <button id="k-finc" title="Bigger text">A+</button>
+      <button id="k-size" title="Re-fit the terminal to this phone">⤢ fit</button>
       <button id="rawbtn" title="Send every keystroke live (tap the terminal to type)">⌨ raw</button>
     </div>
     <div id="hint" class="muted"></div>
@@ -138,8 +140,9 @@ export const TERM_HTML = `<!doctype html>
   var reconnectTimer = null; // single pending reconnect, so a background/foreground race can't dupe sockets
   var connOk = true, repairing = false; // connOk: last listPanes succeeded (so "not armed" is real)
 
+  var fontSize = parseInt(localStorage.getItem("ck.fontsize"), 10) || 15; // readable default; A-/A+ persists (V6 P1.4)
   var term = new Terminal({
-    fontSize: 13, scrollback: 5000, disableStdin: true, cursorBlink: false,
+    fontSize: fontSize, scrollback: 5000, disableStdin: true, cursorBlink: false,
     theme: { background: "#0d1117", foreground: "#c9d1d9" },
   });
   term.open(document.getElementById("term"));
@@ -402,9 +405,18 @@ export const TERM_HTML = `<!doctype html>
       if (rawOn) term.focus();
     };
 
-    // Fit is automatic on open/resize/keyboard via doFit() (V6 P1.2); this button just forces a re-fit
-    // (e.g. after a font-size change).
+    // Fit is automatic on open/resize/keyboard via doFit() (V6 P1.2); this button just forces a re-fit.
     document.getElementById("k-size").onclick = function () { doFit(); };
+
+    // Font size A-/A+ (V6 P1.4): adjust the terminal glyph size, persist it, and re-fit (fewer/more cols).
+    function setFont(d) {
+      fontSize = Math.max(9, Math.min(28, fontSize + d));
+      term.options.fontSize = fontSize;
+      try { localStorage.setItem("ck.fontsize", String(fontSize)); } catch (e) {}
+      doFit();
+    }
+    document.getElementById("k-fdec").onclick = function () { setFont(-1); };
+    document.getElementById("k-finc").onclick = function () { setFont(1); };
 
     // Message / Smart tab switch (the persistent key bar stays under both). Last tab is remembered.
     var activeTab = sessionStorage.getItem("ck.tab") || "msg";
