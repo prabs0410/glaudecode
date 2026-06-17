@@ -67,6 +67,10 @@ export const TERM_HTML = `<!doctype html>
   #smart-q .smartbtn { width: 100%; }
   .smartbtn .opt-desc { color: #8b949e; font-size: 11px; display: block; margin-top: 2px; }
   #keys { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+  /* Claude-Code quick-insert chips (/ @ # !) — insert a symbol into the compose box (V6 P1.5). */
+  #qchips { display: flex; gap: 6px; margin-bottom: 6px; }
+  #qchips button { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 6px; padding: 6px 14px; font: 15px ui-monospace, Menlo, monospace; cursor: pointer; }
   #keys button, #rawbtn { flex: 0 0 auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
     border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
   #rawbtn.on, #k-ctrl.on, #k-size.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
@@ -92,6 +96,7 @@ export const TERM_HTML = `<!doctype html>
       <button id="tab-smart" class="modetab">Smart</button>
     </div>
     <div id="panel-msg" class="ipanel">
+      <div id="qchips"><button data-ins="/">/</button><button data-ins="@">@</button><button data-ins="#">#</button><button data-ins="!">!</button></div>
       <div id="textrow">
         <textarea id="tin" rows="1" placeholder="message — Enter to send, Shift+Enter for a newline" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
         <button id="insert" title="Type into the pane without pressing Enter">Insert</button>
@@ -116,6 +121,8 @@ export const TERM_HTML = `<!doctype html>
       <button id="k-left">←</button>
       <button id="k-right">→</button>
       <button id="k-enter">⏎</button>
+      <button id="k-pgup" title="Scroll up">⇞</button>
+      <button id="k-pgdn" title="Scroll down">⇟</button>
       <button id="k-fdec" title="Smaller text">A−</button>
       <button id="k-finc" title="Bigger text">A+</button>
       <button id="k-size" title="Re-fit the terminal to this phone">⤢ fit</button>
@@ -418,6 +425,24 @@ export const TERM_HTML = `<!doctype html>
     document.getElementById("k-fdec").onclick = function () { setFont(-1); };
     document.getElementById("k-finc").onclick = function () { setFont(1); };
 
+    // Scrollback (V6 P1.5): scroll xterm's local buffer (no input sent), since precise history nav by
+    // touch is fiddly. (touch-drag scrolling also works now — P1.1.)
+    document.getElementById("k-pgup").onclick = function () { try { term.scrollPages(-1); } catch (e) {} };
+    document.getElementById("k-pgdn").onclick = function () { try { term.scrollPages(1); } catch (e) {} };
+
+    // Claude-Code quick-insert chips (/ @ # !) — insert the symbol into the compose box so you don't
+    // fight the soft keyboard for it (voice-first: dictate the rest). NOT sent until you Send. (V6 P1.5)
+    function insertChar(ch) {
+      var s = tin.selectionStart, e = tin.selectionEnd;
+      if (s == null) { s = e = tin.value.length; }
+      tin.value = tin.value.slice(0, s) + ch + tin.value.slice(e);
+      tin.selectionStart = tin.selectionEnd = s + ch.length;
+      autoGrow(); tin.focus();
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("#qchips button"), function (b) {
+      b.onclick = function () { insertChar(b.getAttribute("data-ins")); };
+    });
+
     // Message / Smart tab switch (the persistent key bar stays under both). Last tab is remembered.
     var activeTab = sessionStorage.getItem("ck.tab") || "msg";
     function setTab(t) {
@@ -446,7 +471,7 @@ export const TERM_HTML = `<!doctype html>
       pin();
     }
     // Key-bar / tab taps must NOT blur the textarea (that would dismiss the keyboard mid-compose).
-    ["keys", "modetabs"].forEach(function (id) {
+    ["keys", "modetabs", "qchips"].forEach(function (id) {
       document.getElementById(id).addEventListener("pointerdown", function (e) {
         if (e.target && e.target.tagName === "BUTTON") e.preventDefault();
       });

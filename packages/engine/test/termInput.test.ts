@@ -92,6 +92,23 @@ describe("termPage touch-scroll is contained (V6 Phase 1.1)", () => {
   });
 });
 
+describe("termPage key bar — quick-insert chips + scrollback (V6 Phase 1.5)", () => {
+  test("has the Claude-Code quick-insert chips and scrollback keys", () => {
+    expect(TERM_HTML).toContain('id="qchips"');
+    expect(TERM_HTML).toContain('data-ins="/"');
+    expect(TERM_HTML).toContain('data-ins="@"');
+    expect(TERM_HTML).toContain('data-ins="#"');
+    expect(TERM_HTML).toContain('data-ins="!"');
+    expect(TERM_HTML).toContain('id="k-pgup"');
+    expect(TERM_HTML).toContain("term.scrollPages(-1)");
+    expect(TERM_HTML).toContain("function insertChar(");
+  });
+  test("sticky Ctrl is present (covers ctrl-combos without per-key chips)", () => {
+    expect(TERM_HTML).toContain('id="k-ctrl"');
+    expect(TERM_HTML).toContain("function ctrlByte(");
+  });
+});
+
 describe("termPage soft-keyboard handling (V6 Phase 1.3)", () => {
   test("the viewport opts into interactive-widget=resizes-content", () => {
     expect(TERM_HTML).toContain("interactive-widget=resizes-content");
