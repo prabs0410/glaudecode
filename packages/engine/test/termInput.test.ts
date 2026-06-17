@@ -82,6 +82,16 @@ describe("termPage served script parses (regression)", () => {
   });
 });
 
+describe("termPage touch-scroll is contained (V6 Phase 1.1)", () => {
+  // Mobile drag must scroll xterm's buffer, never trigger the browser's pull-to-refresh / overscroll.
+  test("html/body kill overscroll and #term contains the scroll chain", () => {
+    expect(TERM_HTML).toContain("overscroll-behavior: none;"); // html/body — no pull-to-refresh
+    expect(TERM_HTML).toContain("touch-action: pan-y;"); // #term — vertical drag scrolls the buffer
+    expect(TERM_HTML).toContain(".xterm-viewport { overscroll-behavior: contain;");
+    expect(TERM_HTML).not.toMatch(/#term \{[^}]*overflow: auto/); // the old escape-to-document scroller is gone
+  });
+});
+
 describe("termPage loads the FitAddon (V6 Phase 1.2 prep)", () => {
   // The served page can't import; FitAddon must be loaded via a <script src> like xterm.js so the
   // page can fit cols/rows to the phone viewport. The route /app/addon-fit.js is served in server.ts.

@@ -18,7 +18,8 @@ export const TERM_HTML = `<!doctype html>
 <link rel="stylesheet" href="/app/xterm.css" />
 <style>
   html, body { margin: 0; height: 100%; background: #0d1117; color: #c9d1d9;
-    font: 14px ui-sans-serif, system-ui, sans-serif; }
+    font: 14px ui-sans-serif, system-ui, sans-serif;
+    overscroll-behavior: none; } /* kill pull-to-refresh + bounce-navigation on mobile (V6 P1.1) */
   #bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; height: 21px;
     background: #11161d; border-bottom: 1px solid #1f2630; }
   #bar a { color: #79c0ff; text-decoration: none; }
@@ -29,7 +30,12 @@ export const TERM_HTML = `<!doctype html>
     background: #21262d; color: #8b949e; }
   .pill.on { background: #12331f; color: #3fb950; }
   .pill.off { background: #3a2d12; color: #d29922; }
-  #term { position: absolute; top: 38px; left: 0; right: 0; bottom: 0; padding: 6px; overflow: auto; }
+  /* xterm's own .xterm-viewport is the single scroll surface — #term just clips. touch-action:pan-y
+     lets a vertical drag scroll the buffer; overscroll-behavior:contain stops the gesture reaching the
+     document (no pull-to-refresh). overflow-x:hidden so wide output wraps instead of side-scrolling (V6 P1.1). */
+  #term { position: absolute; top: 38px; left: 0; right: 0; bottom: 0; padding: 6px;
+    overflow: hidden; overscroll-behavior: contain; touch-action: pan-y; }
+  .xterm-viewport { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   /* Input bar (terminal scope only) */
   #inputbar { position: fixed; left: 0; right: 0; bottom: 0; background: #11161d;
     border-top: 1px solid #1f2630; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
