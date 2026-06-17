@@ -235,6 +235,17 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       // Bind the SAME ephemeral port on the chosen interface (a distinct socket from localhost).
       remoteServer = Bun.serve({ hostname: h, port: endpoint.port, ...serveConfig });
       remoteHost = h;
+      // V6 P2.3 / Epic-G must-harden: this listener now accepts paired tokens from anyone who can reach
+      // the interface on the tailnet. Tailscale's default ACL is allow-all and Tailnet Lock is off — so
+      // remind the operator to scope the engine port to the phone's identity (deny-by-default grant) and
+      // enable Tailnet Lock before relying on remote bind. HTTPS (the secure context clipboard/PWA-install
+      // /push need) requires Tailscale Serve + MagicDNS certs — the bare-IP URL is WireGuard-encrypted but
+      // not a secure context. Self-host alternatives: docs/design/transport-options-phone-to-mac.md.
+      console.error(
+        `[glaudecode] remote cockpit bound on ${h}:${endpoint.port} — HARDEN the tailnet: add a deny-by-default ` +
+          `ACL grant scoping this port to your phone's identity, and enable Tailnet Lock. For HTTPS ` +
+          `(clipboard/install/push), enable Tailscale Serve + MagicDNS certs.`,
+      );
       return remoteInfo();
     },
     disable() {
