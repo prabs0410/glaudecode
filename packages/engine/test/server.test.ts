@@ -41,7 +41,9 @@ let server: EngineServer;
 const base = () => `http://127.0.0.1:${server.port}`;
 
 beforeAll(() => {
-  server = startEngineServer({ token: "e2e-token" });
+  // resizeGraceMs:200 so the resize-authority (V6 P1.7) is testable with timing margin: a phone may
+  // resize once the desk has been quiet 200ms; a desktopHeartbeat re-blocks it. (Production default 30s.)
+  server = startEngineServer({ token: "e2e-token", resizeGraceMs: 200 });
 });
 afterAll(() => server.stop());
 
@@ -431,6 +433,33 @@ describe("engine server", () => {
     sink.ws.close();
     bridge.close();
     t2.close();
+  });
+
+  test("a terminal+armed RESIZE is DROPPED while a desktop viewer is present (V6 P1.7)", async () => {
+    const paneId = "pane-resize-auth";
+    const sink = await openInputSink();
+    const bridge = await openWs("/pane-bridge");
+    bridge.send(JSON.stringify({ type: "auth", token: "e2e-token" }));
+    await sleep(40);
+    bridge.send(encodeBridgeArm(paneId, true));
+    await sleep(40);
+    const term = server.pairing.redeem(server.pairing.createPairCode("terminal").code, "p")!.token;
+    const t = await openWs("/term-ws");
+    t.send(JSON.stringify({ type: "auth", token: term, paneId }));
+    await sleep(40);
+    // The desktop reports it's focused (local-bearer heartbeat) — so the phone must NOT reshape the
+    // shared PTY. Send the RESIZE immediately after, well within the 200ms grace.
+    await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: "Bearer e2e-token", "content-type": "application/json" },
+      body: JSON.stringify({ method: "desktopHeartbeat", params: {} }),
+    });
+    t.send(encodeResize(120, 40));
+    await sleep(60);
+    expect(sink.frames.some((f) => f.type === "resize" && f.paneId === paneId)).toBe(false);
+    sink.ws.close();
+    bridge.close();
+    t.close();
   });
 
   test("oversized INPUT is dropped and RESIZE is clamped to a sane range (audit M2)", async () => {

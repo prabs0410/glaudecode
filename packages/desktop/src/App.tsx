@@ -24,6 +24,7 @@ import {
   listSessions,
   projectDir,
   reindex,
+  desktopHeartbeat,
   type Keybinding,
   type SessionSummary,
 } from "./engine";
@@ -76,6 +77,23 @@ export default function App() {
   const [sidebarW, setSidebarW] = useState(() => num(localStorage.getItem("glaude.sidebarW"), 260));
   const [dockW, setDockW] = useState(() => num(localStorage.getItem("glaude.dockW"), 320));
   const [fontSize, setFontSize] = useState(() => num(localStorage.getItem("glaude.fontSize"), 13));
+  // Resize authority (V6 P1.7): tell the engine the desktop is focused/visible so a phone can't reshape
+  // the shared PTY while someone's at the desk. Heartbeat on focus + every 10s while visible; when the
+  // app loses focus / is hidden (lid closed, backgrounded), heartbeats stop and — after the grace — the
+  // phone may take size authority.
+  useEffect(() => {
+    const beat = () => { void desktopHeartbeat().catch(() => {}); };
+    const beatIfActive = () => { if (document.visibilityState === "visible" && document.hasFocus()) beat(); };
+    beat();
+    window.addEventListener("focus", beat);
+    document.addEventListener("visibilitychange", beatIfActive);
+    const id = window.setInterval(beatIfActive, 10000);
+    return () => {
+      window.removeEventListener("focus", beat);
+      document.removeEventListener("visibilitychange", beatIfActive);
+      window.clearInterval(id);
+    };
+  }, []);
   useEffect(() => localStorage.setItem("glaude.fontSize", String(fontSize)), [fontSize]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("glaude.sidebarCollapsed") === "1");

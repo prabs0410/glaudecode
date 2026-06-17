@@ -427,6 +427,9 @@ export interface RemoteInfo {
 export const enableRemote = (hostname: string) => engineRpc<RemoteInfo>("enableRemote", { hostname });
 export const disableRemote = () => engineRpc<RemoteInfo>("disableRemote", {});
 export const remoteStatus = () => engineRpc<RemoteInfo>("remoteStatus", {});
+// Report that the desktop is focused/visible (V6 P1.7). While the desktop heartbeats, a phone may not
+// reshape the shared PTY; once the desk goes quiet (lid closed / backgrounded) the phone takes size.
+export const desktopHeartbeat = () => engineRpc<{ ok: boolean }>("desktopHeartbeat", {});
 
 /** The engine's localhost endpoint (port + token), for building the cockpit URL. */
 export const engineEndpoint = () => invoke<{ port: number; token: string }>("engine_endpoint");

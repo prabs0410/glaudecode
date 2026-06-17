@@ -16,6 +16,7 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
+import { DesktopPresence } from "./resizeAuthority";
 import { AuditLog } from "./audit";
 import { decodeBridgeFrame, encodeBridgeInput, encodeBridgeResize } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
@@ -74,6 +75,9 @@ export interface StartOptions {
    *  the explicit opt-in to expose the cockpit remotely (use only behind a trusted,
    *  TLS-terminating transport). */
   hostname?: string;
+  /** Resize-authority grace (V6 P1.7): ms of desktop quiet before a phone may reshape the PTY.
+   *  Default 30s; tests set it small. */
+  resizeGraceMs?: number;
 }
 
 export function startEngineServer(opts: StartOptions = {}): EngineServer {
@@ -132,6 +136,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // Coarse, privacy-preserving audit of the RCE channel (V5 Phase 3.3.2): terminal auth, arming
   // changes, INPUT (paneId + byte COUNT, never bytes), and revoke/expiry/link-down disconnects.
   const audit = new AuditLog(() => Date.now());
+  // Resize authority (V6 P1.7): a phone may reshape the shared PTY only when no desktop viewer is
+  // present (the desktop WebView heartbeats while focused via the desktopHeartbeat RPC).
+  const desktopPresence = new DesktopPresence(() => Date.now(), opts.resizeGraceMs);
   // RCE gate shared by INPUT + RESIZE (V5 Phase 2/4): a /term-ws control frame may reach the PTY
   // only when the socket's scope is exactly "terminal", its token STILL verifies (so a revoked/
   // expired token is cut immediately, not just on the next socket close), and the target pane is
@@ -152,6 +159,18 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     }
     const paneId = ws.data.paneId;
     return paneId && paneHub.canInput(paneId) ? paneId : null;
+  };
+  // RESIZE authority (V6 P1.7): a phone reshaping the shared PTY narrows the desk's terminal under the
+  // user, so beyond the INPUT gate it ALSO requires that no desktop viewer is present (the desktop
+  // heartbeats while focused). Render-only otherwise — the phone just follows the Mac's SIZE.
+  const gateResize = (ws: any): string | null => {
+    const paneId = gateTerminal(ws);
+    if (!paneId) return null;
+    if (!desktopPresence.phoneMayResize()) {
+      audit.record({ type: "input-dropped", deviceId: ws.data.deviceId, paneId, reason: "resize-denied-desktop-active" });
+      return null;
+    }
+    return paneId;
   };
   // Scope the /ws approvals feed (audit M1). Only steer+ devices — which CAN resolve approvals — get
   // the full payload. A view (read-only) device gets a REDACTED list: it can still see that an
@@ -227,7 +246,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     status: () => remoteInfo(),
   };
 
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub, audit });
+  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub, audit, desktopPresence });
 
   // Shared Bun.serve config (websocket + fetch) reused by the localhost and remote listeners.
   const serveConfig = {
@@ -380,9 +399,10 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
               }
             }
           } else if (f.type === "resize") {
-            // RESIZE is RCE-adjacent (mutates the desktop pane) — gated EXACTLY like INPUT (V5 Phase 4),
-            // rate-limited, and clamped to 1..1000 so a 0x0 / 65535 frame can't reach the real PTY (M2).
-            const paneId = gateTerminal(ws);
+            // RESIZE is RCE-adjacent (mutates the desktop pane) — gated like INPUT (V5 Phase 4) PLUS the
+            // resize-authority check (V6 P1.7: only when no desktop viewer is present), rate-limited, and
+            // clamped to 1..1000 so a 0x0 / 65535 frame can't reach the real PTY (M2).
+            const paneId = gateResize(ws);
             if (paneId && inputLimiter.hit(ws.data.deviceId ?? "anon")) {
               relayToBridge(ws, encodeBridgeResize(paneId, clampDim(f.cols), clampDim(f.rows)));
             }

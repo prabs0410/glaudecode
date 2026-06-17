@@ -108,7 +108,8 @@ export type RpcMethod =
   | "disableRemote"
   | "remoteStatus"
   | "listPanes"
-  | "defaultDir";
+  | "defaultDir"
+  | "desktopHeartbeat";
 
 export const METHODS = new Set<RpcMethod>([
   "listSessions",
@@ -178,6 +179,7 @@ export const METHODS = new Set<RpcMethod>([
   "remoteStatus",
   "listPanes",
   "defaultDir",
+  "desktopHeartbeat",
 ]);
 
 // Remote-access scope policy (Epic G §6). FAIL-SAFE: only read-only methods are "view";
@@ -220,6 +222,9 @@ export const LOCAL_ONLY_METHODS = new Set<string>([
   // the user physically is, may author them; a remote steer device cannot (audit I1). Steer keeps its
   // intended powers (answer approvals, send follow-ups). Documented in docs/security/threat-model.md.
   "writeMemory", "writeProjectInstructions",
+  // The desktop WebView's focus/visibility heartbeat (V6 P1.7 resize authority) — only the local
+  // desktop reports its own presence; a remote device must never spoof "a viewer is at the desk".
+  "desktopHeartbeat",
 ]);
 
 /** POSIX shell-quote a path so metacharacters/spaces in it can't break or inject into the
@@ -303,6 +308,8 @@ export interface DispatchDeps {
   paneHub?: { list(): PaneInfo[] };
   /** RCE-channel audit log — local-only readback for incident review (audit M7). */
   audit?: { list(): AuditEvent[] };
+  /** Desktop focus/visibility presence — gates phone PTY resize (V6 P1.7). */
+  desktopPresence?: { heartbeat(): void };
 }
 
 /** Snapshot of the remote (non-localhost) listener's state. */
@@ -645,6 +652,12 @@ export async function dispatch(
       // The engine sidecar runs in the project directory — the cockpit uses this to list
       // that project's sessions without Tauri.
       return { dir: process.cwd() };
+    case "desktopHeartbeat":
+      // The local desktop WebView reports it's focused/visible (V6 P1.7). While it heartbeats, a
+      // phone may NOT reshape the shared PTY (it would narrow the desk's terminal); once the desk goes
+      // quiet for the grace window, the phone takes size authority. LOCAL-ONLY (never a remote device).
+      deps.desktopPresence?.heartbeat();
+      return { ok: true };
   }
 }
 
@@ -680,6 +693,8 @@ export interface RpcHandlerDeps {
   paneHub?: { list(): PaneInfo[] };
   /** RCE-channel audit log — local-only readback (audit M7). */
   audit?: { list(): AuditEvent[] };
+  /** Desktop focus/visibility presence — gates phone PTY resize (V6 P1.7). */
+  desktopPresence?: { heartbeat(): void };
   /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
   dispatchDeps?: DispatchDeps;
 }
@@ -784,6 +799,7 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
         remoteControl: deps.remoteControl,
         paneHub: deps.paneHub,
         audit: deps.audit,
+        desktopPresence: deps.desktopPresence,
         ...deps.dispatchDeps,
       });
       return Response.json({ result });
