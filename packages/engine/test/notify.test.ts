@@ -24,4 +24,10 @@ describe("coalesceNotifications", () => {
   test("empty in, empty out", () => {
     expect(coalesceNotifications([])).toEqual([]);
   });
+
+  test("coalesces the 'question' kind (AskUserQuestion waiting — V6 push trigger)", () => {
+    expect(coalesceNotifications([n("question", "pick one", "s1")])).toEqual([n("question", "pick one", "s1")]);
+    const out = coalesceNotifications([n("question"), n("question")]);
+    expect(out).toEqual([{ kind: "question", text: "2 sessions waiting on you" }]);
+  });
 });

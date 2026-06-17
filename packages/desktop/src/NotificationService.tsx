@@ -37,6 +37,7 @@ const titleFor: Record<AppNotification["kind"], string> = {
   approval: "Approval needed",
   error: "Session error",
   budget: "Budget alert",
+  question: "Waiting on you",
 };
 
 export function NotificationService({ liveSessions, projectDir, quiet, onSelectSession }: Props) {

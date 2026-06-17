@@ -3,7 +3,9 @@
 // finished"). Pure + unit-tested; the frontend NotificationService debounces a window of
 // events then runs them through this before calling the OS notification plugin.
 
-export type NotificationKind = "finished" | "approval" | "error" | "budget";
+// "question" = an AskUserQuestion is waiting on the user (distinct from "approval", a tool-call
+// permission prompt). Both are push triggers (V6 Phase 3.4: approval + question + done/idle + error).
+export type NotificationKind = "finished" | "approval" | "error" | "budget" | "question";
 
 export interface AppNotification {
   kind: NotificationKind;
@@ -36,5 +38,7 @@ function summaryText(kind: NotificationKind, n: number): string {
       return `${n} sessions errored`;
     case "budget":
       return `${n} budget alerts`;
+    case "question":
+      return `${n} sessions waiting on you`;
   }
 }

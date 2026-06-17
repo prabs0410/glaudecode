@@ -1,7 +1,9 @@
 // Frontend mirror of @glaudecode/engine's coalesceNotifications (verified by that package's
 // tests). Kept in sync so the WebView can coalesce a batch before notifying.
 
-export type NotificationKind = "finished" | "approval" | "error" | "budget";
+// "question" = an AskUserQuestion is waiting on the user (distinct from "approval", a tool-call
+// permission prompt). Both are push triggers (V6 Phase 3.4: approval + question + done/idle + error).
+export type NotificationKind = "finished" | "approval" | "error" | "budget" | "question";
 
 export interface AppNotification {
   kind: NotificationKind;
@@ -34,5 +36,7 @@ function summaryText(kind: NotificationKind, n: number): string {
       return `${n} sessions errored`;
     case "budget":
       return `${n} budget alerts`;
+    case "question":
+      return `${n} sessions waiting on you`;
   }
 }
