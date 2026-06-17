@@ -67,12 +67,20 @@ and the research: `docs/research/mobile-cockpit-ux-2026-06-17.md`,
 - 🔨 **Phase 2 — transport (branch `feat/v6-p2-serve`):** 2.3 ACL/Tailnet-Lock + MagicDNS hardening warning `e07594d`.
   **2.0/2.1 = `[HUMAN-GATE]`** (enable Tailscale MagicDNS+certs → HTTPS canonical URL; a Tailscale admin toggle).
   The bare-IP bind is WireGuard-encrypted but not a browser secure context, so clipboard/install/push (P3/P4) wait on it.
-- ⏭️ **Next:** Phase 3 (PWA + self-hosted Web Push) — VAPID keygen/persist + the scoped `/push-subscribe`
-  endpoint + the notify policy, built behind the HTTPS gate.
+- 🔨 **Phase 3 — PWA + push:** 3.4 push notify policy `93ff457` (pure, tested). **3.1–3.3 BLOCKED on the HTTPS gate**
+  (a service worker won't register, and Web Push won't work, without a secure-context origin) + VAPID provisioning + a device.
+- 🚧 **GATING WALL REACHED:** every remaining verifiable task in P3 (push delivery) and P4 (clipboard) needs a browser
+  **secure context** = the Tailscale-Serve-HTTPS human-gate (2.0). Until the founder enables **MagicDNS + HTTPS certs**,
+  the loop can only write code it cannot run/verify. Per RUN MODE, these are **flagged, not failed**. Phase 6
+  (conversation view) is the only remaining phase that doesn't need HTTPS, but it is the optional/last upgrade.
 
-**Blocked / human-gates collected:** enable Tailscale MagicDNS+certs (unblocks P2/P3/P4 HTTPS) · VAPID
-provisioning (P3) · real-device `[DEVICE-GATE]` QA (P1+) · deny-by-default ACL + Tailnet Lock · `gh auth` as
-`prabs0410` for PRs · E2E crypto (out of scope).
+**Blocked / human-gates collected (the loop cannot do these — they're yours):**
+1. **★ Enable Tailscale MagicDNS + HTTPS certs** (admin-console toggle) — unblocks P2 HTTPS + ALL of P3 delivery + P4/P5 clipboard. **Highest leverage.**
+2. **VAPID key** provisioning (P3 push).
+3. **Real-device `[DEVICE-GATE]` QA** for Phase 1 (scroll/fit/keyboard/switcher/resize) + later push/clipboard.
+4. deny-by-default Tailscale ACL grant + enable Tailnet Lock (Epic-G).
+5. **`gh auth login` as `prabs0410`** → open/merge the pushed `feat/v6-p*` PRs.
+6. E2E crypto (out of scope, release prerequisite).
 
 ## Phase 0 — prep (DONE, committed on `feat/v6-p0-setup`)
 
