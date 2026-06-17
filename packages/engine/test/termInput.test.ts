@@ -92,11 +92,18 @@ describe("termPage touch-scroll is contained (V6 Phase 1.1)", () => {
   });
 });
 
-describe("termPage loads the FitAddon (V6 Phase 1.2 prep)", () => {
-  // The served page can't import; FitAddon must be loaded via a <script src> like xterm.js so the
-  // page can fit cols/rows to the phone viewport. The route /app/addon-fit.js is served in server.ts.
-  test("the term page includes the vendored addon-fit script tag", () => {
+describe("termPage fits to the viewport via FitAddon (V6 Phase 1.2)", () => {
+  // The served page can't import; FitAddon is loaded via a <script src> like xterm.js, then used to
+  // size the xterm grid to the phone viewport so output isn't cropped.
+  test("the term page loads and uses the vendored FitAddon", () => {
     expect(TERM_HTML).toContain('<script src="/app/addon-fit.js">');
+    expect(TERM_HTML).toContain("new FitAddon.FitAddon()");
+    expect(TERM_HTML).toContain("fitAddon.fit()");
+    expect(TERM_HTML).toContain("function doFit()");
+  });
+  test("the old guessed-cell-metrics fit path is gone", () => {
+    expect(TERM_HTML).not.toContain("13 * 0.6"); // the hardcoded glyph-width guess
+    expect(TERM_HTML).not.toContain("sizeOn"); // the manual take-control toggle is retired
   });
 });
 

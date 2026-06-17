@@ -131,7 +131,7 @@ export const TERM_HTML = `<!doctype html>
   if (!paneId) return;
 
   var canTypeScope = SCOPE === "terminal";
-  var armed = false, rawOn = false, ctrlArmed = false, paused = false, sizeOn = false, ws = null;
+  var armed = false, rawOn = false, ctrlArmed = false, paused = false, ws = null;
   var reconnectTimer = null; // single pending reconnect, so a background/foreground race can't dupe sockets
   var connOk = true, repairing = false; // connOk: last listPanes succeeded (so "not armed" is real)
 
@@ -140,6 +140,9 @@ export const TERM_HTML = `<!doctype html>
     theme: { background: "#0d1117", foreground: "#c9d1d9" },
   });
   term.open(document.getElementById("term"));
+  // Fit-to-width (V6 P1.2): size the xterm grid to the phone viewport so output isn't cropped.
+  var fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
 
   // Flow control: ACK the cumulative OUTPUT payload bytes we've consumed, debounced.
   var received = 0, acked = 0, ackTimer = null;
@@ -290,6 +293,21 @@ export const TERM_HTML = `<!doctype html>
     document.getElementById("term").style.bottom = (canTypeScope ? ib.offsetHeight + kbHeight() : 0) + "px";
   }
 
+  // Fit the xterm grid to the phone viewport (V6 P1.2). When this device DRIVES size (terminal scope +
+  // armed — resize authority is refined in 1.7), reflow the Mac PTY to the fitted size so its output
+  // matches the phone width (clean, no crop). Otherwise it's render-only and follows the Mac's SIZE.
+  function doFit() {
+    try { fitAddon.fit(); } catch (e) { return; } // cell metrics not ready yet — a later call refits
+    if (canTypeScope && armed && ws && ws.readyState === 1) {
+      var f = new Uint8Array(5); f[0] = 4; // RESIZE
+      var dv = new DataView(f.buffer);
+      dv.setUint16(1, term.cols & 0xffff, false); dv.setUint16(3, term.rows & 0xffff, false);
+      try { ws.send(f); } catch (e) {}
+    }
+  }
+  window.addEventListener("resize", doFit);
+  window.addEventListener("orientationchange", function () { setTimeout(doFit, 150); });
+
   function updateInputUI() {
     var bar = document.getElementById("inputbar");
     var note = document.getElementById("scopenote");
@@ -320,7 +338,6 @@ export const TERM_HTML = `<!doctype html>
       // Reset transient input modes on disarm so they don't silently persist (audit L16).
       if (rawOn) { rawOn = false; term.options.disableStdin = true; document.getElementById("rawbtn").classList.remove("on"); }
       if (ctrlArmed) setCtrl(false); // drop sticky Ctrl
-      if (sizeOn) { sizeOn = false; var sb = document.getElementById("k-size"); if (sb) sb.classList.remove("on"); } // release "size taken"
     }
   }
 
@@ -330,9 +347,11 @@ export const TERM_HTML = `<!doctype html>
       list = list || [];
       var me = null;
       for (var i = 0; i < list.length; i++) if (list[i].paneId === paneId) me = list[i];
+      var was = armed;
       armed = !!(me && me.armed);
       connOk = true; // listPanes succeeded → a "not armed" hint now reflects the real pane state
       updateInputUI();
+      if (armed && !was) doFit(); // just armed → reflow the Mac PTY to the phone's fitted size
     }).catch(function () { connOk = false; updateInputUI(); }); // a 401/403 already triggered repair()
   }
 
@@ -380,25 +399,9 @@ export const TERM_HTML = `<!doctype html>
       if (rawOn) term.focus();
     };
 
-    // Take control of size (V5 Phase 4): fit the terminal to this phone + send RESIZE (gated like
-    // INPUT server-side). Default OFF = desktop-authoritative. Cell metrics are approximate (no fit
-    // addon vendored) — the real-device QA gate (4.5.2) tunes them.
-    function fitAndSend() {
-      if (!sizeOn) return;
-      var el = document.getElementById("term");
-      var cols = Math.max(20, Math.floor((el.clientWidth - 12) / (13 * 0.6)));
-      var rows = Math.max(6, Math.floor((el.clientHeight - 12) / (13 * 1.3)));
-      try { term.resize(cols, rows); } catch (e) {}
-      if (ws && ws.readyState === 1 && armed) {
-        var f = new Uint8Array(5); f[0] = 4; // RESIZE
-        var dv = new DataView(f.buffer); dv.setUint16(1, cols & 0xffff, false); dv.setUint16(3, rows & 0xffff, false);
-        try { ws.send(f); } catch (e) {}
-      }
-    }
-    document.getElementById("k-size").onclick = function () {
-      sizeOn = !sizeOn; this.classList.toggle("on", sizeOn);
-      if (sizeOn) fitAndSend(); // take control → fit now (desktop reasserts its size when toggled off)
-    };
+    // Fit is automatic on open/resize/keyboard via doFit() (V6 P1.2); this button just forces a re-fit
+    // (e.g. after a font-size change).
+    document.getElementById("k-size").onclick = function () { doFit(); };
 
     // Message / Smart tab switch (the persistent key bar stays under both). Last tab is remembered.
     var activeTab = sessionStorage.getItem("ck.tab") || "msg";
@@ -421,7 +424,7 @@ export const TERM_HTML = `<!doctype html>
       var pin = function () {
         document.getElementById("inputbar").style.transform = "translateY(-" + kbHeight() + "px)";
         layout();
-        fitAndSend(); // re-fit when the keyboard changes the visible area (no-op unless size taken)
+        doFit(); // re-fit when the keyboard changes the visible area
       };
       vv.addEventListener("resize", pin);
       vv.addEventListener("scroll", pin);
@@ -458,6 +461,7 @@ export const TERM_HTML = `<!doctype html>
     setInterval(function () { refreshArmed(); pollPromptState(); }, 3000);
   }
   updateInputUI();
+  doFit(); // initial fit once the page + term element are laid out (V6 P1.2)
 
   function connect() {
     // Fresh attach: the engine builds a NEW per-socket subscriber (sent/acked from 0) and replays the
@@ -514,8 +518,9 @@ export const TERM_HTML = `<!doctype html>
       } else if (op === 1 && b.length >= 5) { // SIZE
         var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
         var cols = dv.getUint16(1, false), rows = dv.getUint16(3, false);
-        // Desktop-authoritative by default; ignored while the phone has "taken control" of size.
-        if (!sizeOn && cols && rows) { try { term.resize(cols, rows); } catch (e) {} }
+        // Render-only devices follow the Mac's size; a device that DRIVES size (terminal + armed) fits
+        // locally and reflows the Mac via doFit(), so it ignores the Mac's echo here (V6 P1.2/1.7).
+        if (!(canTypeScope && armed) && cols && rows) { try { term.resize(cols, rows); } catch (e) {} }
       }
     };
   }
