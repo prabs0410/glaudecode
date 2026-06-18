@@ -90,6 +90,16 @@ export const CONVERSATION_HTML = `<!doctype html>
   #dcontent pre{white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,Menlo,monospace;color:var(--muted);margin:0}
   .roview{display:flex;align-items:center;gap:8px;margin:2px 0 8px} .roview button{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-size:13px;padding:5px 9px;cursor:pointer}
   .roTag{background:#16263a;color:var(--accent2);border-radius:6px;padding:1px 7px;font-size:10px}
+  /* diagnostics — tap the status chip to expand; a blank/broken screen explains itself */
+  #status{cursor:pointer}
+  #dbg{display:none;position:fixed;top:39px;left:0;right:0;z-index:50;background:#0b0f14f2;border-bottom:1px solid var(--line2);
+    padding:9px 12px;font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);max-height:55vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  #dbg.show{display:block}
+  #chat .notice{margin:auto;max-width:300px;text-align:center;color:var(--muted);padding:24px 14px}
+  #chat .notice .nt{color:var(--text);font-size:15px;font-weight:600;margin-bottom:8px}
+  #chat .notice .nd{font-size:13px;margin-bottom:6px;line-height:1.5}
+  #chat .notice.err .nt{color:#ff9a92}
+  #chat .notice .ntbtn{display:inline-block;margin-top:10px;background:var(--accent);color:#fff;border-radius:9px;padding:9px 15px;text-decoration:none;font-size:14px}
 </style>
 </head>
 <body>
@@ -99,6 +109,7 @@ export const CONVERSATION_HTML = `<!doctype html>
     <span id="status"><span class="dot"></span><span class="t">…</span></span>
     <a id="toterm" class="ib" title="Raw terminal" href="#">⌨</a>
   </div>
+  <div id="dbg"></div>
   <div id="chat"></div>
   <input id="file" type="file" />
   <div id="composer">
@@ -158,8 +169,8 @@ export const CONVERSATION_HTML = `<!doctype html>
   function connect(){
     ws=new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/term-ws");
     ws.binaryType="arraybuffer";
-    ws.onopen=function(){ ws.send(JSON.stringify({type:"auth",token:TOKEN,paneId:paneId})); };
-    ws.onclose=function(ev){ if(ev.code===4003){ repair(); return; } setTimeout(connect,2000); };
+    ws.onopen=function(){ dbg.errs.ws=null; ws.send(JSON.stringify({type:"auth",token:TOKEN,paneId:paneId})); refreshDbg(); };
+    ws.onclose=function(ev){ if(ev.code===4003){ repair(); return; } dbg.errs.ws="closed (code "+ev.code+")"; refreshDbg(); setTimeout(connect,2000); };
     ws.onmessage=function(){}; // OUTPUT is ignored here — we render from the typed RPC, not the byte mirror
   }
   function sendText(s){
@@ -177,9 +188,40 @@ export const CONVERSATION_HTML = `<!doctype html>
     if(name==="Task") return i.description||"";
     return typeof i==="object"?(i.pattern||i.url||i.prompt||""):String(i);
   }
+  // ---- diagnostics: tap the status chip to expand a HUD so a blank/broken screen explains itself
+  // (no more silently-swallowed errors). Tracks live RPC/WS state + the last error from each source.
+  var dbg={msgs:null,agent:null,prompt:null,errs:{}}, dbgEl=document.getElementById("dbg");
+  function emsg(e){ return (e&&e.message)||String(e); }
+  function wsState(){ return !ws?"none":(ws.readyState===0?"connecting":ws.readyState===1?"open":ws.readyState===2?"closing":"closed"); }
+  function refreshDbg(){ if(dbgEl.classList.contains("show")) renderDbg(); }
+  function renderDbg(){
+    var L=["pane:   "+paneId, "dir:    "+(DIR||"(none)"), "scope:  "+SCOPE+(canType?"":"  (view-only — can't type)"),
+      "ws:     "+wsState(), "msgs:   "+(dbg.msgs==null?"—":dbg.msgs), "agent:  "+(dbg.agent||"—"), "prompt: "+(dbg.prompt||"—"),
+      "host:   "+location.host];
+    var errs=[]; ["msgs","agent","prompt","dir","ws","js"].forEach(function(k){ if(dbg.errs[k]) errs.push("  "+k+" -> "+dbg.errs[k]); });
+    L.push("errors:"); L.push(errs.length?errs.join("\\n"):"  (none)");
+    L.push(""); L.push("note: chat shows a Claude SESSION's messages. A plain shell pane has none — tap the keyboard icon for the terminal.");
+    dbgEl.textContent=L.join("\\n");
+  }
+  function showEmpty(){
+    var box=el("notice");
+    box.appendChild(el("nt","Nothing to show here yet"));
+    box.appendChild(el("nd","This is a chat view of a Claude session. Pane "+paneId.slice(0,18)+" has no Claude messages yet — run claude in it, or open the raw terminal."));
+    var a=document.createElement("a"); a.className="ntbtn"; a.href=document.getElementById("toterm").href; a.textContent="⌨ Open terminal"; box.appendChild(a);
+    chat.appendChild(box);
+  }
+  function failChat(method,e){
+    dbg.errs.msgs=method+": "+emsg(e); if(lastSig==="__err__"){ refreshDbg(); return; } lastSig="__err__";
+    chat.textContent="";
+    var box=el("notice err"); box.appendChild(el("nt","Couldn't load the conversation"));
+    box.appendChild(el("nd",method+" -> "+emsg(e))); box.appendChild(el("nd","Tap the status chip (top-right) for diagnostics."));
+    chat.appendChild(box); refreshDbg();
+  }
+
   function renderChat(msgs){
-    var sig=msgs.map(function(m){return m.id+":"+m.blocks.length;}).join(",");
-    if(sig===lastSig) return; // unchanged — don't rebuild (keeps scroll/selection)
+    msgs=msgs||[]; dbg.msgs=msgs.length; dbg.errs.msgs=null;
+    var sig=msgs.map(function(m){return m.id+":"+m.blocks.length;}).join(",")||"__empty__";
+    if(sig===lastSig){ refreshDbg(); return; } // unchanged — don't rebuild (keeps scroll/selection)
     lastSig=sig;
     var atBottom = chat.scrollHeight-chat.scrollTop-chat.clientHeight < 60;
     chat.textContent="";
@@ -199,7 +241,9 @@ export const CONVERSATION_HTML = `<!doctype html>
       });
       if(any) chat.appendChild(wrap);
     });
-    if(atBottom) chat.scrollTop=chat.scrollHeight;
+    if(!chat.childNodes.length) showEmpty(); // shell pane / empty session — explain, don't show a void
+    else if(atBottom) chat.scrollTop=chat.scrollHeight;
+    refreshDbg();
   }
 
   function setStatus(s){
@@ -229,9 +273,9 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
 
   function poll(){
-    rpc("getSessionMessages",{id:paneId,dir:DIR}).then(renderChat).catch(function(){});
-    rpc("agentState",{id:paneId,dir:DIR}).then(setStatus).catch(function(){});
-    rpc("promptState",{id:paneId,dir:DIR}).then(renderAnswer).catch(function(){});
+    rpc("getSessionMessages",{id:paneId,dir:DIR}).then(renderChat,function(e){ failChat("getSessionMessages",e); });
+    rpc("agentState",{id:paneId,dir:DIR}).then(function(s){ dbg.errs.agent=null; dbg.agent=s&&s.status; setStatus(s); refreshDbg(); },function(e){ dbg.errs.agent=emsg(e); refreshDbg(); });
+    rpc("promptState",{id:paneId,dir:DIR}).then(function(s){ dbg.errs.prompt=null; dbg.prompt=s&&(s.isWaiting?"waiting":"idle"); renderAnswer(s); },function(e){ dbg.errs.prompt=emsg(e); refreshDbg(); });
   }
 
   // ---- composer ----
@@ -436,7 +480,9 @@ export const CONVERSATION_HTML = `<!doctype html>
     n.textContent="View-only — re-pair with Terminal access on the Mac to drive this session.";
   }
 
-  rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; poll(); }).catch(function(){});
+  document.getElementById("status").onclick=function(){ dbgEl.classList.toggle("show"); renderDbg(); };
+  window.addEventListener("error",function(e){ dbg.errs.js=(e&&e.message)||"script error"; refreshDbg(); });
+  rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; poll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); poll(); });
   gateUI(); if(canType) connect();
   setInterval(poll,2000);
 })();
