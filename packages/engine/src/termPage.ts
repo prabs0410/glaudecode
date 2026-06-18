@@ -99,7 +99,7 @@ export const TERM_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><a id="switch" href="#" title="Next terminal">⇄</a><span id="pill" class="pill"></span></div>
+  <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><a id="tochat" href="#" title="Conversation view">💬</a><a id="switch" href="#" title="Next terminal">⇄</a><span id="pill" class="pill"></span></div>
   <div id="term"></div>
   <div id="switcher"></div>
   <div id="inputbar">
@@ -152,6 +152,9 @@ export const TERM_HTML = `<!doctype html>
   var paneId = new URLSearchParams(location.search).get("pane") || "";
   if (!TOKEN) { location.href = "/app"; return; }
   document.getElementById("title").textContent = paneId ? paneId.slice(0, 8) : "no pane";
+  // 💬 toggles to the conversation view for this pane (the ⌨ on the chat page comes back here) — a
+  // one-tap round-trip between the raw terminal and the native chat.
+  var toChat = document.getElementById("tochat"); if (toChat) toChat.href = "/app/chat?pane=" + encodeURIComponent(paneId);
   if (!paneId) return;
 
   var canTypeScope = SCOPE === "terminal";
