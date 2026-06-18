@@ -68,11 +68,33 @@ export const CONVERSATION_HTML = `<!doctype html>
   #puckout{position:fixed;left:50%;top:52px;transform:translateX(-50%);z-index:61;background:#0c1117ee;border:1px solid var(--accent);
     border-radius:999px;padding:7px 16px;font-size:14px;color:#fff;opacity:0;transition:opacity .12s;pointer-events:none;white-space:nowrap}
   #puckout.show{opacity:1}
+  /* nav drawer (V6 option B) — Sessions / Search / Prompts / Memory; opens from the ☰ button only */
+  #menu{background:none;border:0;color:var(--accent2);font-size:20px;cursor:pointer;padding:2px 4px;line-height:1}
+  #scrim{position:fixed;inset:0;background:rgba(3,5,8,.55);opacity:0;pointer-events:none;transition:opacity .18s;z-index:70}
+  #scrim.open{opacity:1;pointer-events:auto}
+  #drawer{position:fixed;top:0;bottom:0;left:0;width:82%;max-width:340px;background:var(--panel);border-right:1px solid var(--line2);
+    transform:translateX(-104%);transition:transform .2s;z-index:71;display:flex;flex-direction:column;box-shadow:6px 0 24px rgba(0,0,0,.5)}
+  #drawer.open{transform:translateX(0)}
+  #drawer .dh{padding:14px 14px 10px;font-weight:700;font-size:15px;border-bottom:1px solid var(--line)}
+  #dtabs{display:flex;border-bottom:1px solid var(--line)}
+  #dtabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);font:12px ui-sans-serif,system-ui,sans-serif;
+    padding:9px 0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+  #dtabs button .gi{font-size:17px;line-height:1} #dtabs button.on{color:var(--accent2);border-bottom-color:var(--accent)}
+  #dcontent{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 12px}
+  #dfoot{padding:10px 14px;border-top:1px solid var(--line);color:var(--dim);font-size:11px}
+  #dcontent .drow{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);
+    padding:11px 4px;font:14px ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-decoration:none}
+  #dcontent .drow.cur{color:var(--accent2)} #dcontent .drow .sub{display:block;color:var(--dim);font-size:11px;margin-top:2px;word-break:break-word}
+  #dsearch{margin-bottom:8px} #dsearch input{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:9px 11px;font:14px ui-sans-serif,system-ui,sans-serif}
+  #dcontent .hint{color:var(--dim);font-size:12px;padding:6px 2px}
+  #dcontent pre{white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,Menlo,monospace;color:var(--muted);margin:0}
+  .roview{display:flex;align-items:center;gap:8px;margin:2px 0 8px} .roview button{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-size:13px;padding:5px 9px;cursor:pointer}
+  .roTag{background:#16263a;color:var(--accent2);border-radius:6px;padding:1px 7px;font-size:10px}
 </style>
 </head>
 <body>
   <div id="bar">
-    <a href="/app" title="Sessions">‹</a>
+    <button id="menu" title="Menu">☰</button>
     <span id="title" class="muted">…</span>
     <span id="status"><span class="dot"></span><span class="t">…</span></span>
     <a id="toterm" class="ib" title="Raw terminal" href="#">⌨</a>
@@ -96,6 +118,18 @@ export const CONVERSATION_HTML = `<!doctype html>
   <div id="scopenote"></div>
   <div id="puck">⌘</div>
   <div id="puckout"></div>
+  <div id="scrim"></div>
+  <aside id="drawer">
+    <div class="dh">☰ GlaudeCode</div>
+    <div id="dtabs">
+      <button data-s="sessions"><span class="gi">▦</span>Sessions</button>
+      <button data-s="search"><span class="gi">🔍</span>Search</button>
+      <button data-s="prompts"><span class="gi">⌘</span>Prompts</button>
+      <button data-s="memory"><span class="gi">🧠</span>Memory</button>
+    </div>
+    <div id="dcontent"></div>
+    <div id="dfoot">Diffs &amp; cost stay on the Mac · revoke a device on the Mac</div>
+  </aside>
 <script>
 (function(){
   var TOKEN=sessionStorage.getItem("ck.token")||"", SCOPE=sessionStorage.getItem("ck.scope")||"view";
@@ -315,6 +349,84 @@ export const CONVERSATION_HTML = `<!doctype html>
       else if(st.mode==="radial"){ if(st.hot){ fireKey(st.hot); } else { toast("✕ cancel"); } clearRadial(); }
       st=null;
     });
+  })();
+
+  // ---- nav drawer (V6 option B): Sessions / Search / Prompts / Memory over read-only RPCs ----
+  // The conversation is home; ☰ pulls everything in without leaving the session. Button-only (no
+  // edge-swipe) so it never fights the puck's flick or the chat scroll. All DOM via textContent.
+  (function(){
+    var scrim=document.getElementById("scrim"), drawer=document.getElementById("drawer"),
+        dcontent=document.getElementById("dcontent"), dtabs=document.getElementById("dtabs");
+    function openD(o){ scrim.classList.toggle("open",o); drawer.classList.toggle("open",o); }
+    document.getElementById("menu").onclick=function(){ openD(true); if(!dcontent.childNodes.length) select("sessions"); };
+    scrim.onclick=function(){ openD(false); };
+    function clear(){ dcontent.textContent=""; }
+    function hint(t){ return el("hint",t); }
+    function rowLink(href,title,sub,cur){ var a=document.createElement("a"); a.className="drow"+(cur?" cur":""); a.href=href;
+      a.appendChild(el("",title)); if(sub) a.appendChild(el("sub",sub)); return a; }
+    function rowBtn(title,sub,onclick){ var b=document.createElement("button"); b.className="drow";
+      b.appendChild(el("",title)); if(sub) b.appendChild(el("sub",sub)); b.onclick=onclick; return b; }
+    function insertIntoComposer(text){ var s=tin.selectionStart==null?tin.value.length:tin.selectionStart;
+      tin.value=tin.value.slice(0,s)+text+tin.value.slice(s); grow(); tin.focus(); }
+
+    function select(name){
+      Array.prototype.forEach.call(dtabs.querySelectorAll("button"),function(b){ b.classList.toggle("on",b.getAttribute("data-s")===name); });
+      clear(); dcontent.scrollTop=0;
+      if(name==="sessions") renderSessions();
+      else if(name==="search") renderSearch();
+      else if(name==="prompts") renderPrompts();
+      else if(name==="memory") renderMemory();
+    }
+    dtabs.addEventListener("click",function(e){ var b=e.target.closest("button"); if(b) select(b.getAttribute("data-s")); });
+
+    function renderSessions(){
+      dcontent.appendChild(hint("Loading…"));
+      rpc("listPanes").then(function(ps){ clear();
+        if(!ps||!ps.length){ dcontent.appendChild(hint("No live terminals — open a pane in GlaudeCode.")); return; }
+        ps.forEach(function(p){ dcontent.appendChild(rowLink("/app/chat?pane="+encodeURIComponent(p.paneId),
+          p.title||p.paneId.slice(0,12), p.cols+"×"+p.rows, p.paneId===paneId)); });
+      }).catch(function(){ clear(); dcontent.appendChild(hint("Couldn't load sessions.")); });
+    }
+    function renderSearch(){
+      var box=el(""); box.id="dsearch"; var inp=document.createElement("input");
+      inp.placeholder="Search sessions + messages… (Enter)"; inp.autocapitalize="none"; inp.autocomplete="off";
+      box.appendChild(inp); dcontent.appendChild(box);
+      var res=el(""); dcontent.appendChild(res);
+      function run(){ var q=inp.value.trim(); res.textContent=""; if(!q) return; res.appendChild(hint("Searching…"));
+        rpc("search",{query:q,dir:DIR}).then(function(hits){ res.textContent="";
+          if(!hits||!hits.length){ res.appendChild(hint("No matches.")); return; }
+          hits.forEach(function(h){ res.appendChild(rowLink("/app/chat?pane="+encodeURIComponent(h.sessionId), h.sessionId.slice(0,12), h.snippet||"", false)); });
+        }).catch(function(){ res.textContent=""; res.appendChild(hint("Search failed.")); });
+      }
+      inp.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); run(); } });
+      setTimeout(function(){ inp.focus(); },50);
+    }
+    function renderPrompts(){
+      dcontent.appendChild(hint("Loading…"));
+      rpc("listPrompts").then(function(ps){ clear();
+        if(!ps||!ps.length){ dcontent.appendChild(hint("No saved prompts.")); return; }
+        dcontent.appendChild(hint("Tap to insert into the composer."));
+        ps.forEach(function(p){ dcontent.appendChild(rowBtn(p.name||p.id,
+          (p.variables&&p.variables.length)?("vars: "+p.variables.join(", ")):"", function(){
+            rpc("readPrompt",{id:p.id}).then(function(r){ openD(false); insertIntoComposer((r&&r.body)||""); }).catch(function(){});
+          })); });
+      }).catch(function(){ clear(); dcontent.appendChild(hint("Couldn't load prompts.")); });
+    }
+    function renderMemory(){
+      dcontent.appendChild(hint("Loading…"));
+      rpc("listMemory",{dir:DIR}).then(function(ms){ clear();
+        var head=el("roview"); head.appendChild(el("","Memory")); head.appendChild(el("roTag","read-only")); dcontent.appendChild(head);
+        if(!ms||!ms.length){ dcontent.appendChild(hint("No memory files.")); return; }
+        ms.forEach(function(m){ dcontent.appendChild(rowBtn(m.name, m.bytes+" B", function(){ viewMemory(m.path,m.name); })); });
+      }).catch(function(){ clear(); dcontent.appendChild(hint("Couldn't load memory.")); });
+    }
+    function viewMemory(path,name){ clear();
+      var bar=el("roview"); var back=document.createElement("button"); back.textContent="‹ Memory"; back.onclick=renderMemory;
+      bar.appendChild(back); bar.appendChild(el("roTag","read-only")); dcontent.appendChild(bar);
+      dcontent.appendChild(hint(name));
+      rpc("readMemory",{dir:DIR,path:path}).then(function(r){ var pre=document.createElement("pre"); pre.textContent=(r&&r.content)||""; dcontent.appendChild(pre); })
+        .catch(function(){ dcontent.appendChild(hint("Couldn't read file.")); });
+    }
   })();
 
   function gateUI(){
