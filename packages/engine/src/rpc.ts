@@ -27,6 +27,7 @@ import { MemoryStore, parseLoadedContext } from "./memory";
 import { GraphManager } from "./graph";
 import { GitManager } from "./gitManager";
 import { compareSessions, type SessionView } from "./compare";
+import { findProjectRoot } from "./projectRoot";
 import { buildResumeBriefing } from "./resume";
 import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
@@ -649,9 +650,11 @@ export async function dispatch(
       // The panes the cockpit can mirror (view-only). Empty until the Rust pane-bridge feeds them.
       return deps.paneHub?.list() ?? [];
     case "defaultDir":
-      // The engine sidecar runs in the project directory — the cockpit uses this to list
-      // that project's sessions without Tauri.
-      return { dir: process.cwd() };
+      // The project the phone surfaces (cockpit + conversation view) should target. The engine's raw
+      // process.cwd() is the app's launch dir — under `tauri dev` a subdir like packages/desktop/
+      // src-tauri — so walk up to the nearest .git (mirrors the desktop's find_project_dir) so we list
+      // the SAME project the user runs `claude` in, not an empty subdir.
+      return { dir: findProjectRoot(process.cwd()) };
     case "desktopHeartbeat":
       // The local desktop WebView reports it's focused/visible (V6 P1.7). While it heartbeats, a
       // phone may NOT reshape the shared PTY (it would narrow the desk's terminal); once the desk goes

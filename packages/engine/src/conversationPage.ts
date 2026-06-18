@@ -150,7 +150,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   document.getElementById("title").textContent=paneId.slice(0,12);
   document.getElementById("toterm").href="/app/term?pane="+encodeURIComponent(paneId);
   var canType=SCOPE==="terminal";
-  var DIR="", ws=null, lastQ=null, lastSig="", repairing=false;
+  var DIR="", sid=paneId, ws=null, lastQ=null, lastSig="", repairing=false;
   var chat=document.getElementById("chat"), tin=document.getElementById("tin");
 
   function rpc(method,params){
@@ -190,23 +190,24 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
   // ---- diagnostics: tap the status chip to expand a HUD so a blank/broken screen explains itself
   // (no more silently-swallowed errors). Tracks live RPC/WS state + the last error from each source.
-  var dbg={msgs:null,agent:null,prompt:null,errs:{}}, dbgEl=document.getElementById("dbg");
+  var dbg={msgs:null,agent:null,prompt:null,resolved:"(resolving)",errs:{}}, dbgEl=document.getElementById("dbg");
   function emsg(e){ return (e&&e.message)||String(e); }
   function wsState(){ return !ws?"none":(ws.readyState===0?"connecting":ws.readyState===1?"open":ws.readyState===2?"closing":"closed"); }
   function refreshDbg(){ if(dbgEl.classList.contains("show")) renderDbg(); }
   function renderDbg(){
-    var L=["pane:   "+paneId, "dir:    "+(DIR||"(none)"), "scope:  "+SCOPE+(canType?"":"  (view-only — can't type)"),
-      "ws:     "+wsState(), "msgs:   "+(dbg.msgs==null?"—":dbg.msgs), "agent:  "+(dbg.agent||"—"), "prompt: "+(dbg.prompt||"—"),
-      "host:   "+location.host];
-    var errs=[]; ["msgs","agent","prompt","dir","ws","js"].forEach(function(k){ if(dbg.errs[k]) errs.push("  "+k+" -> "+dbg.errs[k]); });
+    var L=["pane:    "+paneId+"  (type target)", "session: "+sid+"  ("+(dbg.resolved||"?")+")",
+      "dir:     "+(DIR||"(none)"), "scope:   "+SCOPE+(canType?"":"  (view-only)"),
+      "ws:      "+wsState(), "msgs:    "+(dbg.msgs==null?"—":dbg.msgs), "agent:   "+(dbg.agent||"—"), "prompt:  "+(dbg.prompt||"—"),
+      "host:    "+location.host];
+    var errs=[]; ["msgs","agent","prompt","sessions","dir","ws","js"].forEach(function(k){ if(dbg.errs[k]) errs.push("  "+k+" -> "+dbg.errs[k]); });
     L.push("errors:"); L.push(errs.length?errs.join("\\n"):"  (none)");
     L.push(""); L.push("note: chat shows a Claude SESSION's messages. A plain shell pane has none — tap the keyboard icon for the terminal.");
     dbgEl.textContent=L.join("\\n");
   }
   function showEmpty(){
     var box=el("notice");
-    box.appendChild(el("nt","Nothing to show here yet"));
-    box.appendChild(el("nd","This is a chat view of a Claude session. Pane "+paneId.slice(0,18)+" has no Claude messages yet — run claude in it, or open the raw terminal."));
+    box.appendChild(el("nt","No conversation found yet"));
+    box.appendChild(el("nd","No Claude session detected in this project yet. Start claude in a shell (then reload), or open the raw terminal."));
     var a=document.createElement("a"); a.className="ntbtn"; a.href=document.getElementById("toterm").href; a.textContent="⌨ Open terminal"; box.appendChild(a);
     chat.appendChild(box);
   }
@@ -272,10 +273,29 @@ export const CONVERSATION_HTML = `<!doctype html>
     });
   }
 
+  // Resolve WHICH session to render. A "+Claude" pane has paneId===sessionId; but running claude
+  // inside a shell does NOT — the pane id ("main") isn't the session id. So if the pane id has no
+  // messages, infer the session from the project's most-recently-active one (mirrors the desktop's
+  // "Detected Claude session in shell"). We RENDER sid but still TYPE into paneId. The HUD shows both.
+  function tsOf(s){ var v=s&&s.lastModified; if(v==null)return 0; if(typeof v==="number")return v; var n=Date.parse(String(v)); return isNaN(n)?0:n; }
+  function pickRecent(list){ var best=null,bt=-1; (list||[]).forEach(function(s){ var t=tsOf(s); if(t>bt){bt=t;best=s;} }); return best; }
+  function resolveAndPoll(){
+    rpc("getSessionMessages",{id:paneId,dir:DIR}).then(function(m){
+      if(m&&m.length){ sid=paneId; dbg.resolved="pane id"; dbg.errs.sessions=null; refreshDbg(); poll(); }
+      else inferSession();
+    },function(){ inferSession(); });
+  }
+  function inferSession(){
+    rpc("listSessions",{dir:DIR}).then(function(list){
+      var best=pickRecent(list);
+      sid=best?best.id:paneId; dbg.resolved=best?"inferred (recent in project)":"no session found"; dbg.errs.sessions=null; refreshDbg(); poll();
+    },function(e){ dbg.errs.sessions=emsg(e); sid=paneId; refreshDbg(); poll(); });
+  }
+
   function poll(){
-    rpc("getSessionMessages",{id:paneId,dir:DIR}).then(renderChat,function(e){ failChat("getSessionMessages",e); });
-    rpc("agentState",{id:paneId,dir:DIR}).then(function(s){ dbg.errs.agent=null; dbg.agent=s&&s.status; setStatus(s); refreshDbg(); },function(e){ dbg.errs.agent=emsg(e); refreshDbg(); });
-    rpc("promptState",{id:paneId,dir:DIR}).then(function(s){ dbg.errs.prompt=null; dbg.prompt=s&&(s.isWaiting?"waiting":"idle"); renderAnswer(s); },function(e){ dbg.errs.prompt=emsg(e); refreshDbg(); });
+    rpc("getSessionMessages",{id:sid,dir:DIR}).then(renderChat,function(e){ failChat("getSessionMessages",e); });
+    rpc("agentState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.agent=null; dbg.agent=s&&s.status; setStatus(s); refreshDbg(); },function(e){ dbg.errs.agent=emsg(e); refreshDbg(); });
+    rpc("promptState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.prompt=null; dbg.prompt=s&&(s.isWaiting?"waiting":"idle"); renderAnswer(s); },function(e){ dbg.errs.prompt=emsg(e); refreshDbg(); });
   }
 
   // ---- composer ----
@@ -482,7 +502,7 @@ export const CONVERSATION_HTML = `<!doctype html>
 
   document.getElementById("status").onclick=function(){ dbgEl.classList.toggle("show"); renderDbg(); };
   window.addEventListener("error",function(e){ dbg.errs.js=(e&&e.message)||"script error"; refreshDbg(); });
-  rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; poll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); poll(); });
+  rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; resolveAndPoll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); resolveAndPoll(); });
   gateUI(); if(canType) connect();
   setInterval(poll,2000);
 })();
