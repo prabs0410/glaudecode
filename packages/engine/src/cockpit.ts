@@ -171,9 +171,10 @@ function render() {
         // For a Claude pane paneId === sessionId, so a pending approval/question is for this pane.
         const waiting = p._waiting || approvals.some((a) => a.sessionId === p.paneId);
         const badge = waiting ? '<span class="badge">needs you</span>' : "";
-        return '<a class="sess termlink" href="/app/term?pane=' + encodeURIComponent(p.paneId) + '">' +
+        // V6: a session opens the conversation view (/app/chat); the raw terminal is the ⌨ fallback inside it.
+        return '<a class="sess termlink" href="/app/chat?pane=' + encodeURIComponent(p.paneId) + '">' +
           '<span class="state ' + esc(p._state || "ok") + '"></span><div><div>' + esc(p.title || p.paneId.slice(0, 8)) + badge +
-          '</div><div class="muted">' + esc(p.cols + "x" + p.rows + (p.armed ? " · armed for input" : "")) + "</div></div></a>";
+          '</div><div class="muted">' + esc(p.cols + "x" + p.rows) + "</div></div></a>";
       }).join("")
     : '<div class="empty">No live terminals — open a pane in GlaudeCode.</div>';
   const errHtml = actionError

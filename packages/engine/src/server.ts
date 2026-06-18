@@ -23,6 +23,7 @@ import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
 import { TERM_HTML } from "./termPage";
+import { CONVERSATION_HTML } from "./conversationPage";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -453,6 +454,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
 
       // The view-only terminal page + its vendored xterm.js (V5 Phase 1). All static; the RPCs/WS
       // they call are authed. The token lives in sessionStorage, never these URLs.
+      if (request.method === "GET" && url.pathname === "/app/chat") {
+        // V6 PRIMARY mobile surface: the Claude session as a native conversation (the terminal at
+        // /app/term is the one-tap fallback). Same scoped tokens; renders from the typed RPC data.
+        return new Response(CONVERSATION_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
+      }
       if (request.method === "GET" && url.pathname === "/app/term") {
         return new Response(TERM_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
       }
