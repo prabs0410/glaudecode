@@ -30,7 +30,12 @@ import {
 } from "./engine";
 import "./App.css";
 
-const INITIAL_PANES: Pane[] = [{ paneId: "main", kind: "shell", title: "Shell" }];
+/** The startup shell opens in the last directory you were working in (persisted from the active
+ *  pane's live OSC-7 cwd across launches), so reopening GlaudeCode lands you where you left off —
+ *  not in the app's own folder. Falls back to the engine default (HOME) when there's no history. */
+const makeInitialPanes = (): Pane[] => [
+  { paneId: "main", kind: "shell", title: "Shell", cwd: localStorage.getItem("glaude.lastCwd") || undefined },
+];
 
 const num = (v: string | null, fallback: number) => {
   const n = v ? Number(v) : NaN;
@@ -49,7 +54,7 @@ const sessionTs = (s: SessionSummary): number => {
 
 export default function App() {
   const [dir, setDir] = useState<string | null>(null);
-  const [panes, setPanes] = useState<Pane[]>(INITIAL_PANES);
+  const [panes, setPanes] = useState<Pane[]>(makeInitialPanes);
   const [activePaneId, setActivePaneId] = useState<string>("main");
   // A stale session selected in the sidebar but not yet resumed — drives the resume preview
   // banner (V4-A3). Cleared on resume, on switching to a live pane, or on dismiss.
@@ -193,6 +198,12 @@ export default function App() {
     const p = panes.find((x) => x.paneId === activePaneId);
     return paneCwds[activePaneId] ?? p?.cwd ?? dir;
   }, [paneCwds, activePaneId, panes, dir]);
+
+  // Remember where you're working so the NEXT launch's startup shell opens there, not the app's own
+  // folder (seeds makeInitialPanes above). Persist the focused pane's effective cwd as it changes.
+  useEffect(() => {
+    if (activeCwd) localStorage.setItem("glaude.lastCwd", activeCwd);
+  }, [activeCwd]);
 
   // Detect a Claude session running inside the active *Shell* pane (a `claude` the user started
   // by hand, not via "+ Claude"). We can't know its id directly, so infer it: poll the active

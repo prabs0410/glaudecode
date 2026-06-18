@@ -294,8 +294,13 @@ fn pty_spawn(
             b
         }
     };
+    // Working directory: the requested cwd if it's a real directory (a saved "last shell dir" may
+    // since have been deleted/renamed — never spawn into a ghost path), else the user's HOME (a sane
+    // default — NOT the app's own folder), else the process cwd as a last resort.
     let workdir = cwd
         .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(|| std::env::var("HOME").ok().map(PathBuf::from).filter(|p| p.is_dir()))
         .or_else(|| std::env::current_dir().ok());
     if let Some(dir) = workdir {
         builder.cwd(dir);
