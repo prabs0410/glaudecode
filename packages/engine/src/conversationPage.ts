@@ -228,8 +228,31 @@ export const CONVERSATION_HTML = `<!doctype html>
       tin.value=tin.value+t; grow(); tin.focus(); }).catch(function(){ tin.focus(); });
   }
   document.getElementById("paste").onclick=doPaste;
-  // upload — handed to the engine, which saves it under the project and references it to Claude (wired next)
-  document.getElementById("upload").onclick=function(){ document.getElementById("file").click(); };
+  // upload — smart: a TEXT file (.md/.txt/code/json…) is read client-side and inlined into the composer
+  // (you review it before sending); a BINARY (pdf/image/zip…) is POSTed to the engine, which saves it
+  // under the project's .glaudecode-uploads/ and returns a path the composer @-references for Claude.
+  // No auto-send either way — the inserted text/@path is the preview.
+  var fileInput=document.getElementById("file"), uploadBtn=document.getElementById("upload");
+  var TEXT_EXT=/\\.(md|markdown|txt|text|log|csv|tsv|json|ya?ml|toml|ini|env|xml|html?|css|scss|tsx?|jsx?|mjs|cjs|py|rb|rs|go|java|kt|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|sql|swift|lua|r|pl|dart|vue|svelte|gitignore|dockerfile)$/i;
+  function isText(f){ return (f.type && /^text\\//.test(f.type)) || /json|xml|yaml|javascript|x-sh/.test(f.type||"") || TEXT_EXT.test(f.name||""); }
+  function insertAtCursor(text){ var s=tin.selectionStart==null?tin.value.length:tin.selectionStart, e=tin.selectionEnd==null?s:tin.selectionEnd;
+    tin.value=tin.value.slice(0,s)+text+tin.value.slice(e); var p=s+text.length; tin.selectionStart=tin.selectionEnd=p; grow(); tin.focus(); }
+  uploadBtn.onclick=function(){ fileInput.value=""; fileInput.click(); };
+  fileInput.onchange=function(){
+    var f=fileInput.files&&fileInput.files[0]; if(!f) return;
+    if(isText(f)){
+      var rd=new FileReader();
+      rd.onload=function(){ insertAtCursor(String(rd.result||"")); };
+      rd.onerror=function(){ uploadBtn.textContent="⚠"; setTimeout(function(){uploadBtn.textContent="📎";},1500); };
+      rd.readAsText(f); return;
+    }
+    uploadBtn.textContent="…";
+    fetch("/upload",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"x-filename":encodeURIComponent(f.name||"upload")},body:f})
+      .then(function(r){ if(r.status===401||r.status===403){ repair(); throw new Error("unauthorized"); }
+        return r.json().then(function(b){ if(!r.ok) throw new Error((b&&b.error)||"upload failed"); return b; }); })
+      .then(function(b){ insertAtCursor("@"+b.path+" "); uploadBtn.textContent="📎"; })
+      .catch(function(){ uploadBtn.textContent="⚠"; setTimeout(function(){uploadBtn.textContent="📎";},1800); });
+  };
 
   // ---- gesture puck: tap=Enter · flick=arrows · press-hold=radial · move-then-pause=re-park ----
   // Ported from docs/design/mockups/v6-puck-interactive.html. Disambiguation (decided the instant you

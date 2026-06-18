@@ -24,8 +24,9 @@ import { frameEvent } from "./remote";
 import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
 import { TERM_HTML } from "./termPage";
 import { CONVERSATION_HTML } from "./conversationPage";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { safeUploadName, uniqueUploadName, UPLOAD_SUBDIR, MAX_UPLOAD_BYTES } from "./upload";
 
 // Engine-vendored xterm.js (self-hosted, no CDN — V5 Phase 1). Read once at startup as UTF-8 text
 // (both are text assets); null if the vendor dir is missing (then it degrades to 503, not a crash).
@@ -79,6 +80,12 @@ export interface StartOptions {
   /** Resize-authority grace (V6 P1.7): ms of desktop quiet before a phone may reshape the PTY.
    *  Default 30s; tests set it small. */
   resizeGraceMs?: number;
+  /** Base directory uploads land under (in `<uploadDir>/.glaudecode-uploads/`). Default process.cwd()
+   *  — the engine sidecar's project dir. Injected so tests target a temp dir, never the repo (V6). */
+  uploadDir?: string;
+  /** Max upload size in bytes (default 25 MiB). Injected small in tests so the cap is exercised with
+   *  tiny bodies. */
+  maxUploadBytes?: number;
 }
 
 export function startEngineServer(opts: StartOptions = {}): EngineServer {
@@ -506,6 +513,46 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         // loopback bucket, where one success would reset the limit for every caller (audit M3).
         if (!shared) pairLimiter.reset(key);
         return Response.json(tok);
+      }
+
+      // File upload from a paired phone (V6): a TRUSTED (terminal-scope) device POSTs a document/photo
+      // and the engine writes it under <uploadDir>/.glaudecode-uploads/ — a SERVER-chosen dir the
+      // client can't influence — then returns the absolute path so the composer can @-reference it to
+      // Claude. Terminal scope only (it writes to disk, an RCE-adjacent capability); size-capped; the
+      // x-filename header is reduced to a safe basename (no traversal); audited (deviceId + byte COUNT
+      // + saved name, never the bytes). The file bytes are the raw request body.
+      if (request.method === "POST" && url.pathname === "/upload") {
+        const auth = request.headers.get("authorization") || "";
+        const tok = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        const v = pairing.verify(tok);
+        if (!v.ok) return Response.json({ error: "unauthorized" }, { status: 401 });
+        if (v.scope !== "terminal") return Response.json({ error: "terminal scope required" }, { status: 403 });
+        const cap = opts.maxUploadBytes ?? MAX_UPLOAD_BYTES;
+        const declared = Number(request.headers.get("content-length") || 0);
+        if (declared > cap) return Response.json({ error: "file too large" }, { status: 413 });
+        const bytes = new Uint8Array(await request.arrayBuffer().catch(() => new ArrayBuffer(0)));
+        if (bytes.length === 0) return Response.json({ error: "empty upload" }, { status: 400 });
+        if (bytes.length > cap) return Response.json({ error: "file too large" }, { status: 413 });
+        let rawName = "upload";
+        try {
+          rawName = decodeURIComponent(request.headers.get("x-filename") || "upload");
+        } catch {
+          /* malformed header → keep the default name */
+        }
+        const dir = join(opts.uploadDir ?? process.cwd(), UPLOAD_SUBDIR);
+        try {
+          mkdirSync(dir, { recursive: true });
+          const gi = join(dir, ".gitignore");
+          if (!existsSync(gi)) writeFileSync(gi, "*\n"); // keep uploads out of git by default
+          const name = uniqueUploadName(safeUploadName(rawName), (n) => existsSync(join(dir, n)));
+          const dest = join(dir, name);
+          writeFileSync(dest, bytes);
+          audit.record({ type: "upload", deviceId: v.deviceId, bytes: bytes.length, name });
+          return Response.json({ path: dest, name });
+        } catch (e) {
+          console.error("[glaudecode] /upload failed: " + String((e as Error)?.message ?? e));
+          return Response.json({ error: "could not save file" }, { status: 500 });
+        }
       }
 
       // Rust-core pane bridge (V5 Phase 1): the Rust core tees pane PTY bytes here. ENGINE-BEARER

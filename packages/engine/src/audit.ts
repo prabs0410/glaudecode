@@ -10,6 +10,7 @@ export type AuditEventType =
   | "disarm"
   | "input"
   | "input-dropped"
+  | "upload"
   | "disconnect";
 
 export interface AuditEvent {
@@ -17,8 +18,10 @@ export interface AuditEvent {
   at: string; // ISO timestamp
   deviceId?: string;
   paneId?: string;
-  /** For "input": a COUNT of bytes relayed — NEVER the payload. */
+  /** For "input"/"upload": a COUNT of bytes — NEVER the payload/contents. */
   bytes?: number;
+  /** For "upload": the saved filename (the user's own chosen name — metadata, never the bytes). */
+  name?: string;
   /** For "disconnect": why (revoked / expired / link-down). */
   reason?: string;
 }
