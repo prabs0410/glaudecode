@@ -55,6 +55,19 @@ export const CONVERSATION_HTML = `<!doctype html>
   .cbtn:disabled{opacity:.5} #send{background:var(--accent);border-color:var(--accent);color:#fff}
   #scopenote{display:none;position:fixed;left:0;right:0;bottom:0;padding:12px 14px;background:#16263a;color:var(--accent2);border-top:1px solid #1f6feb;font-size:13px}
   #file{display:none}
+  /* gesture puck (V6) — tap=Enter · flick=arrows · press-hold=radial · move-then-pause=re-park */
+  #puck{position:fixed;width:60px;height:60px;border-radius:50%;z-index:60;touch-action:none;display:none;
+    align-items:center;justify-content:center;color:#fff;font-size:21px;border:2px solid #4f8bf5;cursor:grab;
+    background:radial-gradient(circle at 35% 30%,#3a7bf0,#1f6feb 60%,#1a52b8);
+    box-shadow:0 6px 22px rgba(31,111,235,.55),inset 0 1px 2px rgba(255,255,255,.35)}
+  #puck.holding{transform:scale(.94);cursor:grabbing} #puck.carry{transform:scale(1.07);box-shadow:0 8px 28px rgba(31,111,235,.75)}
+  .wedge{position:fixed;width:50px;height:50px;border-radius:50%;z-index:59;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--line2);color:var(--text);font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.45);
+    transition:transform .08s,background .08s;pointer-events:none}
+  .wedge.mono{font-family:ui-monospace,Menlo,monospace} .wedge.hot{background:var(--accent);border-color:var(--accent);color:#fff;transform:scale(1.18)}
+  #puckout{position:fixed;left:50%;top:52px;transform:translateX(-50%);z-index:61;background:#0c1117ee;border:1px solid var(--accent);
+    border-radius:999px;padding:7px 16px;font-size:14px;color:#fff;opacity:0;transition:opacity .12s;pointer-events:none;white-space:nowrap}
+  #puckout.show{opacity:1}
 </style>
 </head>
 <body>
@@ -81,6 +94,8 @@ export const CONVERSATION_HTML = `<!doctype html>
     </div>
   </div>
   <div id="scopenote"></div>
+  <div id="puck">⌘</div>
+  <div id="puckout"></div>
 <script>
 (function(){
   var TOKEN=sessionStorage.getItem("ck.token")||"", SCOPE=sessionStorage.getItem("ck.scope")||"view";
@@ -206,14 +221,78 @@ export const CONVERSATION_HTML = `<!doctype html>
       sendText(seq==="esc"?"\\x1b":seq==="cr"?"\\r":seq==="ctrlc"?"\\x03":seq==="up"?"\\x1b[A":seq==="down"?"\\x1b[B":"");
     };
   });
-  // paste (text now; clipboard image needs HTTPS — added later)
-  document.getElementById("paste").onclick=function(){
+  // paste (text now; clipboard image needs HTTPS — added later). Shared by the 📋 button + the puck radial.
+  function doPaste(){
     if(!navigator.clipboard||!navigator.clipboard.readText){ tin.focus(); return; }
     navigator.clipboard.readText().then(function(t){ if(!t)return;
-      var s=tin.value; tin.value=s+t; grow(); tin.focus(); }).catch(function(){ tin.focus(); });
-  };
+      tin.value=tin.value+t; grow(); tin.focus(); }).catch(function(){ tin.focus(); });
+  }
+  document.getElementById("paste").onclick=doPaste;
   // upload — handed to the engine, which saves it under the project and references it to Claude (wired next)
   document.getElementById("upload").onclick=function(){ document.getElementById("file").click(); };
+
+  // ---- gesture puck: tap=Enter · flick=arrows · press-hold=radial · move-then-pause=re-park ----
+  // Ported from docs/design/mockups/v6-puck-interactive.html. Disambiguation (decided the instant you
+  // touch down): move>14px first = flick (cancels the hold) → an arrow key; hold still ~200ms = the
+  // radial blooms; a flick that then PAUSES ~260ms switches to carry → re-park (so a quick flick can't
+  // accidentally move the puck). Sends raw keys into the PTY via sendText (terminal scope only).
+  (function(){
+    if(!canType) return; // the puck drives the PTY — terminal scope only
+    var puck=document.getElementById("puck"), out=document.getElementById("puckout");
+    var SZ=60, HOLD_MS=200, MOVE=14, DWELL_MS=260, R=78;
+    var saved=null; try{ saved=JSON.parse(localStorage.getItem("ck.puck")||"null"); }catch(e){}
+    var pos=(saved&&typeof saved.x==="number")?saved:{x:innerWidth-78,y:innerHeight-150};
+    function place(){ pos.x=Math.max(6,Math.min(innerWidth-SZ-6,pos.x)); pos.y=Math.max(46,Math.min(innerHeight-SZ-6,pos.y));
+      puck.style.left=pos.x+"px"; puck.style.top=pos.y+"px"; }
+    place(); puck.style.display="flex"; window.addEventListener("resize",place);
+    var KEYS=[{k:"Esc",a:270,seq:"\\x1b"},{k:"Tab",a:330,seq:"\\t"},{k:"^C",a:30,seq:"\\x03"},
+              {k:"📋",a:90,act:"paste"},{k:"⇧Tab",a:150,seq:"\\x1b[Z"},{k:"⌨",a:210,act:"kbd"}];
+    var wedges=[];
+    function buildRadial(cx,cy){ clearRadial(); KEYS.forEach(function(o){
+      var rad=o.a*Math.PI/180, w=document.createElement("div");
+      w.className="wedge"+(/[A-Za-z^]/.test(o.k)?" mono":""); w.textContent=o.k; w.dataset.k=o.k;
+      w.style.left=(cx+R*Math.cos(rad)-25)+"px"; w.style.top=(cy+R*Math.sin(rad)-25)+"px";
+      document.body.appendChild(w); wedges.push(w); }); }
+    function clearRadial(){ wedges.forEach(function(w){w.remove();}); wedges=[]; }
+    function hotWedge(cx,cy,px,py){ var dx=px-cx,dy=py-cy;
+      wedges.forEach(function(w){w.classList.remove("hot");});
+      if(Math.hypot(dx,dy)<34) return null; // near centre = cancel
+      var ang=Math.atan2(dy,dx)*180/Math.PI; if(ang<0)ang+=360;
+      var best=null,bd=999; KEYS.forEach(function(o){ var d=Math.abs(((ang-o.a+540)%360)-180); if(d<bd){bd=d;best=o;} });
+      var el=wedges.find(function(w){return w.dataset.k===best.k;}); if(el)el.classList.add("hot");
+      return best; }
+    function toast(s){ out.textContent=s; out.classList.add("show"); clearTimeout(toast._t);
+      toast._t=setTimeout(function(){out.classList.remove("show");},850); if(navigator.vibrate)navigator.vibrate(10); }
+    function fireKey(o){ if(o.act==="paste"){ toast("📋 paste"); doPaste(); return; }
+      if(o.act==="kbd"){ toast("⌨ keyboard"); tin.focus(); return; } toast(o.k); sendText(o.seq); }
+    var st=null;
+    function armDwell(){ clearTimeout(st.dwell); st.dwell=setTimeout(function(){
+      if(st&&st.mode==="flick"){ st.mode="carry"; puck.classList.add("carry"); if(navigator.vibrate)navigator.vibrate(8); } },DWELL_MS); }
+    puck.addEventListener("pointerdown",function(e){
+      e.preventDefault(); try{puck.setPointerCapture(e.pointerId);}catch(err){}
+      puck.classList.add("holding");
+      st={x0:e.clientX,y0:e.clientY,ox:pos.x,oy:pos.y,cx:pos.x+SZ/2,cy:pos.y+SZ/2,mode:"idle",hot:null};
+      st.hold=setTimeout(function(){ if(st&&st.mode==="idle"){ st.mode="radial"; buildRadial(st.cx,st.cy); if(navigator.vibrate)navigator.vibrate(8); } },HOLD_MS);
+    });
+    window.addEventListener("pointermove",function(e){
+      if(!st)return; var dx=e.clientX-st.x0, dy=e.clientY-st.y0;
+      if(st.mode==="idle" && Math.hypot(dx,dy)>MOVE){ clearTimeout(st.hold); st.mode="flick"; armDwell(); }
+      else if(st.mode==="flick"){ armDwell(); }
+      else if(st.mode==="carry"){ pos.x=st.ox+dx; pos.y=st.oy+dy; place(); }
+      else if(st.mode==="radial"){ st.hot=hotWedge(st.cx,st.cy,e.clientX,e.clientY); }
+    });
+    window.addEventListener("pointerup",function(e){
+      if(!st)return; clearTimeout(st.hold); clearTimeout(st.dwell); puck.classList.remove("holding","carry");
+      var dx=e.clientX-st.x0, dy=e.clientY-st.y0;
+      if(st.mode==="idle"){ toast("⏎ Enter"); sendText("\\r"); }
+      else if(st.mode==="flick"){
+        if(Math.abs(dx)>Math.abs(dy)){ if(dx>0){toast("→");sendText("\\x1b[C");} else {toast("←");sendText("\\x1b[D");} }
+        else { if(dy>0){toast("↓");sendText("\\x1b[B");} else {toast("↑");sendText("\\x1b[A");} } }
+      else if(st.mode==="carry"){ place(); try{localStorage.setItem("ck.puck",JSON.stringify(pos));}catch(err){} }
+      else if(st.mode==="radial"){ if(st.hot){ fireKey(st.hot); } else { toast("✕ cancel"); } clearRadial(); }
+      st=null;
+    });
+  })();
 
   function gateUI(){
     if(canType) return;
