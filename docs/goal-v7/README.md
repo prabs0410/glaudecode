@@ -1,0 +1,117 @@
+# GlaudeCode V7 — Observability layer + post-review hardening (runnable goal)
+
+> **RUN MODE (non-stop).** Work this goal top-to-bottom, one task at a time, TDD where it fits.
+> After EVERY task: run the verify gate, then commit (attributed to `prabs0410`) on
+> `feat/v6-conversation`. Update the Progress log at the bottom. **Human-gated items are
+> FLAGGED and SKIPPED — never counted as a failure.** Stop only on a failed CI gate that
+> survives 2 attempts, or when every non-gated task is done. Token budget: consume freely
+> (ultracode) until the work is complete or tokens run low.
+
+## Context
+
+The 2026-06-19 multi-agent review (`docs/research/2026-06-19-project-review/`, 42 confirmed
+findings) found the V6 mobile cockpit is the least-tested/observable part of the codebase and
+that away-mode isn't deliverable end-to-end. The founder chose to build the **monitoring / logs /
+APM / observability layer first**, then grind the automatable backlog. Foundation already shipped:
+**OBS-1** durable engine logs (`9b4d38e`) + **OBS-2** EventLog hub + `diagnostics()` RPC + full
+instrumentation (`27c4bd3`). This goal finishes the layer and works the rest of the ranked
+`BACKLOG.md` that an agent can safely do without a human gate.
+
+## Locked decisions
+
+- **Branch:** continue on `feat/v6-conversation` (the observability foundation is there). Commits as
+  `prabs0410` (`git config --local user.email` must show `+prabs0410@…`; `git` from the repo root).
+- **Verify gate (every commit, all green):** `cd packages/engine && bun test` · `bunx tsc --noEmit`
+  per package · `bunx vite build` (desktop) · `cargo check` in `src-tauri` (only when Rust changed).
+- **NO PR / NO merge to main / auto-merge OFF** (gh is `ashinclude`; `prabs0410` auth is a human gate).
+- **Pure logic in `@glaudecode/engine`, unit-tested.** Phone pages are template literals — the
+  parse-guard + no-innerHTML tests must stay green. Mirrored fns changed in both copies.
+- **One task at a time; stop after 2 consecutive failed attempts** on the same task and leave a note.
+
+## HUMAN-GATED — flag & skip (do NOT auto-build)
+
+- **WS4 seamless pairing** (terminal-from-QR + 30-day + auto-arm) — review calls it a security cliff;
+  needs a written threat-model + device-bound tokens FIRST. Owner: founder. (BACKLOG #7/#8.)
+- **Push DELIVERY** — service worker + VAPID + real device need HTTPS/MagicDNS. *Buildable now:* the
+  `POST /push-subscribe` route + persisted VAPID key-gen, unit-tested (Phase E); delivery is gated.
+- **gh-auth + landing the 27 branches** (BACKLOG #40) — needs `prabs0410` gh login. Founder.
+- **Lid-closed reachability + `lidClosed()` device test** — the display-power signal needs a device gate.
+- **Clipboard image-paste** — needs the HTTPS secure context.
+
+---
+
+## Phase A — Finish the observability layer
+
+- **A1 (OBS-3) — phone→Mac error pipe.** New `POST /clientlog-remote` (paired-token, view-scope,
+  rate-limited, audited, body-capped) → records a `phone` event into the EventLog + the durable log.
+  Wire `conversationPage` to POST `error` + `unhandledrejection`; add a global error handler + the
+  debug HUD to `termPage` (it has neither today). Engine test: 403 for no/expired token, cap enforced.
+  Verify: bun test + parse-guard + tsc.
+- **A2 (OBS-4) — Mac diagnostics panel.** A desktop React panel (command-palette + a ⓘ affordance)
+  that renders `diagnostics()` — the event stream (filterable by kind/level) + the health row +
+  the APM metrics table. Poll on a sane interval; pause when hidden. Verify: tsc + vite build.
+- **A3 (OBS-4) — phone Debug tab.** A scoped, privacy-safe `diagnosticsView` (steer) returning health
+  + the non-sensitive event kinds (rpc/ws/engine/phone — never pair/revoke/audit) + metrics; render it
+  as a 5th drawer tab in `conversationPage`. Verify: bun test (steer gets the subset, view 403 or empty)
+  + parse-guard + tsc.
+- **A4 (OBS-5) — audit surfaced on the Mac.** Render the existing `auditLog` RPC in the Mac panel (a
+  tab) so the RCE trail is reviewable; pair with the durable log for persistence. Verify: tsc + vite.
+
+## Phase B — Correctness & safety (automatable Top-10)
+
+- **B1 (BL-3) — absolute tap-to-answer.** Stop navigating-by-count from assumed row 0. Engine reports
+  the live highlighted option index (or accept a "select option N" intent it translates); disable/flag
+  multiSelect. Fix BOTH `conversationPage` and `termPage`. Pure selection logic unit-tested. (Wrong-Allow bug.)
+- **B2 (BL-6) — surface `sid != paneId`.** Add a visible "showing session X · typing to pane Y" chip
+  with tap-to-correct in `conversationPage` (the typed-send RPC is a bigger follow-up; do the SURFACE
+  now so the mismatch is never silent). Verify: parse-guard + tsc.
+- **B3 (BL-9) — re-infer the phone session.** Re-resolve on K idle polls / when empty, + a manual
+  reselect in the HUD (mirror the desktop's re-poll). Verify: parse-guard + tsc.
+- **B4 (BL-10) — `bun run verify`.** A root script chaining the 5-step gate; have CI/docs point at it.
+  Verify: the script runs green.
+
+## Phase C — Reliability
+
+- **C1 (BL-4) — tokens survive engine respawn.** Persist an encrypted token store (or a respawn-stable
+  signing key passed into each spawn) so paired devices aren't logged out on a crash; surface "engine
+  restarted — re-pair" explicitly instead of a generic disconnect. Pure store logic unit-tested. Verify:
+  bun test + tsc + cargo check.
+
+## Phase D — Perf, tests & debt (selected, automatable BACKLOG items)
+
+Work these in BACKLOG order; each is self-contained. Skip any that turn out to need a device gate.
+- **D1** visibility-gate the conversation poll (#12) · **D2** short-TTL session-snapshot cache / combined
+  RPC (#13) · **D3** incremental `renderChat` (#15) · **D4** engine-down phone signal (#17).
+- **D5** desktop session-inference tiebreaker + extract to a pure tested fn (#11, #34) ·
+  **D6** scope classifier: make per-method scope a REQUIRED property, default-deny (#30).
+- **D7** mirror-drift battery: add `wrapForPaste`/`filterSessions`/`chordFromEvent` + a hash/byte check (#26, #27).
+- **D8** `/upload` streaming byte-counter (no full-buffer before the cap) (#36) ·
+  **D9** cost/model match longest-key-first (#38).
+- **D10** desktop React safety-surface tests (kill-switch invokes disarm; arm round-trips; pairing refuses a
+  terminal token without both consent gates) — stand up vitest+happy-dom (#20).
+- **D11** served-phone-JS behavioural harness: extract scripts to importable modules + jsdom (#21, #22).
+- **D12** docs honesty: fix INDEX.md drift (index the new docs; "255+ tests" → actual count), repoint the
+  architecture stub (#39). **FLAG for founder** before editing INDEX.md (founder curates it) — write a
+  NEW pointer file + note it; don't edit INDEX.md directly.
+
+## Phase E — Push scaffolding (buildable half only)
+
+- **E1 (BL-5, partial) — `POST /push-subscribe`** (steer+, rate-limited, audited) + persisted VAPID
+  keypair auto-gen in engine config + `shouldPush()` call-site wiring. Unit-test the route (view→403) +
+  key-gen + persistence. **Delivery (service worker + real push) is HUMAN-GATED on HTTPS — flag & skip.**
+
+---
+
+## Cross-task rules
+
+- Mirror the established patterns (new RPC = union + METHODS + dispatch + scope-class + client wrapper +
+  index export; new Tauri plugin = cargo add + plugin init + capability permission).
+- Never bind `0.0.0.0`; TLS-or-refuse non-loopback. Engine changes need an app restart to verify behaviour
+  (note device-gates; don't claim device-verified).
+- Keep the EventLog/audit privacy invariant: metadata only, never payloads/secrets.
+
+## Progress log
+
+- ✅ **OBS-1** durable engine logs — `9b4d38e`.
+- ✅ **OBS-2** EventLog hub + `diagnostics()` RPC + instrumentation — `1e77031`, `27c4bd3`. (397 engine tests.)
+- ⏳ Phase A → E pending (this loop).
