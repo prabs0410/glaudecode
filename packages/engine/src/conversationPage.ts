@@ -501,7 +501,12 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
 
   document.getElementById("status").onclick=function(){ dbgEl.classList.toggle("show"); renderDbg(); };
-  window.addEventListener("error",function(e){ dbg.errs.js=(e&&e.message)||"script error"; refreshDbg(); });
+  // OBS-3: forward uncaught errors to the Mac so the lid-closed founder sees them in the engine log +
+  // diagnostics stream — not just on this screen. Paired-token POST; best-effort, never throws.
+  function postErr(level,kind,msg,where){ try{ fetch("/clientlog-remote",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"content-type":"application/json"},
+    body:JSON.stringify({level:level,kind:kind,msg:String(msg).slice(0,300),where:where||location.pathname})}).catch(function(){}); }catch(e){} }
+  window.addEventListener("error",function(e){ var m=(e&&e.message)||"script error"; dbg.errs.js=m; refreshDbg(); postErr("error","error",m,(e&&e.filename)||location.pathname); });
+  window.addEventListener("unhandledrejection",function(e){ var m=(e&&e.reason&&(e.reason.message||e.reason))||"unhandled rejection"; dbg.errs.js=String(m); refreshDbg(); postErr("error","unhandledrejection",String(m)); });
   rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; resolveAndPoll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); resolveAndPoll(); });
   gateUI(); if(canType) connect();
   setInterval(poll,2000);

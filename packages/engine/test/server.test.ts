@@ -105,6 +105,32 @@ describe("engine server", () => {
     expect(denied.status).toBe(403);
   });
 
+  test("/clientlog-remote: a paired device forwards an error into the observability stream; no token → 401 (OBS-3)", async () => {
+    const tok = server.pairing.redeem(server.pairing.createPairCode("view").code, "phone-log")!.token;
+    const res = await fetch(`${base()}/clientlog-remote`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
+      body: JSON.stringify({ level: "error", kind: "unhandledrejection", msg: "boom on the phone", where: "/app/chat" }),
+    });
+    expect(res.status).toBe(200);
+    // it lands in the same EventLog stream (read via diagnostics with the local bearer)
+    const diag = await (
+      await fetch(`${base()}/rpc`, {
+        method: "POST",
+        headers: { authorization: "Bearer e2e-token", "content-type": "application/json" },
+        body: JSON.stringify({ method: "diagnostics", params: { kinds: ["phone"] } }),
+      })
+    ).json();
+    expect(diag.result.events.some((e: any) => e.kind === "phone" && e.msg.includes("boom on the phone"))).toBe(true);
+    // an unpaired caller is refused
+    const denied = await fetch(`${base()}/clientlog-remote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ msg: "x" }),
+    });
+    expect(denied.status).toBe(401);
+  });
+
   test("serves the cockpit at /app", async () => {
     const res = await fetch(`${base()}/app`);
     expect(res.status).toBe(200);

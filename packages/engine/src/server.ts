@@ -114,6 +114,9 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // both (a fast keyboard is tens of frames/sec; a paste is one frame). Dropped frames are audited.
   const MAX_INPUT_BYTES = 256 * 1024; // 256 KiB — generous for paste, absurd for a keystroke flood
   const inputLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 1_000, max: 500 }]);
+  // Phone error-pipe limiter (OBS-3): cap a device's forwarded errors so a crash-loop can't flood the
+  // log. 60/min is generous for genuine error bursts.
+  const clientlogLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 60_000, max: 60 }]);
   const clampDim = (n: number) => Math.max(1, Math.min(1000, Math.trunc(n) || 1)); // 1..1000 cols/rows
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds.
@@ -481,6 +484,30 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         const t = await request.text().catch(() => "");
         console.error("[client] " + t.slice(0, 4000));
         return new Response("ok");
+      }
+
+      // Phone -> Mac error pipe (OBS-3): a PAIRED device forwards its uncaught errors / failed RPCs so
+      // they land in the SAME observability stream + durable log as everything else — the lid-closed
+      // founder's primary surface must not fail silently. Any paired token (view+) may report; per-device
+      // rate-limited + body-capped; truncated to a level + a short message + where (never a payload).
+      if (request.method === "POST" && url.pathname === "/clientlog-remote") {
+        const auth = request.headers.get("authorization") || "";
+        const tok = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        const v = pairing.verify(tok);
+        if (!v.ok) return Response.json({ error: "unauthorized" }, { status: 401 });
+        if (Number(request.headers.get("content-length") || 0) > 8192) return Response.json({ error: "too large" }, { status: 413 });
+        if (!clientlogLimiter.hit(v.deviceId ?? "anon")) return Response.json({ error: "rate-limited" }, { status: 429 });
+        const body = await request.json().catch(() => null);
+        if (!body) return Response.json({ error: "invalid body" }, { status: 400 });
+        const level = body.level === "warn" ? "warn" : "error";
+        const msg = String(body.msg ?? "client error").slice(0, 300);
+        const kind = String(body.kind ?? "error").slice(0, 40);
+        const dev = String(v.deviceId ?? "anon").slice(0, 8);
+        const data: Record<string, string | number | boolean> = { deviceId: dev, kind };
+        if (body.where) data.where = String(body.where).slice(0, 60);
+        eventLog.record({ kind: "phone", level, msg: "phone " + kind + ": " + msg, data });
+        console.error(`[phone:${dev}] ${kind}: ${msg}${body.where ? " @ " + String(body.where).slice(0, 60) : ""}`);
+        return Response.json({ ok: true });
       }
 
       // The view-only terminal page + its vendored xterm.js (V5 Phase 1). All static; the RPCs/WS
