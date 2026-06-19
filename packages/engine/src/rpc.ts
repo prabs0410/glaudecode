@@ -250,13 +250,19 @@ function shQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-export function methodScope(method: string): "view" | "steer" | "terminal" | "local" {
+export type MethodScope = "view" | "steer" | "terminal" | "local" | "deny";
+
+export function methodScope(method: string): MethodScope {
   if (LOCAL_ONLY_METHODS.has(method)) return "local";
   if (TERMINAL_ONLY_METHODS.has(method)) return "terminal";
   if (VIEW_METHODS.has(method)) return "view";
-  // STEER_METHODS is the explicit steer set; "steer" is also the FAIL-SAFE default for anything
-  // unclassified (the 7.2.2 CI test ensures nothing actually is, so the fallback never fires in prod).
-  return "steer";
+  if (STEER_METHODS.has(method)) return "steer";
+  // DEFAULT-DENY (#30). All four tiers above are EXPLICIT; anything unclassified is "deny" — reachable
+  // by NO scope, not even the local bearer. A new sensitive RPC that someone forgot to classify fails
+  // LOUDLY (a 403 the developer hits immediately) instead of silently fail-open to steer, where a paired
+  // phone could call it. The 7.2.2 exhaustiveness test keeps every real method classified, so "deny"
+  // never fires in production — this is the defense-in-depth that survives that test being disabled.
+  return "deny";
 }
 
 // Stateless wrappers; one instance each is fine to share across requests.
@@ -824,8 +830,9 @@ function tokenLevel(authHeader: string | null, engineToken: string, pairing?: Pa
   return null;
 }
 
-function levelSatisfies(level: "local" | TokenScope, required: "view" | "steer" | "terminal" | "local"): boolean {
-  if (level === "local") return true; // the local bearer (desktop) can do anything
+function levelSatisfies(level: "local" | TokenScope, required: MethodScope): boolean {
+  if (required === "deny") return false; // default-deny (#30): an unclassified method satisfies NO level, incl. local
+  if (level === "local") return true; // the local bearer (desktop) can do anything classifiable
   if (required === "local") return false; // only the local bearer satisfies a local-only method
   return scopeSatisfies(level, required); // linear ladder: view < steer < terminal
 }
@@ -897,15 +904,23 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
       return Response.json({ error: "invalid JSON body" }, { status: 400 });
     }
 
-    // Scope enforcement: a remote token may only call methods its scope permits.
-    const required = methodScope(String(body?.method ?? ""));
+    // Reject UNKNOWN methods at the boundary with an explicit 400, BEFORE scope classification. This
+    // keeps an unknown method a clear "unknown method" 400 (not a confusing "requires deny scope" 403)
+    // and means the default-deny below governs only KNOWN-but-unclassified methods (the #30 gap).
+    const method = String(body?.method ?? "");
+    if (!METHODS.has(method as RpcMethod)) {
+      return Response.json({ error: `unknown method: ${method}` }, { status: 400 });
+    }
+
+    // Scope enforcement: a remote token may only call methods its scope permits. A known method that
+    // was never classified resolves to "deny" → satisfied by no level (default-deny, #30).
+    const required = methodScope(method);
     if (!levelSatisfies(level, required)) {
-      return Response.json({ error: `forbidden: '${body?.method}' requires ${required} scope` }, { status: 403 });
+      return Response.json({ error: `forbidden: '${method}' requires ${required} scope` }, { status: 403 });
     }
 
     // Time every RPC + record it in the observability stream (OBS-2). Metadata only — method,
     // scope, duration, ok — never the params or result. diagnostics() itself is recorded too.
-    const method = String(body?.method ?? "?");
     const t0 = Date.now();
     try {
       const result = await dispatch(adapter, body?.method, body?.params, {

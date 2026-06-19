@@ -117,6 +117,7 @@ export type { AppNotification, NotificationKind } from "./notify";
 export { PairingService } from "./pairing";
 export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
 export { methodScope } from "./rpc";
+export type { MethodScope } from "./rpc";
 export { frameEvent, parseFrame } from "./remote";
 export type { RemoteFrame } from "./remote";
 export { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";

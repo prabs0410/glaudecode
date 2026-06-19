@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { startEngineServer } from "../src/server";
 import { PairingService, genPairCode } from "../src/pairing";
-import { LOCAL_ONLY_METHODS, METHODS, STEER_METHODS, TERMINAL_ONLY_METHODS, VIEW_METHODS } from "../src/rpc";
+import { LOCAL_ONLY_METHODS, METHODS, STEER_METHODS, TERMINAL_ONLY_METHODS, VIEW_METHODS, methodScope } from "../src/rpc";
 
 const REPO = join(import.meta.dir, "..", "..", ".."); // packages/engine/test → repo root
 
@@ -37,6 +37,13 @@ describe("secure-defaults release gate (V5 Phase 7.3.2)", () => {
     for (const m of METHODS) {
       expect({ method: m, tiers: sets.filter((s) => s.has(m)).length }).toEqual({ method: m, tiers: 1 });
     }
+  });
+
+  test("an unclassified method DEFAULT-DENIES — the fallthrough is deny, not fail-open steer (#30)", () => {
+    // Defense-in-depth beyond the exhaustiveness check above: even if a method slipped past it, the
+    // scope fallthrough is "deny" (reachable by no token), so a forgotten classification cannot make a
+    // sensitive RPC remotely callable — it fails loudly instead.
+    expect(methodScope("definitelyNotARealMethod")).toBe("deny");
   });
 
   test("the `terminal` (RCE) scope is NOT a pairing default", () => {

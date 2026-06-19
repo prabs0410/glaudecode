@@ -353,7 +353,17 @@ describe("remote scope enforcement (Epic G)", () => {
     expect(methodScope("enableRemote")).toBe("local");
     expect(methodScope("disableRemote")).toBe("local");
     expect(methodScope("remoteStatus")).toBe("local");
-    expect(methodScope("someBrandNewMethod")).toBe("steer"); // fail-safe default
+  });
+
+  test("unclassified methods DEFAULT-DENY — never fail-open to steer (#30)", () => {
+    // The contract flipped from fail-open ("steer") to fail-safe ("deny"): a method not in any of the
+    // four explicit tiers is reachable by NO scope. Combined with the exhaustiveness test above (every
+    // real METHODS member is classified), this means a method is callable ONLY if explicitly classified.
+    expect(methodScope("someBrandNewMethod")).toBe("deny");
+    expect(methodScope("")).toBe("deny");
+    expect(methodScope("__proto__")).toBe("deny");
+    // Every STEER method must now be EXPLICITLY in the steer set — none rely on the old fallthrough.
+    for (const m of STEER_METHODS) expect(methodScope(m)).toBe("steer");
   });
 
   test("a view token may read but not mutate", async () => {
