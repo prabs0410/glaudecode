@@ -99,6 +99,10 @@ export const CONVERSATION_HTML = `<!doctype html>
   #dbg{display:none;position:fixed;top:39px;left:0;right:0;z-index:50;background:#0b0f14f2;border-bottom:1px solid var(--line2);
     padding:9px 12px;font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);max-height:55vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
   #dbg.show{display:block}
+  /* D4: a distinct, persistent banner when the engine is unreachable — not a silent freeze */
+  #engineban{display:none;position:fixed;top:39px;left:0;right:0;z-index:55;background:#3a1212;color:#ff7b72;
+    font-size:12px;padding:7px 12px;text-align:center;border-bottom:1px solid #5e2b2b;cursor:pointer}
+  #engineban.show{display:block}
   #chat .notice{margin:auto;max-width:300px;text-align:center;color:var(--muted);padding:24px 14px}
   #chat .notice .nt{color:var(--text);font-size:15px;font-weight:600;margin-bottom:8px}
   #chat .notice .nd{font-size:13px;margin-bottom:6px;line-height:1.5}
@@ -115,6 +119,7 @@ export const CONVERSATION_HTML = `<!doctype html>
     <a id="toterm" class="ib" title="Raw terminal" href="#">⌨</a>
   </div>
   <div id="dbg"></div>
+  <div id="engineban">⚠ Can't reach your Mac — the engine looks unreachable. Tap to retry.</div>
   <div id="chat"></div>
   <input id="file" type="file" />
   <div id="composer">
@@ -156,7 +161,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   document.getElementById("title").textContent=paneId.slice(0,12);
   document.getElementById("toterm").href="/app/term?pane="+encodeURIComponent(paneId);
   var canType=SCOPE==="terminal";
-  var DIR="", sid=paneId, ws=null, lastQ=null, lastSig="", repairing=false, emptyPolls=0;
+  var DIR="", sid=paneId, ws=null, lastQ=null, lastSig="", repairing=false, emptyPolls=0, pollFails=0;
   var chat=document.getElementById("chat"), tin=document.getElementById("tin");
 
   function rpc(method,params){
@@ -324,11 +329,15 @@ export const CONVERSATION_HTML = `<!doctype html>
     // D2: ONE combined read (messages + agentState + promptState) instead of 3 separate transcript re-reads.
     rpc("sessionSnapshot",{id:sid,dir:DIR}).then(function(r){
       r=r||{};
+      pollFails=0; var eb=document.getElementById("engineban"); if(eb) eb.classList.remove("show"); // D4: engine reachable again
       dbg.errs.msgs=null; renderChat(r.messages);
       var a=r.agentState; dbg.errs.agent=null; dbg.agent=a&&a.status; setStatus(a);
       var pr=r.promptState; dbg.errs.prompt=null; dbg.prompt=pr&&(pr.isWaiting?"waiting":"idle"); renderAnswer(pr);
       refreshDbg();
-    },function(e){ failChat("sessionSnapshot",e); dbg.errs.agent=emsg(e); dbg.errs.prompt=emsg(e); refreshDbg(); });
+    },function(e){
+      if((++pollFails)>=3){ var eb=document.getElementById("engineban"); if(eb) eb.classList.add("show"); } // D4: repeated failure = engine likely down
+      failChat("sessionSnapshot",e); dbg.errs.agent=emsg(e); dbg.errs.prompt=emsg(e); refreshDbg();
+    });
   }
 
   // ---- composer ----
@@ -551,6 +560,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
 
   document.getElementById("status").onclick=function(){ dbgEl.classList.toggle("show"); renderDbg(); };
+  document.getElementById("engineban").onclick=function(){ pollFails=0; this.classList.remove("show"); poll(); }; // D4: tap to retry now
   // OBS-3: forward uncaught errors to the Mac so the lid-closed founder sees them in the engine log +
   // diagnostics stream — not just on this screen. Paired-token POST; best-effort, never throws.
   function postErr(level,kind,msg,where){ try{ fetch("/clientlog-remote",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"content-type":"application/json"},

@@ -126,5 +126,7 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - 🚩 **C1 (BL-4)** token persistence across respawn — RECLASSIFIED HUMAN-GATED (reverses the audited "no token at rest"; needs a founder/threat-model decision on the approach). Flagged, skipped — not a failure. See the human-gated section.
 - ✅ **D1 (#12)** visibility-gate the conversation poll — `poll()` skips when `document.hidden`; re-polls on refocus. (Also forward-fixed a stray-backtick that broke the template literal in `f598f70`.)
 - ✅ **D2 (#13)** combined `sessionSnapshot` RPC + 1s cache — ONE transcript read → messages + agentState + promptState (was 3 reads/poll); the phone poll now fires 1 RPC instead of 3. 403 engine tests (+1: one cached read drives all three). (Desktop pollers #33 still use the separate RPCs — a later item.)
-- 🔨 **D3 (#15)** incremental `renderChat` (no full DOM rebuild per block) — next.
-- ⏳ rest of D, E pending (this loop).
+- ⏸️ **D3 (#15)** incremental `renderChat` — DEFERRED until after D11 (the jsdom phone-JS harness): it refactors the PRIMARY chat-render path and a logic regression there would be silent without a behavioral test. Reordered, not skipped — revisit once D11 lands.
+- ✅ **D4 (#17)** engine-down phone signal — after 3 consecutive failed polls a distinct "⚠ Can't reach your Mac" banner appears (tap to retry), clearing on the next success. No more silent freeze on the lid-closed surface.
+- 🔨 **D5 (#11/#34)** desktop session-inference tiebreaker → pure tested fn — next.
+- ⏳ D6–D12, E pending (this loop).
