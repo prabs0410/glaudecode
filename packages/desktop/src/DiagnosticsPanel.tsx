@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { diagnostics, type Diagnostics } from "./engine";
+import { diagnostics, auditLog, type Diagnostics, type AuditEvent } from "./engine";
 
 // Mac diagnostics panel (OBS-4): renders the engine's observability stream — a live event feed
 // (filterable), per-method APM metrics, and a health snapshot. LOCAL-only (desktop bearer); the
@@ -10,7 +10,8 @@ const KINDS = ["rpc", "ws", "pair", "revoke", "bridge", "upload", "engine", "pho
 export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<"events" | "metrics" | "health">("events");
+  const [tab, setTab] = useState<"events" | "metrics" | "health" | "audit">("events");
+  const [audit, setAudit] = useState<AuditEvent[] | null>(null);
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [kind, setKind] = useState<string>("");
   const timer = useRef<number | null>(null);
@@ -32,6 +33,16 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
     };
   }, [onlyErrors, kind]);
 
+  // The RCE audit trail is a separate LOCAL RPC; pull it only while its tab is open.
+  useEffect(() => {
+    if (tab !== "audit") return;
+    let alive = true;
+    const pull = () => { if (!document.hidden) auditLog().then((a) => alive && setAudit(a)).catch(() => {}); };
+    pull();
+    const id = window.setInterval(pull, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, [tab]);
+
   const h = diag?.health;
   return (
     <div className="palette-backdrop" onClick={onClose}>
@@ -42,6 +53,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
             <button className={`act mini${tab === "events" ? " on" : ""}`} onClick={() => setTab("events")}>Events</button>
             <button className={`act mini${tab === "metrics" ? " on" : ""}`} onClick={() => setTab("metrics")}>APM</button>
             <button className={`act mini${tab === "health" ? " on" : ""}`} onClick={() => setTab("health")}>Health</button>
+            <button className={`act mini${tab === "audit" ? " on" : ""}`} onClick={() => setTab("audit")}>Audit</button>
           </div>
         </div>
         {err && <div className="dock-error">diagnostics unavailable: {err}</div>}
@@ -103,6 +115,23 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {tab === "health" && h && <pre className="diag-pre">{JSON.stringify(h, null, 2)}</pre>}
+        {tab === "audit" && (
+          <div className="diag-events">
+            {(audit ?? [])
+              .slice()
+              .reverse()
+              .map((a, i) => (
+                <div key={i} className="diag-row">
+                  <span className="diag-kind">{a.type}</span>
+                  <span className="diag-msg">
+                    {[a.paneId && "pane " + a.paneId, a.deviceId && "dev " + a.deviceId, a.bytes != null && a.bytes + "B", a.name, a.reason].filter(Boolean).join(" · ")}
+                  </span>
+                  <span className="diag-ms">{new Date(a.at).toLocaleTimeString()}</span>
+                </div>
+              ))}
+            {audit && audit.length === 0 && <div className="diag-empty">No RCE-channel activity recorded yet.</div>}
+          </div>
+        )}
         <div className="keys-hint">Live (2s) · LOCAL-only, never exposed to a paired device · logs persist to ~/Library/Logs/GlaudeCode/engine.log</div>
       </div>
     </div>

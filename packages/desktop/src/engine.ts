@@ -429,6 +429,11 @@ export interface Diagnostics { health: DiagHealth; events: DiagEvent[]; metrics:
 export const diagnostics = (opts?: { limit?: number; sinceSeq?: number; kinds?: string[]; level?: string }) =>
   engineRpc<Diagnostics>("diagnostics", opts ?? {});
 
+// The RCE-channel audit trail (OBS-5) — terminal-auth / arm / input / upload / disconnect, with byte
+// COUNTS never the bytes. LOCAL-only (desktop bearer). Surfaced in the Mac diagnostics panel.
+export interface AuditEvent { type: string; at: string; deviceId?: string; paneId?: string; bytes?: number; name?: string; reason?: string }
+export const auditLog = () => engineRpc<AuditEvent[]>("auditLog", {});
+
 /** State of the engine's optional remote (Tailscale) listener (Epic G remote). */
 export interface RemoteInfo {
   enabled: boolean;
