@@ -156,7 +156,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   document.getElementById("title").textContent=paneId.slice(0,12);
   document.getElementById("toterm").href="/app/term?pane="+encodeURIComponent(paneId);
   var canType=SCOPE==="terminal";
-  var DIR="", sid=paneId, ws=null, lastQ=null, lastSig="", repairing=false;
+  var DIR="", sid=paneId, ws=null, lastQ=null, lastSig="", repairing=false, emptyPolls=0;
   var chat=document.getElementById("chat"), tin=document.getElementById("tin");
 
   function rpc(method,params){
@@ -227,6 +227,11 @@ export const CONVERSATION_HTML = `<!doctype html>
 
   function renderChat(msgs){
     msgs=msgs||[]; dbg.msgs=msgs.length; dbg.errs.msgs=null;
+    // BL-9: the session is resolved once at load — but you may open the chat BEFORE `claude` starts,
+    // or swap sessions. So if it stays empty, periodically RE-INFER (every ~5 empty polls ≈ 10s); a
+    // non-empty render resets the counter. Self-heals without a manual reload (the split chip + drawer
+    // are the manual path).
+    if(msgs.length) emptyPolls=0; else if((++emptyPolls)%5===0) inferSession();
     var sig=msgs.map(function(m){return m.id+":"+m.blocks.length;}).join(",")||"__empty__";
     if(sig===lastSig){ refreshDbg(); return; } // unchanged — don't rebuild (keeps scroll/selection)
     lastSig=sig;

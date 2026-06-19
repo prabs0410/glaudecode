@@ -120,5 +120,7 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **A4 (OBS-5)** audit surfaced on the Mac (Audit tab) + APM metrics (already in A2's panel). **PHASE A COMPLETE — the observability layer is done.**
 - ✅ **B1 (BL-3)** absolute tap-to-answer — pure `moveToOptionKeys` (pin-to-top then down×index, position-independent) + proper multiSelect (Space-toggle + Confirm), applied to BOTH pages. 402 engine tests (+3). The wrong-Allow bug is fixed.
 - ✅ **B2 (BL-6 surface)** `sid != paneId` chip — when the rendered session differs from the typed pane (the claude-in-a-shell case), the bar shows "📄 session · ⌨ pane" (tap → drawer to switch). The typed-send RPC is a noted bigger follow-up. (Surface done.)
-- 🔨 **B3 (BL-9)** re-infer the phone session periodically + **B4 (BL-10)** `bun run verify` — next.
-- ⏳ C, D, E pending (this loop).
+- ✅ **B3 (BL-9)** re-infer the phone session — re-resolves every ~5 empty polls (≈10s) so a chat opened before `claude` starts self-heals; the split chip/drawer are the manual path.
+- ✅ **B4 (BL-10)** root `bun run verify` — chains engine test + tsc×2 + vite build + cargo check; exits 0. **PHASE B COMPLETE.**
+- 🔨 **C1 (BL-4)** persist paired tokens across engine respawn — next.
+- ⏳ D, E pending (this loop).

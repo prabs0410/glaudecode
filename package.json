@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "desktop": "bun --cwd packages/desktop run tauri dev",
-    "desktop:build": "bun --cwd packages/desktop run tauri build"
+    "desktop:build": "bun --cwd packages/desktop run tauri build",
+    "verify": "bun --cwd packages/engine run test && bun --cwd packages/engine run typecheck && bun --cwd packages/desktop run build && cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml"
   }
 }
