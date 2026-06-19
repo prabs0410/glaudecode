@@ -1,6 +1,21 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SW_JS } from "../src/cockpit";
 import { startEngineServer } from "../src/server";
+
+// configHome → a temp dir so the persisted signing key / VAPID key / device roster never touch ~/.glaudecode.
+const withServer = async (fn: (s: ReturnType<typeof startEngineServer>) => Promise<void>): Promise<void> => {
+  const home = mkdtempSync(join(tmpdir(), "gc-sw-"));
+  const s = startEngineServer({ token: "sw-token", configHome: home });
+  try {
+    await fn(s);
+  } finally {
+    s.stop();
+    rmSync(home, { recursive: true, force: true });
+  }
+};
 
 // The push service worker (V8 Phase 1.3). It's served as standalone JS so it can claim the /app scope;
 // guard that it PARSES (a stray syntax error would silently break push registration on the phone) and
@@ -16,16 +31,13 @@ describe("service worker", () => {
   });
 
   test("GET /app/sw.js serves it as javascript, scoped to /app", async () => {
-    const s = startEngineServer({ token: "sw-token" });
-    try {
+    await withServer(async (s) => {
       const r = await fetch(`http://127.0.0.1:${s.port}/app/sw.js`);
       expect(r.status).toBe(200);
       expect(r.headers.get("content-type")).toContain("javascript");
       expect(r.headers.get("service-worker-allowed")).toBe("/app");
       expect(await r.text()).toContain("notificationclick");
-    } finally {
-      s.stop();
-    }
+    });
   });
 
   test("the cockpit registers the SW only in a secure context", () => {

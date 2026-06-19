@@ -216,6 +216,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     vapid: { publicKey: vapidKeys.publicKey, privateKey: vapidKeys.privateKey, subject: "mailto:glaudecode@localhost" },
     send: opts.pushSend,
     onPruned: (deviceId, status) => eventLog.record({ kind: "phone", level: "info", msg: "push pruned", data: { deviceId: deviceId.slice(0, 8), status } }),
+    onFailed: (deviceId, reason) => eventLog.record({ kind: "phone", level: "warn", msg: "push failed", data: { deviceId: String(deviceId).slice(0, 8), reason } }),
   });
   const lastPush = new Map<string, number>();
   const PUSH_DEDUPE_MS = 60_000;
@@ -227,7 +228,8 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     lastPush.set(key, now);
     void pushSender
       .deliver({ kind, sessionId, paneId: paneId ?? sessionId, title, body, tag: key })
-      .then((r) => eventLog.record({ kind: "phone", level: "info", msg: "push sent", data: { kind, delivered: r.delivered, pruned: r.pruned, failed: r.failed } }));
+      .then((r) => eventLog.record({ kind: "phone", level: r.failed > 0 ? "warn" : "info", msg: "push sent", data: { kind, delivered: r.delivered, pruned: r.pruned, failed: r.failed } }))
+      .catch((e) => eventLog.record({ kind: "phone", level: "error", msg: "push deliver threw", data: { kind, error: String(e?.message ?? e).slice(0, 120) } })); // deliver() shouldn't throw, but never let a future change vanish silently
   }
   // Approval is the headline "Claude is blocked waiting for YOU" push. The production /approval path
   // calls approvals.submit() without options, so subscribe at the QUEUE level. Metadata only — the tool

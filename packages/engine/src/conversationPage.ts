@@ -573,22 +573,29 @@ export const CONVERSATION_HTML = `<!doctype html>
   // localhost) + steer+ scope only — the /push-subscribe route is steer+. Re-subscribe is idempotent. ----
   function urlB64ToU8(s){ var pad="=".repeat((4-s.length%4)%4); var b=(s+pad).replace(/-/g,"+").replace(/_/g,"/"); var raw=atob(b); var u=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i); return u; }
   function pushSupported(){ return location.protocol==="https:" && "serviceWorker" in navigator && "PushManager" in window && SCOPE!=="view"; }
+  // Check r.ok on BOTH fetches so a 403 (scope) / 429 (rate-limit) / 5xx REJECTS instead of resolving
+  // "successfully" with a non-ok Response — otherwise a failed subscribe would still flip the UI to
+  // "Alerts on" (the silent false-positive). (review remediation)
   function subscribePush(){
     return navigator.serviceWorker.ready
-      .then(function(reg){ return fetch("/push-key",{headers:{authorization:"Bearer "+TOKEN}}).then(function(r){ return r.json(); })
+      .then(function(reg){ return fetch("/push-key",{headers:{authorization:"Bearer "+TOKEN}}).then(function(r){ if(!r.ok) throw new Error("push-key "+r.status); return r.json(); })
         .then(function(k){ return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(k.publicKey)}); }); })
-      .then(function(sub){ return fetch("/push-subscribe",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"content-type":"application/json"},body:JSON.stringify(sub)}); });
+      .then(function(sub){ return fetch("/push-subscribe",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"content-type":"application/json"},body:JSON.stringify(sub)}).then(function(r){ if(!r.ok) throw new Error("push-subscribe "+r.status); return r; }); });
   }
   var bell=document.getElementById("bell");
+  // A subscribe failure must be VISIBLE (never the "Alerts on" lie): flip the bell to a clear failed
+  // state AND forward the error to the Mac's eventLog so the lid-closed founder sees it. (review remediation)
+  function alertsOk(){ bell.title="Alerts on"; bell.textContent="🔔"; }
+  function alertsFail(e){ bell.title="Alerts failed — tap to retry"; bell.textContent="🔕"; postErr("error","push-subscribe",(e&&e.message)||"subscribe failed"); }
   if(pushSupported()){
-    navigator.serviceWorker.register("/app/sw.js",{scope:"/app/"}).catch(function(){});
+    navigator.serviceWorker.register("/app/sw.js",{scope:"/app/"}).catch(function(e){ postErr("warn","sw-register",(e&&e.message)||"sw register failed"); });
     if(Notification.permission!=="denied"){
       bell.style.display="";
-      if(Notification.permission==="granted"){ bell.title="Alerts on"; subscribePush().catch(function(){}); }
+      if(Notification.permission==="granted") subscribePush().then(alertsOk).catch(alertsFail); // title set ONLY on real success
     }
     bell.onclick=function(){
-      if(Notification.permission==="granted"){ subscribePush().then(function(){bell.title="Alerts on";}).catch(function(){}); return; }
-      Notification.requestPermission().then(function(p){ if(p==="granted"){ bell.title="Alerts on"; subscribePush().catch(function(){}); } else { bell.title="Alerts blocked in browser settings"; } });
+      if(Notification.permission==="granted"){ subscribePush().then(alertsOk).catch(alertsFail); return; }
+      Notification.requestPermission().then(function(p){ if(p==="granted"){ subscribePush().then(alertsOk).catch(alertsFail); } else { bell.title="Alerts blocked in browser settings"; } });
     };
   }
   rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; resolveAndPoll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); resolveAndPoll(); });

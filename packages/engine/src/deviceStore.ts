@@ -16,13 +16,17 @@ export class DeviceStore {
     return join(this.home, ".glaudecode", "devices.json");
   }
 
-  /** Load the persisted roster (empty on a missing/corrupt file — fail-safe, never throws). */
+  /** Load the persisted roster (empty on a missing/corrupt file — fail-safe, never throws). A CORRUPT
+   *  file (vs a missing one) is surfaced: resetting the roster logs every paired device out. */
   load(): PairedDevice[] {
     try {
       const raw = readFileSync(this.path(), "utf8");
       const parsed = raw.trim() ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? (parsed as PairedDevice[]) : [];
-    } catch {
+    } catch (e: any) {
+      if (e?.code !== "ENOENT") {
+        console.error("[glaudecode] device roster unreadable/corrupt — resetting; all paired devices must re-pair");
+      }
       return [];
     }
   }

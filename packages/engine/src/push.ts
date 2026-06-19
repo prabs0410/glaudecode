@@ -145,6 +145,10 @@ export interface PushSenderDeps {
   now?: () => number;
   /** Called when a dead subscription (404/410) is pruned — for audit/observability. */
   onPruned?: (deviceId: string, status: number) => void;
+  /** Called when a target FAILS (a non-2xx other than 404/410, or a thrown error) — so a persistently
+   *  failing endpoint / bad VAPID key / malformed subscription is observable, not just tallied. The
+   *  `reason` is the HTTP status, or an error NAME (never a message — those can carry endpoint detail). */
+  onFailed?: (deviceId: string, reason: number | string) => void;
 }
 
 const defaultSend: SendFn = async (url, init) => {
@@ -162,6 +166,7 @@ export class PushSender {
   private readonly send: SendFn;
   private readonly now: () => number;
   private readonly onPruned?: (deviceId: string, status: number) => void;
+  private readonly onFailed?: (deviceId: string, reason: number | string) => void;
 
   constructor(deps: PushSenderDeps) {
     this.store = deps.store;
@@ -169,6 +174,7 @@ export class PushSender {
     this.send = deps.send ?? defaultSend;
     this.now = deps.now ?? (() => Date.now());
     this.onPruned = deps.onPruned;
+    this.onFailed = deps.onFailed;
   }
 
   async deliver(message: PushMessage): Promise<{ delivered: number; pruned: number; failed: number }> {
@@ -187,9 +193,11 @@ export class PushSender {
           delivered++;
         } else {
           failed++;
+          this.onFailed?.(deviceId, status); // e.g. 401 bad VAPID, 413 too big, 5xx — fixable, must be seen
         }
-      } catch {
+      } catch (e: any) {
         failed++; // network/encryption error for one target never aborts the fan-out
+        this.onFailed?.(deviceId, String(e?.name ?? "error")); // name only — no message (endpoint detail)
       }
     }
     return { delivered, pruned, failed };

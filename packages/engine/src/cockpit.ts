@@ -9,11 +9,11 @@
 // session); offline-shell caching is intentionally omitted in v1. The payload is metadata-only (the
 // engine never sends transcript text). Registration is gated on a secure context (HTTPS / localhost).
 export const SW_JS = `self.addEventListener("push", function (event) {
-  var d = {};
-  try { d = event.data ? event.data.json() : {}; } catch (e) {}
+  var d = {}, bad = false;
+  try { d = event.data ? event.data.json() : {}; } catch (e) { bad = true; }
   var title = d.title || "GlaudeCode";
   event.waitUntil(self.registration.showNotification(title, {
-    body: d.body || "",
+    body: d.body || (bad ? "(notification payload unreadable)" : ""),
     tag: d.tag || d.kind || "glaudecode",
     data: { paneId: d.paneId, sessionId: d.sessionId },
     icon: "/app/icon-192.png",

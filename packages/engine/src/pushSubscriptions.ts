@@ -53,8 +53,11 @@ export class PushSubscriptionStore {
       const parsed = raw.trim() ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? parsed : [];
     } catch (e: any) {
-      if (e?.code === "ENOENT") return [];
-      return []; // a corrupt store is treated as empty rather than crashing the engine
+      if (e?.code !== "ENOENT") {
+        // surface a corrupt store — resetting it silently drops every device's push registration
+        console.error("[glaudecode] push subscriptions store unreadable/corrupt — resetting; devices must re-enable alerts");
+      }
+      return []; // treated as empty rather than crashing the engine
     }
   }
 

@@ -18,8 +18,10 @@ export function loadOrCreateSigningKey(path: string): Buffer {
     try {
       const b = Buffer.from(readFileSync(path, "utf8").trim(), "base64url");
       if (b.length >= 32) return b;
+      // Surface the reset — regenerating invalidates every signed token (all paired devices re-pair).
+      console.error("[glaudecode] token-signing key is too short — regenerating; all paired devices must re-pair");
     } catch {
-      /* fall through and regenerate */
+      console.error("[glaudecode] token-signing key is unreadable — regenerating; all paired devices must re-pair");
     }
   }
   const key = randomBytes(32);

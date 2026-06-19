@@ -134,6 +134,16 @@ describe("PushSender.deliver (fan-out, pruning, never-throws)", () => {
     expect(s.list()[0].deviceId).toBe("live");
   });
 
+  test("a non-2xx/404/410 failure is reported via onFailed (observable, not just tallied)", async () => {
+    const s = store();
+    s.add("d1", { endpoint: "https://push.example/1", keys: sub(1).keys }, "t");
+    const failed: Array<[string, number | string]> = [];
+    const send: SendFn = async () => ({ status: 500 });
+    const out = await new PushSender({ store: s, vapid, send, onFailed: (id, reason) => failed.push([id, reason]) }).deliver({ title: "t", body: "b", kind: "approval" });
+    expect(out).toEqual({ delivered: 0, pruned: 0, failed: 1 });
+    expect(failed).toEqual([["d1", 500]]);
+  });
+
   test("a network error on one target is counted, never thrown, and the fan-out continues", async () => {
     const s = store();
     s.add("d1", sub(1), "t");
