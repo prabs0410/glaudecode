@@ -28,6 +28,11 @@ export const TERM_HTML = `<!doctype html>
   #bar a { color: #79c0ff; text-decoration: none; }
   #dot { width: 8px; height: 8px; border-radius: 50%; background: #6e7681; display: inline-block; }
   #dot.ok { background: #3fb950; }
+  /* OBS-3: tap the connection dot for a diagnostics HUD — the fallback page must explain itself too */
+  #thud { display: none; position: fixed; top: 38px; left: 0; right: 0; z-index: 40; background: #0b0f14f2;
+    border-bottom: 1px solid #30363d; padding: 9px 12px; font: 11px/1.5 ui-monospace, Menlo, monospace;
+    color: #8b949e; white-space: pre-wrap; word-break: break-word; max-height: 55vh; overflow: auto; }
+  #thud.show { display: block; }
   .muted { color: #6e7681; font-size: 12px; }
   .pill { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 10px;
     background: #21262d; color: #8b949e; }
@@ -100,6 +105,7 @@ export const TERM_HTML = `<!doctype html>
 </head>
 <body>
   <div id="bar"><span id="dot"></span><a href="/app">‹ Sessions</a><span id="title" class="muted"></span><a id="tochat" href="#" title="Conversation view">💬</a><a id="switch" href="#" title="Next terminal">⇄</a><span id="pill" class="pill"></span></div>
+  <div id="thud"></div>
   <div id="term"></div>
   <div id="switcher"></div>
   <div id="inputbar">
@@ -161,6 +167,18 @@ export const TERM_HTML = `<!doctype html>
   var armed = false, rawOn = false, ctrlArmed = false, paused = false, ws = null;
   var reconnectTimer = null; // single pending reconnect, so a background/foreground race can't dupe sockets
   var connOk = true, repairing = false; // connOk: last listPanes succeeded (so "not armed" is real)
+
+  // OBS-3: the fallback terminal must not fail silently either — forward uncaught errors to the Mac
+  // (paired-token /clientlog-remote) and surface state in a tap-the-connection-dot HUD.
+  var lastErr = null, thud = document.getElementById("thud");
+  function postErr(level, kind, msg, where) { try { fetch("/clientlog-remote", { method: "POST", headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+    body: JSON.stringify({ level: level, kind: kind, msg: String(msg).slice(0, 300), where: where || location.pathname }) }).catch(function () {}); } catch (e) {} }
+  function noteErr(kind, msg) { lastErr = kind + ": " + String(msg).slice(0, 200); if (thud && thud.className === "show") renderThud(); postErr("error", kind, msg); }
+  window.addEventListener("error", function (e) { noteErr("error", (e && e.message) || "script error"); });
+  window.addEventListener("unhandledrejection", function (e) { noteErr("unhandledrejection", (e && e.reason && (e.reason.message || e.reason)) || "unhandled rejection"); });
+  function wsState() { return !ws ? "none" : (ws.readyState === 0 ? "connecting" : ws.readyState === 1 ? "open" : ws.readyState === 2 ? "closing" : "closed"); }
+  function renderThud() { if (!thud) return; thud.textContent = "pane:   " + paneId + "\\nscope:  " + SCOPE + (canTypeScope ? "" : " (view-only)") + "\\narmed:  " + armed + "\\nws:     " + wsState() + "\\nhost:   " + location.host + "\\nlast error: " + (lastErr || "(none)"); }
+  var dotEl = document.getElementById("dot"); if (dotEl) { dotEl.style.cursor = "pointer"; dotEl.onclick = function () { if (!thud) return; thud.className = thud.className === "show" ? "" : "show"; renderThud(); }; }
 
   var fontSize = parseInt(localStorage.getItem("ck.fontsize"), 10) || 15; // readable default; A-/A+ persists (V6 P1.4)
   var term = new Terminal({
