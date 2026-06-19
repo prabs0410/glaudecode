@@ -40,3 +40,20 @@ describe("conversationPage renders untrusted content safely", () => {
     expect(CONVERSATION_HTML).not.toContain("innerHTML");
   });
 });
+
+describe("conversationPage push opt-in (V8 Phase 1.4)", () => {
+  test("registers the SW + subscribes only in a secure context, steer+ scope", () => {
+    expect(CONVERSATION_HTML).toContain('location.protocol==="https:"');
+    expect(CONVERSATION_HTML).toContain('navigator.serviceWorker.register("/app/sw.js"');
+    expect(CONVERSATION_HTML).toContain('SCOPE!=="view"');
+  });
+  test("reads the VAPID key + posts the subscription with the Bearer token (never a query token)", () => {
+    expect(CONVERSATION_HTML).toContain('fetch("/push-key",{headers:{authorization:"Bearer "+TOKEN}');
+    expect(CONVERSATION_HTML).toContain('fetch("/push-subscribe"');
+    expect(CONVERSATION_HTML).toContain("pushManager.subscribe");
+  });
+  test("only prompts for permission on an EXPLICIT tap (no auto-prompt on load)", () => {
+    expect(CONVERSATION_HTML).toContain("bell.onclick");
+    expect(CONVERSATION_HTML).toContain("Notification.requestPermission");
+  });
+});

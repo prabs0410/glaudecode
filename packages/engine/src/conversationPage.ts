@@ -116,6 +116,7 @@ export const CONVERSATION_HTML = `<!doctype html>
     <span id="title" class="muted">…</span>
     <span id="splitchip" title="You're typing into a different pane than the session shown — tap to switch"></span>
     <span id="status"><span class="dot"></span><span class="t">…</span></span>
+    <button id="bell" class="ib" title="Enable phone alerts" style="display:none">🔔</button>
     <a id="toterm" class="ib" title="Raw terminal" href="#">⌨</a>
   </div>
   <div id="dbg"></div>
@@ -567,6 +568,29 @@ export const CONVERSATION_HTML = `<!doctype html>
     body:JSON.stringify({level:level,kind:kind,msg:String(msg).slice(0,300),where:where||location.pathname})}).catch(function(){}); }catch(e){} }
   window.addEventListener("error",function(e){ var m=(e&&e.message)||"script error"; dbg.errs.js=m; refreshDbg(); postErr("error","error",m,(e&&e.filename)||location.pathname); });
   window.addEventListener("unhandledrejection",function(e){ var m=(e&&e.reason&&(e.reason.message||e.reason))||"unhandled rejection"; dbg.errs.js=String(m); refreshDbg(); postErr("error","unhandledrejection",String(m)); });
+  // ---- Web Push opt-in (V8 Phase 1.4): register the service worker + let the user enable alerts on an
+  // EXPLICIT tap (iOS only prompts on a user gesture). Secure context (HTTPS via Tailscale Serve, or
+  // localhost) + steer+ scope only — the /push-subscribe route is steer+. Re-subscribe is idempotent. ----
+  function urlB64ToU8(s){ var pad="=".repeat((4-s.length%4)%4); var b=(s+pad).replace(/-/g,"+").replace(/_/g,"/"); var raw=atob(b); var u=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i); return u; }
+  function pushSupported(){ return location.protocol==="https:" && "serviceWorker" in navigator && "PushManager" in window && SCOPE!=="view"; }
+  function subscribePush(){
+    return navigator.serviceWorker.ready
+      .then(function(reg){ return fetch("/push-key",{headers:{authorization:"Bearer "+TOKEN}}).then(function(r){ return r.json(); })
+        .then(function(k){ return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(k.publicKey)}); }); })
+      .then(function(sub){ return fetch("/push-subscribe",{method:"POST",headers:{authorization:"Bearer "+TOKEN,"content-type":"application/json"},body:JSON.stringify(sub)}); });
+  }
+  var bell=document.getElementById("bell");
+  if(pushSupported()){
+    navigator.serviceWorker.register("/app/sw.js",{scope:"/app/"}).catch(function(){});
+    if(Notification.permission!=="denied"){
+      bell.style.display="";
+      if(Notification.permission==="granted"){ bell.title="Alerts on"; subscribePush().catch(function(){}); }
+    }
+    bell.onclick=function(){
+      if(Notification.permission==="granted"){ subscribePush().then(function(){bell.title="Alerts on";}).catch(function(){}); return; }
+      Notification.requestPermission().then(function(p){ if(p==="granted"){ bell.title="Alerts on"; subscribePush().catch(function(){}); } else { bell.title="Alerts blocked in browser settings"; } });
+    };
+  }
   rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; resolveAndPoll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); resolveAndPoll(); });
   gateUI(); if(canType) connect();
   document.addEventListener("visibilitychange",function(){ if(!document.hidden) poll(); }); // D1: catch up immediately when refocused
