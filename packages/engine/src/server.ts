@@ -16,6 +16,8 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode, scopeSatisfies } from "./pairing";
 import { homedir } from "node:os";
 import { loadOrCreateVapidKeys } from "./pushKeys";
+import { loadOrCreateSigningKey } from "./tokenSigning";
+import { DeviceStore } from "./deviceStore";
 import { PushSubscriptionStore, parsePushSubscription, wouldDeliverPush } from "./pushSubscriptions";
 import { PushSender, type SendFn } from "./push";
 import type { NotificationKind } from "./notify";
@@ -124,12 +126,17 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   const hostname = opts.hostname ?? "127.0.0.1";
   const adapter = new ClaudeCodeAdapter();
   const approvals = new ApprovalQueue();
-  // Pairing for the remote cockpit (Epic G): short human-typable codes, opaque tokens,
-  // both random + held in memory only (no token at rest).
+  const configHome = opts.configHome ?? homedir();
+  // Pairing for the remote cockpit (Epic G): short human-typable codes; tokens are HMAC-SIGNED
+  // capabilities (C1) verified against a persisted signing key + a persisted device roster — so a
+  // paired phone survives an engine respawn instead of being logged out. Still no token at rest (only
+  // the signing key + device metadata are persisted; the bearer token lives on the phone).
   const pairing = new PairingService({
     now: () => Date.now(),
     genCode: () => genPairCode(),
     genToken: () => crypto.randomUUID() + crypto.randomUUID().replace(/-/g, ""),
+    signingKey: loadOrCreateSigningKey(join(configHome, ".glaudecode", "token-key")),
+    deviceStore: new DeviceStore(configHome),
   });
   // Throttle /pair so the short code can't be brute-forced (V5 Phase 0.3). code-server baseline:
   // 2/min + 12/hr, keyed by client IP. A successful pair resets the IP's counter.
@@ -150,7 +157,6 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // which every phone subscription is bound to — survives restarts. Subscriptions are persisted per
   // device. Push DELIVERY (signing + sending a web-push request) is HTTPS-gated and lives elsewhere;
   // here we only mint the key, expose it, and store subscriptions.
-  const configHome = opts.configHome ?? homedir();
   const vapidKeys = loadOrCreateVapidKeys(join(configHome, ".glaudecode", "vapid.json"));
   const pushStore = new PushSubscriptionStore(configHome);
   const pushLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 60_000, max: 30 }]);

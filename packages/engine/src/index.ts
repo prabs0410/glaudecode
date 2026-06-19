@@ -128,6 +128,8 @@ export { detectPushKinds } from "./pushTrigger";
 export type { PhaseSnapshot } from "./pushTrigger";
 export { PairingService } from "./pairing";
 export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
+export { loadOrCreateSigningKey, signDeviceToken, verifyDeviceToken } from "./tokenSigning";
+export { DeviceStore } from "./deviceStore";
 export { methodScope } from "./rpc";
 export type { MethodScope } from "./rpc";
 export { frameEvent, parseFrame } from "./remote";

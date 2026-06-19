@@ -1,15 +1,26 @@
 // Pairing & scoped tokens (Epic G §3.2 — the security heart). The per-launch bearer token
 // must NEVER be shared to a phone. Instead the desktop issues a short, expiring PAIR CODE; a
-// client redeems it for a scoped, expiring, revocable REMOTE TOKEN. Tokens are held in memory
-// only (no token at rest) and die with the engine — re-pair after a restart. Scope is "view"
-// (read-only), "steer" (can answer approvals / send follow-ups), or "terminal" (can type into
-// armed terminal panes — the RCE-class scope; V5 Phase 2). All time + randomness is injected so
-// the logic is fully deterministic under test.
+// client redeems it for a scoped, expiring, revocable REMOTE TOKEN. Scope is "view" (read-only),
+// "steer" (can answer approvals / send follow-ups), or "terminal" (can type into armed terminal
+// panes — the RCE-class scope; V5 Phase 2). All time + randomness is injected so the logic is
+// fully deterministic under test.
+//
+// V8/C1: tokens are HMAC-SIGNED capabilities (tokenSigning.ts) — `sign(deviceId.scope, key)` — and the
+// authoritative scope/expiry/revocation live in a PERSISTED device roster (deviceStore.ts). The only
+// secret at rest is the signing key; the bearer token still never touches the Mac's disk. With both
+// the key and the roster persisted, a paired phone now SURVIVES an engine respawn instead of being
+// logged out. Revocation = removing the device from the roster (its signed token then fails the
+// presence check). Without an injected key/store it falls back to a per-process ephemeral key + an
+// in-memory roster (the pre-C1 behaviour: dies on restart) — so existing callers/tests are unchanged.
 //
 // Scope is a linear privilege ladder: view < steer < terminal. A higher scope satisfies every
 // lower requirement, but NEVER the reverse — crucially, a "steer" token can answer approvals yet
 // can NEVER type into a terminal (terminal is a dedicated, more-privileged scope, never implied
 // by steer). `terminal` is the "full control from my phone" scope.
+
+import { randomBytes } from "node:crypto";
+import { signDeviceToken, verifyDeviceToken } from "./tokenSigning";
+import type { DeviceStore } from "./deviceStore";
 
 export type TokenScope = "view" | "steer" | "terminal";
 
@@ -74,15 +85,15 @@ export interface PairingDeps {
    *  while a session is live, so a leaked terminal token that isn't continuously connected dies fast
    *  (design R8 / V5 Phase 3.3.3). */
   terminalTokenTtlMs?: number;
+  /** Persisted HMAC signing key (C1) — tokens survive an engine respawn. Default: a per-process
+   *  ephemeral key (pre-C1 behaviour — re-pair on restart). */
+  signingKey?: Buffer;
+  /** Persisted device roster (C1) — the authority for scope/expiry/revocation, survives respawn.
+   *  Default: in-memory only. */
+  deviceStore?: DeviceStore;
 }
 
 interface PendingCode {
-  scope: TokenScope;
-  expiresAtMs: number;
-}
-interface ActiveToken {
-  token: string;
-  deviceId: string;
   scope: TokenScope;
   expiresAtMs: number;
 }
@@ -98,19 +109,39 @@ const DEFAULT_TERMINAL_TOKEN_TTL = 60 * 60_000; // 1h — RCE scope, kept short 
 const FAILURE_WINDOW_MS = 60_000;
 const FAILURE_MAX = 20;
 
+// Roster persistence is throttled so a terminal token's ~2s refresh doesn't write to disk every tick;
+// at most one write per this window. Redeem/revoke persist immediately (force). A respawn then sees an
+// expiry at worst this stale — still well within a live token's remaining lifetime.
+const PERSIST_THROTTLE_MS = 5 * 60_000;
+
 export class PairingService {
   private readonly codes = new Map<string, PendingCode>();
-  private readonly tokens = new Map<string, ActiveToken>();
   private readonly devices = new Map<string, PairedDevice>();
   private readonly failures: number[] = []; // timestamps of recent failed redeems (M3 backstop)
   private readonly codeTtl: number;
   private readonly tokenTtl: number;
   private readonly terminalTokenTtl: number;
+  private readonly key: Buffer;
+  private readonly store?: DeviceStore;
+  private lastPersistMs = 0;
 
   constructor(private readonly deps: PairingDeps) {
     this.codeTtl = deps.codeTtlMs ?? DEFAULT_CODE_TTL;
     this.tokenTtl = deps.tokenTtlMs ?? DEFAULT_TOKEN_TTL;
     this.terminalTokenTtl = deps.terminalTokenTtlMs ?? DEFAULT_TERMINAL_TOKEN_TTL;
+    this.key = deps.signingKey ?? randomBytes(32);
+    this.store = deps.deviceStore;
+    if (this.store) for (const d of this.store.load()) this.devices.set(d.id, d);
+  }
+
+  /** Write the roster to disk (if persisted). `force` for durable changes (redeem/revoke); throttled
+   *  for the high-frequency refresh roll so live terminal sessions don't hammer the disk. */
+  private persist(force: boolean): void {
+    if (!this.store) return;
+    const now = this.deps.now();
+    if (!force && now - this.lastPersistMs < PERSIST_THROTTLE_MS) return;
+    this.lastPersistMs = now;
+    this.store.save([...this.devices.values()]);
   }
 
   /** TTL for a scope's token — `terminal` is capped short (R8). */
@@ -151,8 +182,7 @@ export class PairingService {
     const now = this.deps.now();
     const expiresAtMs = now + this.ttlFor(pending.scope); // terminal scope gets the short cap (R8)
     const deviceId = this.deps.genToken();
-    const token = this.deps.genToken();
-    this.tokens.set(token, { token, deviceId, scope: pending.scope, expiresAtMs });
+    const token = signDeviceToken(deviceId, pending.scope, this.key); // signed capability — survives respawn
     this.devices.set(deviceId, {
       id: deviceId,
       name: deviceName || "device",
@@ -160,6 +190,7 @@ export class PairingService {
       pairedAt: new Date(now).toISOString(),
       expiresAt: new Date(expiresAtMs).toISOString(),
     });
+    this.persist(true); // durable: a new device joined the roster
     return { token, scope: pending.scope, expiresAt: new Date(expiresAtMs).toISOString(), deviceId };
   }
 
@@ -167,30 +198,32 @@ export class PairingService {
    *  live). Returns the new expiry, or null if unknown/expired. An IDLE terminal token gets no
    *  refresh, so it still dies at its short cap (R8 / V5 Phase 3.3.3). */
   refresh(token: string): { expiresAt: string } | null {
-    const t = this.tokens.get(token);
-    if (!t) return null;
+    const claim = verifyDeviceToken(token, this.key);
+    if (!claim) return null;
+    const device = this.devices.get(claim.deviceId);
+    if (!device) return null; // revoked/unknown — its roster entry is gone
     const now = this.deps.now();
-    if (now > t.expiresAtMs) {
-      this.tokens.delete(t.token);
+    if (now > Date.parse(device.expiresAt)) {
+      this.devices.delete(device.id);
+      this.persist(true);
       return null;
     }
-    t.expiresAtMs = now + this.ttlFor(t.scope);
-    const device = this.devices.get(t.deviceId);
-    if (device) device.expiresAt = new Date(t.expiresAtMs).toISOString();
-    return { expiresAt: new Date(t.expiresAtMs).toISOString() };
+    device.expiresAt = new Date(now + this.ttlFor(device.scope)).toISOString();
+    this.persist(false); // throttled — refresh fires ~every 2s while a terminal session is live
+    return { expiresAt: device.expiresAt };
   }
 
-  /** Verify a token is active + unexpired; updates lastSeen. */
+  /** Verify a token's signature, then consult the roster (the authority): the device must still be
+   *  present (absence = revoked) and unexpired. Updates lastSeen. */
   verify(token: string): VerifyResult {
-    const t = this.tokens.get(token);
-    if (!t) return { ok: false, reason: "unknown token" };
-    if (this.deps.now() > t.expiresAtMs) {
-      this.tokens.delete(t.token);
-      return { ok: false, reason: "token expired" };
-    }
-    const device = this.devices.get(t.deviceId);
-    if (device) device.lastSeen = new Date(this.deps.now()).toISOString();
-    return { ok: true, scope: t.scope, deviceId: t.deviceId };
+    const claim = verifyDeviceToken(token, this.key);
+    if (!claim) return { ok: false, reason: "bad signature" };
+    const device = this.devices.get(claim.deviceId);
+    if (!device) return { ok: false, reason: "revoked or unknown device" };
+    if (this.deps.now() > Date.parse(device.expiresAt)) return { ok: false, reason: "token expired" };
+    if (device.scope !== claim.scope) return { ok: false, reason: "scope mismatch" }; // signed scope must match the roster
+    device.lastSeen = new Date(this.deps.now()).toISOString();
+    return { ok: true, scope: device.scope, deviceId: device.id };
   }
 
   /** Verify AND require a scope along the linear ladder (view < steer < terminal). A higher
@@ -207,11 +240,12 @@ export class PairingService {
     return [...this.devices.values()].sort((a, b) => a.pairedAt.localeCompare(b.pairedAt));
   }
 
-  /** Revoke a device and invalidate its token immediately. */
+  /** Revoke a device and invalidate its token immediately (its signed token then fails the roster
+   *  presence check). Persisted so the revocation survives a respawn too. */
   revoke(deviceId: string): boolean {
     if (!this.devices.has(deviceId)) return false;
     this.devices.delete(deviceId);
-    for (const [token, t] of this.tokens) if (t.deviceId === deviceId) this.tokens.delete(token);
+    this.persist(true);
     return true;
   }
 }

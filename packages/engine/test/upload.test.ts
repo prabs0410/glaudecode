@@ -96,7 +96,7 @@ describe("/upload route", () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), "gc-upload-"));
     uploads = join(root, UPLOAD_SUBDIR);
-    server = startEngineServer({ token: "up-token", uploadDir: root, maxUploadBytes: 64 });
+    server = startEngineServer({ token: "up-token", uploadDir: root, maxUploadBytes: 64, configHome: root });
     base = `http://127.0.0.1:${server.port}`;
   });
   afterAll(() => {

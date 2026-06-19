@@ -2,6 +2,9 @@
 // HTTP surface. Portable — no sessions required (health + auth only).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startEngineServer, type EngineServer } from "../src/server";
 import {
   decodeBridgeFrame,
@@ -40,12 +43,18 @@ async function openInputSink(): Promise<{ ws: WebSocket; frames: ReturnType<type
 let server: EngineServer;
 const base = () => `http://127.0.0.1:${server.port}`;
 
+let cfgHome: string;
 beforeAll(() => {
   // resizeGraceMs:200 so the resize-authority (V6 P1.7) is testable with timing margin: a phone may
   // resize once the desk has been quiet 200ms; a desktopHeartbeat re-blocks it. (Production default 30s.)
-  server = startEngineServer({ token: "e2e-token", resizeGraceMs: 200 });
+  // configHome → a temp dir so the persisted signing key + device roster (C1) never touch the real ~/.glaudecode.
+  cfgHome = mkdtempSync(join(tmpdir(), "gc-srv-"));
+  server = startEngineServer({ token: "e2e-token", resizeGraceMs: 200, configHome: cfgHome });
 });
-afterAll(() => server.stop());
+afterAll(() => {
+  server.stop();
+  rmSync(cfgHome, { recursive: true, force: true });
+});
 
 describe("engine server", () => {
   test("binds an ephemeral port and serves /health", async () => {
