@@ -1,0 +1,38 @@
+# GlaudeCode V8 — Away-mode push · token durability · security groundwork · landing
+
+> **RUN MODE.** Work top-to-bottom, one task at a time, TDD where it fits. After EVERY task: run
+> `bun run verify`, then commit (attributed to `prabs0410`) on `feat/v6-conversation`, and update the
+> Progress log. Founder-gated *activation* steps are flagged — build + unit-test behind them, never block.
+
+## Context
+
+The V7 loop finished all autonomous work (HEAD `60c34f4`, verify green: engine 461 · desktop 9). These
+four items each needed a founder decision, now settled. The thesis is a private, lid-closed, voice-first
+Claude Code cockpit on your own Mac + Tailscale — its biggest missing piece is **push** (the phone is
+pull-only today). Full design + rationale: the approved plan (`~/.claude/plans/resilient-singing-jellyfish.md`).
+
+## Locked decisions
+
+- **C1 → HMAC signing key** (one secret + a persisted revocation list at rest; tokens self-verify, survive respawn).
+- **Landing → push + prep PR; founder merges** (git push works via the SSH alias; only `gh` PR/merge needs the login).
+- **Push crypto → hand-rolled `node:crypto`** (VAPID ES256 + RFC 8291 aes128gcm); `web-push` is the isolated fallback.
+- **Sequence → Phase 1 Push → 2 C1 → 3 WS4 doc → 4 Land.**
+- **WS4 = threat-model doc only**; seamless-pairing implementation is a separate goal pending go/no-go.
+
+## Founder-gated activation (flagged, not build blockers)
+
+- **Enable Tailscale Serve / MagicDNS+HTTPS** → activates + device-tests push.
+- **`gh` login as `prabs0410`** (or web UI) → create the PR + merge to main (Phase 4).
+- **WS4 go/no-go** → whether seamless pairing gets built.
+
+## Phases (see the plan for file-by-file detail)
+
+- **Phase 1 — Push delivery:** `push.ts` sender (hand-rolled VAPID JWT + aes128gcm + `PushSender` with prune/no-crash/metadata-only) · server trigger (`maybePush` debounce + `ApprovalQueue.onEnqueue` + a pure transition detector on the existing 2s broadcast for question/finished/error) · `SW_JS` + `/app/sw.js` · `conversationPage` `subscribePush()` + "🔔 Enable alerts" gesture · committed PNG icons · tests. Real delivery is device-gated on HTTPS.
+- **Phase 2 — C1 HMAC tokens:** `tokenSigning.ts` (persisted signing key 0600, `signToken`/`verifyToken`) · persisted `RevokedStore` · wire `PairingService` redeem/verify/revoke + server self-persist the key. Tokens + revocation survive respawn. No Rust change.
+- **Phase 3 — WS4:** `docs/design/seamless-pairing-threat-model.md` (assets/adversaries, how the Phase-2 token model changes the calculus, device-bound tokens, safety nets, go/no-go). Doc only.
+- **Phase 4 — Land:** pr-review-toolkit → fix → `git push origin feat/v6-conversation` → draft the PR body into a `docs/` file. Founder does the final auth + merge.
+
+## Progress log
+
+- ✅ **Phase 1.1** `push.ts` sender — hand-rolled VAPID ES256 JWT (`vapidAuthHeader`) + RFC 8291 `aes128gcm` (`encryptPayload`: ECDH→HKDF→AES-128-GCM) + `buildPushRequest` + `PushSender.deliver` (fan-out, prune dead subs on 404/410, never-throws, metadata-only payload). 9 tests — the key one **decrypts the body end-to-end** to prove the crypto chain; plus VAPID JWT verifies against the public key, prune-on-410, no-crash-on-network-error, zero-sub fast path. No new deps (`node:crypto`). 470 engine tests.
+- 🔨 **Phase 1.2** server-side trigger (maybePush + ApprovalQueue.onEnqueue + transition detector) — next.

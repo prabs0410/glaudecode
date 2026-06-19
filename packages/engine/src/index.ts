@@ -122,6 +122,8 @@ export { generateVapidKeys, loadOrCreateVapidKeys, vapidKeysFromJwk } from "./pu
 export type { VapidKeys } from "./pushKeys";
 export { PushSubscriptionStore, parsePushSubscription, wouldDeliverPush } from "./pushSubscriptions";
 export type { PushSubscription } from "./pushSubscriptions";
+export { PushSender, buildPushRequest, encryptPayload, vapidAuthHeader } from "./push";
+export type { PushMessage, PushTarget, VapidConfig, SendFn } from "./push";
 export { PairingService } from "./pairing";
 export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
 export { methodScope } from "./rpc";
