@@ -31,7 +31,9 @@ root `bun run verify` that chains the whole gate (added in B4 / repaired in V7).
 These were added during V6/V7 and should be indexed (each with a one-line purpose, per INDEX's convention):
 
 - `docs/design/diagnostics-observability.md` — the observability-layer design (OBS-1…5).
+- `docs/design/seamless-pairing-threat-model.md` — WS4 seamless-pairing threat-model + go/no-go (V8 Phase 3).
 - `docs/goal-v7/README.md` — the V7 runnable goal (observability + post-review hardening).
+- `docs/goal-v8/README.md` — the V8 runnable goal (away-mode push · token durability · WS4 · landing).
 - `docs/research/2026-06-19-project-review/` — the 95-agent review output:
   `00-executive-summary.md`, `BACKLOG.md`, `competitive.md`, `edge-cases.md`, `enhancements.md`,
   `gaps.md`, `painpoints.md`, `risks-security.md`, and **this file** (`docs-drift-audit.md`).
