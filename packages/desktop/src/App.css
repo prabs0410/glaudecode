@@ -1865,3 +1865,26 @@ body,
   max-height: 240px;
   overflow: auto;
 }
+
+/* Diagnostics panel (OBS-4) — the Mac-side view of the engine's observability stream */
+.diag-modal { width: min(740px, 92vw); max-height: 82vh; background: #11161d; border: 1px solid #30363d; border-radius: 10px;
+  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+.diag-modal .keys-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #1f2630; font-weight: 600; }
+.diag-modal .act.mini { background: #161c26; border: 1px solid #30363d; border-radius: 7px; color: #c9d1d9; font-size: 12px; padding: 4px 10px; cursor: pointer; }
+.diag-modal .act.mini.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.diag-health { display: flex; flex-wrap: wrap; gap: 12px; padding: 9px 14px; font-size: 12px; color: #8b949e; border-bottom: 1px solid #1f2630; background: #0d1117; }
+.diag-health .ok { color: #3fb950; } .diag-health .bad { color: #f85149; }
+.diag-filters { display: flex; gap: 14px; align-items: center; padding: 8px 14px; font-size: 12px; color: #8b949e; border-bottom: 1px solid #1f2630; }
+.diag-filters select { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 12px; padding: 3px 6px; }
+.diag-events { flex: 1; overflow-y: auto; padding: 6px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace; min-height: 220px; }
+.diag-row { display: flex; gap: 10px; padding: 2px 4px; border-bottom: 1px solid #161c26; align-items: baseline; }
+.diag-row .diag-kind { color: #79c0ff; flex: 0 0 64px; }
+.diag-row .diag-msg { color: #c9d1d9; flex: 1; word-break: break-word; }
+.diag-row .diag-ms { color: #6e7681; flex: 0 0 auto; }
+.diag-row.lvl-error .diag-msg { color: #ff9a92; } .diag-row.lvl-warn .diag-msg { color: #e3b341; }
+.diag-row .bad { color: #f85149; }
+.diag-mhead { color: #6e7681; font-weight: 600; } .diag-mhead span, .diag-mrow span { flex: 1; }
+.diag-mrow span:first-child, .diag-mhead span:first-child { flex: 2; color: #c9d1d9; }
+.diag-empty { color: #6e7681; padding: 16px 4px; text-align: center; }
+.diag-pre { margin: 0; padding: 12px 14px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #8b949e; overflow: auto; }
+.diag-modal .keys-hint { padding: 8px 14px; font-size: 11px; color: #6e7681; border-top: 1px solid #1f2630; }

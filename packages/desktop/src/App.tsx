@@ -9,6 +9,7 @@ import { ApprovalPanel } from "./ApprovalPanel";
 import { CommandPalette, type Command } from "./CommandPalette";
 import { KeybindingsModal } from "./KeybindingsModal";
 import { PromptsModal } from "./PromptsModal";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { NotificationService } from "./NotificationService";
 import { PairingModal } from "./PairingModal";
 import { RemoteArmedChips } from "./RemoteArmedChips";
@@ -69,6 +70,7 @@ export default function App() {
   // as a real pane — they never repurpose the dock over stale historical data.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [keybindingsOpen, setKeybindingsOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [quiet, setQuiet] = useState(() => localStorage.getItem("glaude.quiet") === "1");
   const [pairingOpen, setPairingOpen] = useState(false);
@@ -451,6 +453,7 @@ export default function App() {
         run: () => setZen((z) => !z),
       },
       { id: "keybindings.open", title: "Edit keybindings…", run: () => setKeybindingsOpen(true) },
+      { id: "diagnostics.open", title: "Diagnostics…", keywords: "logs events health apm monitor observability errors metrics", run: () => setDiagnosticsOpen(true) },
       { id: "prompts.open", title: "Prompt library…", keywords: "slash command template", run: () => setPromptsOpen(true) },
       { id: "devices.pair", title: "Pair a device…", keywords: "remote mobile cockpit phone", run: () => setPairingOpen(true) },
       {
@@ -592,6 +595,7 @@ export default function App() {
           onChanged={(km) => setKeymap(km)}
         />
       )}
+      {diagnosticsOpen && <DiagnosticsPanel onClose={() => setDiagnosticsOpen(false)} />}
       {promptsOpen && (
         <PromptsModal
           dir={dir}
