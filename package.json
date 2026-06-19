@@ -7,9 +7,10 @@
   "workspaces": [
     "packages/*"
   ],
+  "comment:scripts": "Use (cd <pkg> && …) subshells, NOT `bun --cwd <pkg> run <script>` — on Bun 1.2.18 that form prints `bun run` help and exits 0 (a silent no-op), so the gate reported false-green while running nothing. Each subshell returns to the repo root; cargo check then resolves its --manifest-path from there.",
   "scripts": {
-    "desktop": "bun --cwd packages/desktop run tauri dev",
-    "desktop:build": "bun --cwd packages/desktop run tauri build",
-    "verify": "bun --cwd packages/engine run test && bun --cwd packages/engine run typecheck && bun --cwd packages/desktop run build && cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml"
+    "desktop": "(cd packages/desktop && bun run tauri dev)",
+    "desktop:build": "(cd packages/desktop && bun run tauri build)",
+    "verify": "(cd packages/engine && bun test) && (cd packages/engine && bun run typecheck) && (cd packages/desktop && bun run build) && cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml"
   }
 }
