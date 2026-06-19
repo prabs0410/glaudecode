@@ -114,4 +114,5 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 
 - ✅ **OBS-1** durable engine logs — `9b4d38e`.
 - ✅ **OBS-2** EventLog hub + `diagnostics()` RPC + instrumentation — `1e77031`, `27c4bd3`. (397 engine tests.)
-- ⏳ Phase A → E pending (this loop).
+- 🔨 **A1 (OBS-3)** phone→Mac error pipe: `POST /clientlog-remote` + chat-page forwarding (window error + unhandledrejection) — `ffc2bd4`. (398 engine tests.) **Remaining:** termPage global handler + HUD.
+- ⏳ Rest of Phase A → E pending (this loop).
