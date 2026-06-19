@@ -577,15 +577,61 @@ fn engine_entry_path() -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
 }
 
+/// Append-handle to the durable engine log (~/Library/Logs/GlaudeCode/engine.log, rotated at ~5 MiB).
+/// OBS-1: in a packaged .app the engine's stdout/stderr otherwise go to a void, so every audit /
+/// crash / pairing-brute-force / forwarded-error line is lost — the exact silent failure the
+/// observability layer exists to kill. Returns None if the path can't be opened (degrade gracefully).
+fn open_engine_log() -> Option<std::fs::File> {
+    let home = std::env::var("HOME").ok()?;
+    let dir = PathBuf::from(home).join("Library/Logs/GlaudeCode");
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("engine.log");
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 5 * 1024 * 1024 {
+            let _ = std::fs::rename(&path, dir.join("engine.log.1")); // keep one previous generation
+        }
+    }
+    std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()
+}
+
+/// Append one line to the durable log (epoch-ms + stream prefix) AND echo to the process's own
+/// stderr so `tauri dev` still shows it. Best-effort — a failed write is swallowed.
+fn log_engine_line(f: &mut Option<std::fs::File>, stream: &str, line: &str) {
+    let line = line.trim_end_matches(['\n', '\r']);
+    if let Some(file) = f.as_mut() {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let _ = writeln!(file, "{ts} [{stream}] {line}");
+    }
+    eprintln!("[engine:{stream}] {line}"); // dev echo (no-op into the void in a packaged .app)
+}
+
 fn spawn_engine(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<EngineState>();
     let entry = engine_entry_path();
     let mut child = Command::new("bun")
         .arg(&entry)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped()) // OBS-1: capture stderr to a durable file instead of the void
         .spawn()
         .map_err(|e| format!("failed to spawn engine (bun {:?}): {}", entry, e))?;
+
+    // Drain stderr to the durable log on its own thread (audit/crash/error lines).
+    if let Some(stderr) = child.stderr.take() {
+        thread::spawn(move || {
+            let mut log = open_engine_log();
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) => log_engine_line(&mut log, "err", &l),
+                    Err(_) => break,
+                }
+            }
+        });
+    }
 
     let stdout = child.stdout.take().ok_or("engine produced no stdout")?;
     // Read the {port,token} handshake on a worker thread bounded by a timeout (audit M6): a
@@ -601,6 +647,8 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
                 let _ = tx.send(Err("engine closed stdout before the handshake".to_string()));
                 return;
             }
+            // The first line is the {port,token} handshake — NEVER write it to the log (it carries
+            // the bearer token; no secret at rest). Subsequent stdout lines ARE logged.
             Ok(_) => {
                 let _ = tx.send(Ok(line));
             }
@@ -609,7 +657,13 @@ fn spawn_engine(app: &AppHandle) -> Result<(), String> {
                 return;
             }
         }
-        for _ in reader.lines() {} // keep draining so the engine never blocks on a full pipe
+        let mut log = open_engine_log();
+        for l in reader.lines() {
+            match l {
+                Ok(s) => log_engine_line(&mut log, "out", &s), // keep draining + persist
+                Err(_) => break,
+            }
+        }
     });
     let line = match rx.recv_timeout(Duration::from_secs(10)) {
         Ok(Ok(l)) => l,
