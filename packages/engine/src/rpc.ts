@@ -28,6 +28,7 @@ import { GraphManager } from "./graph";
 import { GitManager } from "./gitManager";
 import { compareSessions, type SessionView } from "./compare";
 import { findProjectRoot } from "./projectRoot";
+import type { EventLog, EventKind, EventLevel } from "./eventLog";
 import { buildResumeBriefing } from "./resume";
 import { buildReplayBundle } from "./replay";
 import { BookmarkStore } from "./bookmarks";
@@ -68,6 +69,7 @@ export type RpcMethod =
   | "uninstallApprovalHook"
   | "approvalHookStatus"
   | "auditLog"
+  | "diagnostics"
   | "budgetStatus"
   | "getBudget"
   | "setBudget"
@@ -138,6 +140,7 @@ export const METHODS = new Set<RpcMethod>([
   "uninstallApprovalHook",
   "approvalHookStatus",
   "auditLog",
+  "diagnostics",
   "budgetStatus",
   "getBudget",
   "setBudget",
@@ -218,6 +221,10 @@ export const LOCAL_ONLY_METHODS = new Set<string>([
   // The RCE-channel audit trail (who armed/typed/was-cut, byte counts — never the bytes) is for the
   // local desktop's incident review only; a remote device must never read it (audit M7).
   "auditLog",
+  // The observability EventLog (rpc/ws/pairing/bridge/upload + folded audit) + health snapshot +
+  // APM metrics reveal cross-device activity like the audit trail — so the full stream is LOCAL-ONLY
+  // (the Mac diagnostics panel). The phone Debug tab gets a separately-scoped privacy-safe view later.
+  "diagnostics",
   // Writing CLAUDE.md / memory is SOFT-RCE: a later Claude session executes those instruction files,
   // bypassing the approval hook. So instruction-file writes are LOCAL-ONLY — only the desktop, where
   // the user physically is, may author them; a remote steer device cannot (audit I1). Steer keeps its
@@ -311,6 +318,12 @@ export interface DispatchDeps {
   audit?: { list(): AuditEvent[] };
   /** Desktop focus/visibility presence — gates phone PTY resize (V6 P1.7). */
   desktopPresence?: { heartbeat(): void };
+  /** Observability event hub (OBS-2) — diagnostics() reads its stream + metrics. */
+  eventLog?: EventLog;
+  /** Is the Rust<->engine bridge currently connected? (health snapshot.) */
+  bridgeConnected?: () => boolean;
+  /** Engine start epoch ms — for the diagnostics uptime. */
+  startedAt?: number;
 }
 
 /** Snapshot of the remote (non-localhost) listener's state. */
@@ -470,6 +483,39 @@ export async function dispatch(
     case "auditLog":
       // Local-only readback of the RCE-channel audit trail for incident review (M7).
       return deps.audit?.list() ?? [];
+    case "diagnostics": {
+      // Local-only observability snapshot (OBS-2): the event stream + a live health snapshot + APM
+      // metrics. Metadata only (the EventLog never stores payloads). The Mac diagnostics panel reads
+      // this; the phone gets a separately-scoped privacy-safe view later.
+      const el = deps.eventLog;
+      const panes = deps.paneHub?.list() ?? [];
+      const devices = deps.pairing?.listDevices?.() ?? [];
+      const remote = deps.remoteControl?.status?.() ?? null;
+      const now = Date.now();
+      const kinds = Array.isArray(p.kinds) ? (p.kinds as EventKind[]) : undefined;
+      return {
+        health: {
+          engineUp: true,
+          uptimeMs: deps.startedAt ? now - deps.startedAt : null,
+          bridgeConnected: deps.bridgeConnected ? deps.bridgeConnected() : null,
+          panes: panes.length,
+          armedPanes: panes.filter((x) => (x as { armed?: boolean }).armed).length,
+          devices: devices.length,
+          remoteEnabled: !!remote?.enabled,
+          remoteUrl: remote?.url ?? null,
+          lastError: el?.lastError() ?? null,
+          counts: el?.countsByKind() ?? {},
+          events: el?.size() ?? 0,
+        },
+        events: el?.list({
+          limit: typeof p.limit === "number" ? p.limit : 200,
+          sinceSeq: typeof p.sinceSeq === "number" ? p.sinceSeq : undefined,
+          kinds,
+          level: typeof p.level === "string" ? (p.level as EventLevel) : undefined,
+        }) ?? [],
+        metrics: el?.rpcMetrics() ?? [],
+      };
+    }
     case "budgetStatus": {
       // Today's spend = sum of the live sessions' estimated cost; total = that plus the
       // persisted prior-day rollup. Evaluate against the project's configured budget.
@@ -698,6 +744,12 @@ export interface RpcHandlerDeps {
   audit?: { list(): AuditEvent[] };
   /** Desktop focus/visibility presence — gates phone PTY resize (V6 P1.7). */
   desktopPresence?: { heartbeat(): void };
+  /** Observability event hub (OBS-2) — every RPC is timed + recorded; diagnostics() reads it. */
+  eventLog?: EventLog;
+  /** Is the Rust<->engine bridge connected? (health snapshot.) */
+  bridgeConnected?: () => boolean;
+  /** Engine start epoch ms — for the diagnostics uptime. */
+  startedAt?: number;
   /** Dispatch deps passed through (worktrees/cost/memory/etc.) — for tests. */
   dispatchDeps?: DispatchDeps;
 }
@@ -794,6 +846,10 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
       return Response.json({ error: `forbidden: '${body?.method}' requires ${required} scope` }, { status: 403 });
     }
 
+    // Time every RPC + record it in the observability stream (OBS-2). Metadata only — method,
+    // scope, duration, ok — never the params or result. diagnostics() itself is recorded too.
+    const method = String(body?.method ?? "?");
+    const t0 = Date.now();
     try {
       const result = await dispatch(adapter, body?.method, body?.params, {
         approvals: deps.approvals,
@@ -803,10 +859,15 @@ export function createRpcHandler(adapter: ClaudeCodeAdapter, token: string, deps
         paneHub: deps.paneHub,
         audit: deps.audit,
         desktopPresence: deps.desktopPresence,
+        eventLog: deps.eventLog,
+        bridgeConnected: deps.bridgeConnected,
+        startedAt: deps.startedAt,
         ...deps.dispatchDeps,
       });
+      deps.eventLog?.record({ kind: "rpc", level: "info", msg: "rpc " + method, data: { method, scope: required, ms: Date.now() - t0, ok: true } });
       return Response.json({ result });
     } catch (e: any) {
+      deps.eventLog?.record({ kind: "rpc", level: "error", msg: "rpc " + method, data: { method, scope: required, ms: Date.now() - t0, ok: false, err: String(e?.message ?? e).slice(0, 200) } });
       return Response.json({ error: String(e?.message ?? e) }, { status: 400 });
     }
   };

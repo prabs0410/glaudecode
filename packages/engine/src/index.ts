@@ -10,6 +10,8 @@ export { startEngineServer } from "./server";
 export type { EngineServer, StartOptions } from "./server";
 export { AuditLog } from "./audit";
 export type { AuditEvent, AuditEventType } from "./audit";
+export { EventLog } from "./eventLog";
+export type { LogEvent, EventKind, EventLevel } from "./eventLog";
 export {
   mapBlocks,
   mapRole,

@@ -417,6 +417,18 @@ export const createPairCode = (scope: TokenScope) => engineRpc<PairCode>("create
 export const listDevices = () => engineRpc<PairedDevice[]>("listDevices", {});
 export const revokeDevice = (deviceId: string) => engineRpc<{ ok: boolean }>("revokeDevice", { deviceId });
 
+// Observability diagnostics (OBS-2) — the local Mac panel reads the engine's event stream + a live
+// health snapshot + APM metrics. LOCAL-only (desktop bearer); never exposed to a paired remote token.
+export interface DiagEvent { seq: number; at: string; kind: string; level: string; msg: string; data?: Record<string, string | number | boolean> }
+export interface DiagHealth {
+  engineUp: boolean; uptimeMs: number | null; bridgeConnected: boolean | null; panes: number; armedPanes: number;
+  devices: number; remoteEnabled: boolean; remoteUrl: string | null; lastError: DiagEvent | null; counts: Record<string, number>; events: number;
+}
+export interface DiagMetric { method: string; calls: number; errors: number; p50: number; p95: number; maxMs: number }
+export interface Diagnostics { health: DiagHealth; events: DiagEvent[]; metrics: DiagMetric[] }
+export const diagnostics = (opts?: { limit?: number; sinceSeq?: number; kinds?: string[]; level?: string }) =>
+  engineRpc<Diagnostics>("diagnostics", opts ?? {});
+
 /** State of the engine's optional remote (Tailscale) listener (Epic G remote). */
 export interface RemoteInfo {
   enabled: boolean;

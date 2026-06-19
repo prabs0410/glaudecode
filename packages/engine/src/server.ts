@@ -17,7 +17,8 @@ import { PairingService, genPairCode } from "./pairing";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
 import { DesktopPresence } from "./resizeAuthority";
-import { AuditLog } from "./audit";
+import { AuditLog, type AuditEvent } from "./audit";
+import { EventLog } from "./eventLog";
 import { decodeBridgeFrame, encodeBridgeInput, encodeBridgeResize } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
@@ -65,6 +66,8 @@ export interface EngineServer {
   pairing: PairingService;
   /** Start/stop a second listener on a network interface (Tailscale) — Epic G remote. */
   remote: RemoteControl;
+  /** Observability event hub (OBS-2) — exposed for tests + the diagnostics surface. */
+  eventLog: EventLog;
   stop: () => void;
 }
 
@@ -143,7 +146,21 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   };
   // Coarse, privacy-preserving audit of the RCE channel (V5 Phase 3.3.2): terminal auth, arming
   // changes, INPUT (paneId + byte COUNT, never bytes), and revoke/expiry/link-down disconnects.
-  const audit = new AuditLog(() => Date.now());
+  // Observability event hub (OBS-2): one privacy-safe stream the diagnostics() RPC reads. The audit
+  // log MIRRORS into it, so RCE-channel activity (terminal-auth / arm / input / upload / disconnect)
+  // shows up in diagnostics without touching any call site. Metadata only — never payloads.
+  const startedAt = Date.now();
+  const eventLog = new EventLog(() => Date.now());
+  const auditToEvent = (e: AuditEvent) => {
+    const data: Record<string, string | number | boolean> = { type: e.type };
+    if (e.deviceId) data.deviceId = e.deviceId.slice(0, 8);
+    if (e.paneId) data.paneId = e.paneId.slice(0, 8);
+    if (typeof e.bytes === "number") data.bytes = e.bytes;
+    if (e.name) data.name = e.name;
+    if (e.reason) data.reason = e.reason;
+    eventLog.record({ kind: "audit", level: e.type === "input-dropped" || e.reason ? "warn" : "info", msg: "audit " + e.type, data });
+  };
+  const audit = new AuditLog(() => Date.now(), 1000, auditToEvent);
   // Resize authority (V6 P1.7): a phone may reshape the shared PTY only when no desktop viewer is
   // present (the desktop WebView heartbeats while focused via the desktopHeartbeat RPC).
   const desktopPresence = new DesktopPresence(() => Date.now(), opts.resizeGraceMs);
@@ -265,7 +282,10 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     status: () => remoteInfo(),
   };
 
-  const handler = createRpcHandler(adapter, token, { approvals, endpoint, pairing, remoteControl: remote, paneHub, audit, desktopPresence });
+  const handler = createRpcHandler(adapter, token, {
+    approvals, endpoint, pairing, remoteControl: remote, paneHub, audit, desktopPresence,
+    eventLog, startedAt, bridgeConnected: () => inputBridge != null,
+  });
 
   // Shared Bun.serve config (websocket + fetch) reused by the localhost and remote listeners.
   const serveConfig = {
@@ -342,6 +362,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
               }
             }
             inputBridge = ws;
+            eventLog.record({ kind: "bridge", level: "info", msg: "bridge connected (Rust input sink)" });
           } else if (kind === "term") {
             const paneId = String(msg.paneId ?? "");
             if (!paneId) return close();
@@ -434,7 +455,10 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         dropUnauthed(ws); // free its unauthed slot if it closed before authenticating (L2)
         sockets.delete(ws);
         termSockets.delete(ws);
-        if (ws === inputBridge) inputBridge = null; // Rust input sink gone (it reconnects)
+        if (ws === inputBridge) {
+          inputBridge = null; // Rust input sink gone (it reconnects)
+          eventLog.record({ kind: "bridge", level: "warn", msg: "bridge disconnected (Rust input sink)" });
+        }
         ws.data?.detach?.(); // detach a term subscriber from its pane
       },
     },
@@ -512,6 +536,7 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         // Clear the counter on a legit pair so the user isn't locked out — but NEVER for a shared
         // loopback bucket, where one success would reset the limit for every caller (audit M3).
         if (!shared) pairLimiter.reset(key);
+        eventLog.record({ kind: "pair", level: "info", msg: "device paired", data: { scope: tok.scope, deviceId: String(tok.deviceId).slice(0, 8) } });
         return Response.json(tok);
       }
 
@@ -643,12 +668,15 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   }, 2000);
   (broadcast as any)?.unref?.();
 
+  eventLog.record({ kind: "engine", level: "info", msg: "engine started", data: { port: server.port } });
+
   return {
     port: server.port,
     token,
     approvals,
     pairing,
     remote,
+    eventLog,
     stop: () => {
       clearInterval(broadcast);
       approvals.clear();

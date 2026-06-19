@@ -75,6 +75,36 @@ describe("engine server", () => {
     expect(Array.isArray(body.result)).toBe(true);
   });
 
+  test("diagnostics() returns the event stream + health + APM metrics for the local bearer; paired tokens are forbidden (OBS-2)", async () => {
+    // generate some RPC traffic so the stream + metrics have content
+    await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: "Bearer e2e-token", "content-type": "application/json" },
+      body: JSON.stringify({ method: "defaultDir", params: {} }),
+    });
+    const res = await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: "Bearer e2e-token", "content-type": "application/json" },
+      body: JSON.stringify({ method: "diagnostics", params: { limit: 50 } }),
+    });
+    expect(res.status).toBe(200);
+    const { result } = await res.json();
+    expect(result.health.engineUp).toBe(true);
+    expect(typeof result.health.uptimeMs).toBe("number");
+    expect(Array.isArray(result.events)).toBe(true);
+    // the defaultDir call we just made was timed + recorded in the stream + the APM metrics
+    expect(result.events.some((e: any) => e.kind === "rpc" && e.data?.method === "defaultDir")).toBe(true);
+    expect(result.metrics.some((m: any) => m.method === "defaultDir")).toBe(true);
+    // diagnostics is LOCAL-ONLY: a paired steer token is forbidden (reveals cross-device activity like the audit log)
+    const tok = server.pairing.redeem(server.pairing.createPairCode("steer").code, "diag-deny")!.token;
+    const denied = await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
+      body: JSON.stringify({ method: "diagnostics", params: {} }),
+    });
+    expect(denied.status).toBe(403);
+  });
+
   test("serves the cockpit at /app", async () => {
     const res = await fetch(`${base()}/app`);
     expect(res.status).toBe(200);

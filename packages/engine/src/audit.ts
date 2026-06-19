@@ -31,11 +31,16 @@ export class AuditLog {
   constructor(
     private readonly now: () => number,
     private readonly max = 1000,
+    /** Optional mirror — every audited event is also forwarded here (OBS-2: into the EventLog
+     *  stream) so the RCE-channel activity shows up in diagnostics without touching call sites. */
+    private readonly mirror?: (e: AuditEvent) => void,
   ) {}
 
   record(e: Omit<AuditEvent, "at">): void {
-    this.events.push({ ...e, at: new Date(this.now()).toISOString() });
+    const ev: AuditEvent = { ...e, at: new Date(this.now()).toISOString() };
+    this.events.push(ev);
     if (this.events.length > this.max) this.events.shift(); // bounded — oldest drops
+    this.mirror?.(ev);
   }
 
   list(): AuditEvent[] {
