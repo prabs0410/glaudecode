@@ -116,6 +116,12 @@ export { PromptStore, SlashCommandWriter, extractVariables, fillTemplate } from 
 export type { PromptInfo } from "./prompt";
 export { coalesceNotifications } from "./notify";
 export type { AppNotification, NotificationKind } from "./notify";
+export { shouldPush, PUSH_KINDS } from "./pushPolicy";
+export type { PushPolicy } from "./pushPolicy";
+export { generateVapidKeys, loadOrCreateVapidKeys, vapidKeysFromJwk } from "./pushKeys";
+export type { VapidKeys } from "./pushKeys";
+export { PushSubscriptionStore, parsePushSubscription, wouldDeliverPush } from "./pushSubscriptions";
+export type { PushSubscription } from "./pushSubscriptions";
 export { PairingService } from "./pairing";
 export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
 export { methodScope } from "./rpc";

@@ -11,6 +11,7 @@ export type AuditEventType =
   | "input"
   | "input-dropped"
   | "upload"
+  | "push-subscribe"
   | "disconnect";
 
 export interface AuditEvent {

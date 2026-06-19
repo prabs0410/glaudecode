@@ -13,7 +13,10 @@
 import { ClaudeCodeAdapter } from "./adapter";
 import { createRpcHandler, type RemoteControl, type RemoteInfo } from "./rpc";
 import { ApprovalQueue } from "./approvalQueue";
-import { PairingService, genPairCode } from "./pairing";
+import { PairingService, genPairCode, scopeSatisfies } from "./pairing";
+import { homedir } from "node:os";
+import { loadOrCreateVapidKeys } from "./pushKeys";
+import { PushSubscriptionStore, parsePushSubscription } from "./pushSubscriptions";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
 import { DesktopPresence } from "./resizeAuthority";
@@ -68,6 +71,10 @@ export interface EngineServer {
   remote: RemoteControl;
   /** Observability event hub (OBS-2) — exposed for tests + the diagnostics surface. */
   eventLog: EventLog;
+  /** The VAPID PUBLIC key a phone subscribes against (Web Push scaffolding, BL-5). */
+  vapidPublicKey: string;
+  /** Persisted Web Push subscriptions (the sender — HTTPS-gated — will read these). */
+  pushSubscriptions: PushSubscriptionStore;
   stop: () => void;
 }
 
@@ -89,6 +96,9 @@ export interface StartOptions {
   /** Max upload size in bytes (default 25 MiB). Injected small in tests so the cap is exercised with
    *  tiny bodies. */
   maxUploadBytes?: number;
+  /** Where persisted config lives (the VAPID keypair + push subscriptions, under `<configHome>/.glaudecode/`).
+   *  Default the real home dir; injected to a temp dir in tests. */
+  configHome?: string;
 }
 
 export function startEngineServer(opts: StartOptions = {}): EngineServer {
@@ -117,6 +127,15 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
   // Phone error-pipe limiter (OBS-3): cap a device's forwarded errors so a crash-loop can't flood the
   // log. 60/min is generous for genuine error bursts.
   const clientlogLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 60_000, max: 60 }]);
+
+  // Web Push scaffolding (BL-5). The VAPID keypair is generated once and persisted so the public key —
+  // which every phone subscription is bound to — survives restarts. Subscriptions are persisted per
+  // device. Push DELIVERY (signing + sending a web-push request) is HTTPS-gated and lives elsewhere;
+  // here we only mint the key, expose it, and store subscriptions.
+  const configHome = opts.configHome ?? homedir();
+  const vapidKeys = loadOrCreateVapidKeys(join(configHome, ".glaudecode", "vapid.json"));
+  const pushStore = new PushSubscriptionStore(configHome);
+  const pushLimiter = new RateLimiter(() => Date.now(), [{ windowMs: 60_000, max: 30 }]);
   const clampDim = (n: number) => Math.max(1, Math.min(1000, Math.trunc(n) || 1)); // 1..1000 cols/rows
   // Mutable endpoint holder: the hook installer needs {port, token}, but the port is
   // only known after Bun.serve binds.
@@ -510,6 +529,32 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         return Response.json({ ok: true });
       }
 
+      // The VAPID PUBLIC key a phone needs to create a Web Push subscription (BL-5). Any paired device
+      // (view+) may read it — it's a public key. The PRIVATE key is never exposed.
+      if (request.method === "GET" && url.pathname === "/push-key") {
+        const v = pairing.verify((request.headers.get("authorization") || "").replace(/^Bearer /, ""));
+        if (!v.ok) return Response.json({ error: "unauthorized" }, { status: 401 });
+        return Response.json({ publicKey: vapidKeys.publicKey });
+      }
+
+      // A paired phone registers its Web Push subscription here (BL-5). STEER+ (a device that can
+      // already act — a view-only watcher doesn't get pushed), rate-limited, body-capped, validated to a
+      // real https subscription, persisted per device, and audited (deviceId only — never the endpoint
+      // secrets). DELIVERY (the signed web-push send) is HTTPS-gated and intentionally not built here.
+      if (request.method === "POST" && url.pathname === "/push-subscribe") {
+        const v = pairing.verify((request.headers.get("authorization") || "").replace(/^Bearer /, ""));
+        if (!v.ok) return Response.json({ error: "unauthorized" }, { status: 401 });
+        if (!v.scope || !scopeSatisfies(v.scope, "steer")) return Response.json({ error: "steer scope required" }, { status: 403 });
+        if (Number(request.headers.get("content-length") || 0) > 8192) return Response.json({ error: "too large" }, { status: 413 });
+        if (!pushLimiter.hit(v.deviceId ?? "anon")) return Response.json({ error: "rate-limited" }, { status: 429 });
+        const sub = parsePushSubscription(await request.json().catch(() => null));
+        if (!sub) return Response.json({ error: "invalid subscription" }, { status: 400 });
+        const count = pushStore.add(v.deviceId ?? "anon", sub, new Date().toISOString());
+        audit.record({ type: "push-subscribe", deviceId: v.deviceId });
+        eventLog.record({ kind: "phone", level: "info", msg: "push subscribed", data: { deviceId: String(v.deviceId ?? "anon").slice(0, 8), subscriptions: count } });
+        return Response.json({ ok: true });
+      }
+
       // The view-only terminal page + its vendored xterm.js (V5 Phase 1). All static; the RPCs/WS
       // they call are authed. The token lives in sessionStorage, never these URLs.
       if (request.method === "GET" && url.pathname === "/app/chat") {
@@ -707,6 +752,8 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     pairing,
     remote,
     eventLog,
+    vapidPublicKey: vapidKeys.publicKey,
+    pushSubscriptions: pushStore,
     stop: () => {
       clearInterval(broadcast);
       approvals.clear();
