@@ -48,6 +48,20 @@ const XTERM_CSS = readVendor("xterm.css");
 // xterm FitAddon (UMD, exposes globalThis.FitAddon.FitAddon) — sizes cols/rows to the phone viewport
 // so mobile output isn't cropped (V6 Phase 1.2). Served like xterm.js; the served term page can't import.
 const ADDON_FIT_JS = readVendor("addon-fit.js");
+// Binary vendor assets (V8 Phase 1.5 — the PWA/notification PNG icons). Read as raw bytes, not UTF-8;
+// null → 503 (degrades, never crashes). Committed; regenerate with scripts/gen-icons.ts.
+function readVendorBytes(name: string): Buffer | null {
+  try {
+    return readFileSync(join(import.meta.dir, "..", "vendor", name));
+  } catch {
+    return null;
+  }
+}
+const ICONS: Record<string, Buffer | null> = {
+  "/app/icon-192.png": readVendorBytes("icon-192.png"),
+  "/app/icon-512.png": readVendorBytes("icon-512.png"),
+  "/app/icon-512-maskable.png": readVendorBytes("icon-512-maskable.png"),
+};
 
 /** Refuse to bind a wildcard interface (all interfaces) for the remote listener — only a
  *  specific address (e.g. the Mac's Tailscale IP) is allowed (V5 Phase 0.1). */
@@ -531,6 +545,13 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       // Service-Worker-Allowed lets it claim the /app scope though it's served from /app/sw.js.
       if (request.method === "GET" && url.pathname === "/app/sw.js") {
         return new Response(SW_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "service-worker-allowed": "/app" } });
+      }
+      // PWA + notification icons (V8 Phase 1.5). Static PNGs; 503 if the vendor file is missing.
+      if (request.method === "GET" && url.pathname.startsWith("/app/icon-") && url.pathname.endsWith(".png")) {
+        const bytes = ICONS[url.pathname];
+        return bytes
+          ? new Response(bytes as unknown as BodyInit, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } })
+          : new Response("icon not vendored", { status: 503 });
       }
       // Diagnostic: the desktop WebView forwards uncaught errors here (the WebView console isn't
       // visible in the terminal otherwise). Bearer-gated so only the local app can post.
