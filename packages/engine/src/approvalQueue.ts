@@ -54,6 +54,15 @@ interface Pending {
 
 export class ApprovalQueue {
   private readonly pending = new Map<string, Pending>();
+  private readonly enqueueSubs = new Set<(req: ApprovalRequest) => void>();
+
+  /** Subscribe to every "ask" enqueue at the QUEUE level (not per-call). The production /approval path
+   *  calls submit() without options, so a per-call onEnqueue would miss it — instance subscribers fire
+   *  for all enqueues (e.g. the push trigger). Returns an unsubscribe fn. */
+  onEnqueue(cb: (req: ApprovalRequest) => void): () => void {
+    this.enqueueSubs.add(cb);
+    return () => this.enqueueSubs.delete(cb);
+  }
 
   /** Classify and resolve a tool call (auto-allow/deny immediately; "ask" waits). */
   submit(call: SubmitCall, opts: SubmitOptions = {}): Promise<ApprovalResult> {
@@ -82,6 +91,13 @@ export class ApprovalQueue {
       (timer as any)?.unref?.();
       this.pending.set(req.id, { req, settle: resolve, timer });
       opts.onEnqueue?.(req);
+      for (const cb of this.enqueueSubs) {
+        try {
+          cb(req);
+        } catch {
+          /* a subscriber must never break the approval flow */
+        }
+      }
     });
   }
 

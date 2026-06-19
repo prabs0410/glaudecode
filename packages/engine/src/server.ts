@@ -16,7 +16,9 @@ import { ApprovalQueue } from "./approvalQueue";
 import { PairingService, genPairCode, scopeSatisfies } from "./pairing";
 import { homedir } from "node:os";
 import { loadOrCreateVapidKeys } from "./pushKeys";
-import { PushSubscriptionStore, parsePushSubscription } from "./pushSubscriptions";
+import { PushSubscriptionStore, parsePushSubscription, wouldDeliverPush } from "./pushSubscriptions";
+import { PushSender, type SendFn } from "./push";
+import type { NotificationKind } from "./notify";
 import { RateLimiter } from "./rateLimiter";
 import { PaneHub } from "./paneHub";
 import { DesktopPresence } from "./resizeAuthority";
@@ -99,6 +101,8 @@ export interface StartOptions {
   /** Where persisted config lives (the VAPID keypair + push subscriptions, under `<configHome>/.glaudecode/`).
    *  Default the real home dir; injected to a temp dir in tests. */
   configHome?: string;
+  /** Injected Web Push transport (default `fetch`) — tests capture outgoing pushes without a network. */
+  pushSend?: SendFn;
 }
 
 export function startEngineServer(opts: StartOptions = {}): EngineServer {
@@ -183,6 +187,35 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
     eventLog.record({ kind: "audit", level: e.type === "input-dropped" || e.reason ? "warn" : "info", msg: "audit " + e.type, data });
   };
   const audit = new AuditLog(() => Date.now(), 1000, auditToEvent);
+
+  // Web Push DELIVERY (V8 Phase 1.2). The sender is a no-op until a phone subscribes (wouldDeliverPush
+  // short-circuits on zero subscriptions), and real delivery is HTTPS-gated. `maybePush` is the single
+  // gated + per-(session,kind)-debounced dispatch point. Payloads are metadata-only.
+  const pushSender = new PushSender({
+    store: pushStore,
+    vapid: { publicKey: vapidKeys.publicKey, privateKey: vapidKeys.privateKey, subject: "mailto:glaudecode@localhost" },
+    send: opts.pushSend,
+    onPruned: (deviceId, status) => eventLog.record({ kind: "phone", level: "info", msg: "push pruned", data: { deviceId: deviceId.slice(0, 8), status } }),
+  });
+  const lastPush = new Map<string, number>();
+  const PUSH_DEDUPE_MS = 60_000;
+  function maybePush(kind: NotificationKind, sessionId: string | undefined, title: string, body: string, paneId?: string): void {
+    if (!wouldDeliverPush(kind, sessionId, pushStore)) return; // policy + "≥1 subscriber" gate (no-op otherwise)
+    const key = (sessionId ?? "") + ":" + kind;
+    const now = Date.now();
+    if (now - (lastPush.get(key) ?? 0) < PUSH_DEDUPE_MS) return; // don't re-buzz a flapping state
+    lastPush.set(key, now);
+    void pushSender
+      .deliver({ kind, sessionId, paneId: paneId ?? sessionId, title, body, tag: key })
+      .then((r) => eventLog.record({ kind: "phone", level: "info", msg: "push sent", data: { kind, delivered: r.delivered, pruned: r.pruned, failed: r.failed } }));
+  }
+  // Approval is the headline "Claude is blocked waiting for YOU" push. The production /approval path
+  // calls approvals.submit() without options, so subscribe at the QUEUE level. Metadata only — the tool
+  // name + a review hint, NEVER the tool input (the command/paths).
+  approvals.onEnqueue((req) =>
+    maybePush("approval", req.sessionId, "Approval needed", req.tool + (req.dangerous ? " — review" : ""), req.sessionId),
+  );
+
   // Resize authority (V6 P1.7): a phone may reshape the shared PTY only when no desktop viewer is
   // present (the desktop WebView heartbeats while focused via the desktopHeartbeat RPC).
   const desktopPresence = new DesktopPresence(() => Date.now(), opts.resizeGraceMs);

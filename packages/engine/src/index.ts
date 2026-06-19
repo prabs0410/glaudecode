@@ -124,6 +124,8 @@ export { PushSubscriptionStore, parsePushSubscription, wouldDeliverPush } from "
 export type { PushSubscription } from "./pushSubscriptions";
 export { PushSender, buildPushRequest, encryptPayload, vapidAuthHeader } from "./push";
 export type { PushMessage, PushTarget, VapidConfig, SendFn } from "./push";
+export { detectPushKinds } from "./pushTrigger";
+export type { PhaseSnapshot } from "./pushTrigger";
 export { PairingService } from "./pairing";
 export type { PairCode, PairedDevice, PairingDeps, RemoteToken, TokenScope } from "./pairing";
 export { methodScope } from "./rpc";
