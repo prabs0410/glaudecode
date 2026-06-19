@@ -27,7 +27,7 @@ import { EventLog } from "./eventLog";
 import { decodeBridgeFrame, encodeBridgeInput, encodeBridgeResize } from "./bridgeProtocol";
 import { decodeFrame } from "./termProtocol";
 import { frameEvent } from "./remote";
-import { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
+import { COCKPIT_HTML, MANIFEST_JSON, SW_JS } from "./cockpit";
 import { TERM_HTML } from "./termPage";
 import { CONVERSATION_HTML } from "./conversationPage";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -526,6 +526,11 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
       }
       if (request.method === "GET" && url.pathname === "/app/manifest.json") {
         return new Response(MANIFEST_JSON, { headers: { "content-type": "application/manifest+json" } });
+      }
+      // The Web Push service worker (V8 Phase 1.3) — static code, no secrets (same posture as /app).
+      // Service-Worker-Allowed lets it claim the /app scope though it's served from /app/sw.js.
+      if (request.method === "GET" && url.pathname === "/app/sw.js") {
+        return new Response(SW_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "service-worker-allowed": "/app" } });
       }
       // Diagnostic: the desktop WebView forwards uncaught errors here (the WebView console isn't
       // visible in the terminal otherwise). Bearer-gated so only the local app can post.

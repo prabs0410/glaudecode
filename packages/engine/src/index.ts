@@ -132,7 +132,7 @@ export { methodScope } from "./rpc";
 export type { MethodScope } from "./rpc";
 export { frameEvent, parseFrame } from "./remote";
 export type { RemoteFrame } from "./remote";
-export { COCKPIT_HTML, MANIFEST_JSON } from "./cockpit";
+export { COCKPIT_HTML, MANIFEST_JSON, SW_JS } from "./cockpit";
 export type {
   ContentBlock,
   ForkResult,

@@ -14,6 +14,36 @@ const ICON_SVG =
       "<text x='256' y='352' font-size='300' text-anchor='middle' fill='#58a6ff' font-family='ui-monospace,monospace'>G</text></svg>",
   );
 
+// The service worker (V8 Phase 1.3) — a push RECEIVER served standalone at /app/sw.js so it can claim
+// the /app scope. It only handles `push` (show the notification) + `notificationclick` (open the right
+// session); offline-shell caching is intentionally omitted in v1. The payload is metadata-only (the
+// engine never sends transcript text). Registration is gated on a secure context (HTTPS / localhost).
+export const SW_JS = `self.addEventListener("push", function (event) {
+  var d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) {}
+  var title = d.title || "GlaudeCode";
+  event.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    tag: d.tag || d.kind || "glaudecode",
+    data: { paneId: d.paneId, sessionId: d.sessionId },
+    icon: "/app/icon-192.png",
+    badge: "/app/icon-192.png"
+  }));
+});
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var pane = event.notification.data && event.notification.data.paneId;
+  var target = "/app/chat" + (pane ? "?pane=" + encodeURIComponent(pane) : "");
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (wins) {
+    for (var i = 0; i < wins.length; i++) {
+      var w = wins[i];
+      if (w.url.indexOf("/app") >= 0 && "focus" in w) { if (w.navigate) w.navigate(target); return w.focus(); }
+    }
+    return clients.openWindow(target);
+  }));
+});
+`;
+
 export const MANIFEST_JSON = JSON.stringify({
   name: "GlaudeCode Cockpit",
   short_name: "Cockpit",
@@ -252,6 +282,9 @@ function connectWs() {
 
 async function start() {
   try {
+    // Register the push service worker (V8) — only in a secure context (HTTPS via Tailscale Serve, or
+    // localhost). A bare-tailnet HTTP origin can't register one; push simply stays unavailable there.
+    if (location.protocol === "https:" && "serviceWorker" in navigator) navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(function () {});
     DIR = (await rpc("defaultDir")).dir;
     approvals = await rpc("pendingApprovals");
     render();
