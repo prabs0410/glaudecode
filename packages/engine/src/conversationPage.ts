@@ -227,7 +227,7 @@ export const CONVERSATION_HTML = `<!doctype html>
 
   function renderChat(msgs){
     msgs=msgs||[]; dbg.msgs=msgs.length; dbg.errs.msgs=null;
-    // BL-9: the session is resolved once at load — but you may open the chat BEFORE `claude` starts,
+    // BL-9: the session is resolved once at load — but you may open the chat BEFORE claude starts,
     // or swap sessions. So if it stays empty, periodically RE-INFER (every ~5 empty polls ≈ 10s); a
     // non-empty render resets the counter. Self-heals without a manual reload (the split chip + drawer
     // are the manual path).
@@ -320,6 +320,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
 
   function poll(){
+    if(document.hidden) return; // D1: don't drain 3 RPCs/2s over the tailnet while backgrounded (battery/radio)
     rpc("getSessionMessages",{id:sid,dir:DIR}).then(renderChat,function(e){ failChat("getSessionMessages",e); });
     rpc("agentState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.agent=null; dbg.agent=s&&s.status; setStatus(s); refreshDbg(); },function(e){ dbg.errs.agent=emsg(e); refreshDbg(); });
     rpc("promptState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.prompt=null; dbg.prompt=s&&(s.isWaiting?"waiting":"idle"); renderAnswer(s); },function(e){ dbg.errs.prompt=emsg(e); refreshDbg(); });
@@ -553,6 +554,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   window.addEventListener("unhandledrejection",function(e){ var m=(e&&e.reason&&(e.reason.message||e.reason))||"unhandled rejection"; dbg.errs.js=String(m); refreshDbg(); postErr("error","unhandledrejection",String(m)); });
   rpc("defaultDir").then(function(d){ DIR=(d&&d.dir)||""; dbg.errs.dir=null; resolveAndPoll(); }).catch(function(e){ dbg.errs.dir=emsg(e); refreshDbg(); resolveAndPoll(); });
   gateUI(); if(canType) connect();
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) poll(); }); // D1: catch up immediately when refocused
   setInterval(poll,2000);
 })();
 </script>

@@ -124,5 +124,6 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **B3 (BL-9)** re-infer the phone session — re-resolves every ~5 empty polls (≈10s) so a chat opened before `claude` starts self-heals; the split chip/drawer are the manual path.
 - ✅ **B4 (BL-10)** root `bun run verify` — chains engine test + tsc×2 + vite build + cargo check; exits 0. **PHASE B COMPLETE.**
 - 🚩 **C1 (BL-4)** token persistence across respawn — RECLASSIFIED HUMAN-GATED (reverses the audited "no token at rest"; needs a founder/threat-model decision on the approach). Flagged, skipped — not a failure. See the human-gated section.
-- 🔨 **D1 (#12)** visibility-gate the conversation poll — next (Phase D: perf/tests/debt).
+- ✅ **D1 (#12)** visibility-gate the conversation poll — `poll()` skips when `document.hidden`; re-polls on refocus. (Also forward-fixed a stray-backtick that broke the template literal in `f598f70`.)
+- 🔨 **D2 (#13)** session-snapshot cache / combined RPC — next.
 - ⏳ rest of D, E pending (this loop).
