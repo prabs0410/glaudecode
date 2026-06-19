@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { wrapForPaste } from "../src/termInput";
+import { wrapForPaste, moveToOptionKeys } from "../src/termInput";
 import { filterSessions } from "../src/filter";
 import { chordFromEvent } from "../src/keybindings";
 import { TERM_HTML } from "../src/termPage";
@@ -176,5 +176,59 @@ describe("mirror drift — the four paste-jacking scrubs (#27, audit H4)", () =>
     expect(extractFn(CONVERSATION_HTML, "function wrapPaste")).toMatch(fixpoint);
     expect(extractFn(readDesktop("TerminalPane.tsx"), "function scrubPasteMarkers")).toMatch(fixpoint);
     expect(extractFn(readFileSync(join(import.meta.dir, "..", "src", "termInput.ts"), "utf8"), "export function wrapForPaste")).toMatch(fixpoint);
+  });
+});
+
+describe("served-page option selection is EXECUTED, not just present (#21, audit BL-3)", () => {
+  // The "wrong option-index ships green" gap: both phone pages compute the absolute key sequence to
+  // land on AskUserQuestion option `i` of `n` — conversationPage as a `moveTo(i)` closure, termPage as
+  // an inline pair of for-loops — but NOTHING executed that logic in a test, so a drift from the
+  // canonical moveToOptionKeys (e.g. back to the old "down × i from row 0", which silently submits the
+  // WRONG option — Allow vs Deny) would pass. This extracts the actual served logic and RUNS it.
+
+  /** Pull the two arrow-building loops the served page uses (tolerant of spacing + the accumulator
+   *  name `s`/`seq`) and compile them into a callable (n, i) → key sequence. The JS parser interprets
+   *  the `\x1b` text exactly as the browser would. */
+  function extractSelectionKeys(html: string): (n: number, i: number) => string {
+    const re = /for\s*\(\s*var u\s*=\s*0;\s*u\s*<\s*n;\s*u\+\+\s*\)\s*(\w+)\s*\+=\s*"\\x1b\[A";\s*for\s*\(\s*var d\s*=\s*0;\s*d\s*<\s*i;\s*d\+\+\s*\)\s*\1\s*\+=\s*"\\x1b\[B";/;
+    const m = html.match(re);
+    if (!m) throw new Error("absolute-selection loops not found in served page");
+    const acc = m[1];
+    return new Function("n", "i", `var ${acc}=""; ${m[0]} return ${acc};`) as (n: number, i: number) => string;
+  }
+
+  const convSelect = extractSelectionKeys(CONVERSATION_HTML);
+  const termSelect = extractSelectionKeys(TERM_HTML);
+
+  test("both pages' selection sequences MATCH the canonical moveToOptionKeys over a battery", () => {
+    const cases: Array<[number, number]> = [
+      [1, 0], [2, 0], [2, 1], [3, 0], [3, 1], [3, 2], [4, 1], [5, 4], [8, 7],
+    ];
+    for (const [n, i] of cases) {
+      const want = moveToOptionKeys(n, i); // up × n (pin to top, clamps) then down × i
+      expect(convSelect(n, i)).toBe(want);
+      expect(termSelect(n, i)).toBe(want);
+    }
+  });
+
+  test("the served selection pins to the TOP first (up × n) — position-independent, never row-0-relative", () => {
+    // The whole BL-3 fix: lead with up × n so the count is exact regardless of any pre-highlight.
+    const up = "\x1b[A";
+    expect(convSelect(3, 2).startsWith(up.repeat(3))).toBe(true);
+    expect(termSelect(3, 2).startsWith(up.repeat(3))).toBe(true);
+    // selecting option 0 is ALL ups, no downs (never moves below the top)
+    expect(convSelect(4, 0)).toBe(up.repeat(4));
+    expect(termSelect(4, 0)).toBe(up.repeat(4));
+  });
+
+  test("the submit/​toggle bytes are correct in source — single=Enter, multi=Space-toggle + one Confirm Enter", () => {
+    // Guards the OTHER half of BL-3 (the old bug sent a bare Enter per option, submitting early). A
+    // single-select option appends \r; a multiSelect option appends a space (toggle); the Confirm sends \r.
+    // conversationPage (named moveTo): single appends \r, multi appends a space.
+    expect(CONVERSATION_HTML).toContain('moveTo(i)+"\\r"'); // single-select submit
+    expect(CONVERSATION_HTML).toContain('moveTo(i)+" "'); // multiSelect toggle
+    // termPage (inline seq): the single block submits seq + \r; the multi block toggles with a space.
+    expect(TERM_HTML).toMatch(/seq\s*\+\s*"\\r"/); // single-select submit
+    expect(TERM_HTML).toMatch(/seq\s*\+\s*" "/); // multiSelect toggle
   });
 });
