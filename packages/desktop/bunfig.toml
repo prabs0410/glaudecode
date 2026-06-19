@@ -1,0 +1,5 @@
+# Desktop test config. Preload a DOM (happy-dom) so React component tests for the safety surface
+# (RemoteArmedChips kill switch, PairingModal consent gates) can render under `bun test`. We use Bun's
+# runner for the whole repo rather than adding vitest — one runner, one style (founder decision).
+[test]
+preload = ["./test/happydom.ts"]

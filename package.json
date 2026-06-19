@@ -7,10 +7,15 @@
   "workspaces": [
     "packages/*"
   ],
+  "comment:react": "react/react-dom are declared HERE at the workspace root (same caret range as packages/desktop, the real consumer) purely to DEDUPE to one instance: otherwise bun nests a copy under packages/desktop AND hoists one to root, so a component-under-test binds one react while @testing-library/react's react-dom binds the other → 'Invalid hook call' in the safety-UI tests. A single root copy keeps the desktop bun-test runner sane. (#20)",
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
   "comment:scripts": "Use (cd <pkg> && …) subshells, NOT `bun --cwd <pkg> run <script>` — on Bun 1.2.18 that form prints `bun run` help and exits 0 (a silent no-op), so the gate reported false-green while running nothing. Each subshell returns to the repo root; cargo check then resolves its --manifest-path from there.",
   "scripts": {
     "desktop": "(cd packages/desktop && bun run tauri dev)",
     "desktop:build": "(cd packages/desktop && bun run tauri build)",
-    "verify": "(cd packages/engine && bun test) && (cd packages/engine && bun run typecheck) && (cd packages/desktop && bun run build) && cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml"
+    "verify": "(cd packages/engine && bun test) && (cd packages/engine && bun run typecheck) && (cd packages/desktop && bun test) && (cd packages/desktop && bun run build) && cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml"
   }
 }
