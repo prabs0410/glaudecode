@@ -53,6 +53,7 @@ export type RpcMethod =
   | "deleteSession"
   | "agentState"
   | "promptState"
+  | "sessionSnapshot"
   | "timeline"
   | "sessionCost"
   | "sessionChanges"
@@ -125,6 +126,7 @@ export const METHODS = new Set<RpcMethod>([
   "deleteSession",
   "agentState",
   "promptState",
+  "sessionSnapshot",
   "timeline",
   "sessionCost",
   "sessionChanges",
@@ -192,7 +194,7 @@ export const METHODS = new Set<RpcMethod>([
 // pairing admin is "local" (desktop bearer only); EVERYTHING ELSE defaults to "steer", so a
 // new mutating method is never accidentally exposed to a view-only remote token.
 export const VIEW_METHODS = new Set<string>([
-  "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "promptState", "timeline", "sessionCost",
+  "listSessions", "getSessionInfo", "getSessionMessages", "agentState", "promptState", "sessionSnapshot", "timeline", "sessionCost",
   "sessionChanges", "conflicts", "contextUsage", "pendingApprovals", "listMemory", "readMemory",
   "readProjectInstructions", "loadedContext", "buildGraph", "search", "listWorktrees",
   "sessionChangesGit", "gitDiff", "compareSessions", "resumeBriefing", "buildReplay", "listBookmarks",
@@ -279,6 +281,22 @@ function getSearchIndex(deps: DispatchDeps): SearchIndex {
     _searchIndex = new SearchIndex(join(dir, "index.db"));
   }
   return _searchIndex;
+}
+
+// Short-TTL cache of a session's parsed messages (D2): a phone poll wants messages + agentState +
+// promptState — all derivable from ONE read — and several surfaces poll concurrently. Reading +
+// parsing the transcript is the cost, so cache it ~1s; a burst of reads collapses to a single read.
+interface SnapEntry { msgs: SessionMessage[]; atMs: number; }
+const _snapCache = new Map<string, SnapEntry>();
+const SNAP_TTL_MS = 1000;
+async function readMessagesCached(adapter: ClaudeCodeAdapter, id: string, dir: string, now: number): Promise<SessionMessage[]> {
+  const key = id + " " + dir;
+  const hit = _snapCache.get(key);
+  if (hit && now - hit.atMs < SNAP_TTL_MS) return hit.msgs;
+  const msgs = await adapter.getSessionMessages(id, { dir });
+  _snapCache.set(key, { msgs, atMs: now });
+  if (_snapCache.size > 64) for (const [k, v] of _snapCache) if (now - v.atMs >= SNAP_TTL_MS) _snapCache.delete(k); // bound: drop stale
+  return msgs;
 }
 
 /** Concatenate a session's human-readable text (prompts, replies, thinking) for indexing. */
@@ -393,6 +411,13 @@ export async function dispatch(
       // Read-only: what Claude is asking right now (for the phone's tappable answer buttons, Mode C).
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });
       return derivePromptState(msgs, Date.now());
+    }
+    case "sessionSnapshot": {
+      // D2: ONE transcript read -> messages + agentState + promptState, instead of 3 separate
+      // re-reads per phone poll. A short-TTL cache also collapses concurrent reads across surfaces.
+      const id = req(p.id, "id"), dir = req(p.dir, "dir"), now = Date.now();
+      const msgs = await readMessagesCached(adapter, id, dir, now);
+      return { messages: msgs, agentState: deriveAgentState(msgs, now), promptState: derivePromptState(msgs, now) };
     }
     case "timeline": {
       const msgs = await adapter.getSessionMessages(req(p.id, "id"), { dir: req(p.dir, "dir") });

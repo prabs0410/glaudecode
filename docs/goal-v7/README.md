@@ -125,5 +125,6 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **B4 (BL-10)** root `bun run verify` — chains engine test + tsc×2 + vite build + cargo check; exits 0. **PHASE B COMPLETE.**
 - 🚩 **C1 (BL-4)** token persistence across respawn — RECLASSIFIED HUMAN-GATED (reverses the audited "no token at rest"; needs a founder/threat-model decision on the approach). Flagged, skipped — not a failure. See the human-gated section.
 - ✅ **D1 (#12)** visibility-gate the conversation poll — `poll()` skips when `document.hidden`; re-polls on refocus. (Also forward-fixed a stray-backtick that broke the template literal in `f598f70`.)
-- 🔨 **D2 (#13)** session-snapshot cache / combined RPC — next.
+- ✅ **D2 (#13)** combined `sessionSnapshot` RPC + 1s cache — ONE transcript read → messages + agentState + promptState (was 3 reads/poll); the phone poll now fires 1 RPC instead of 3. 403 engine tests (+1: one cached read drives all three). (Desktop pollers #33 still use the separate RPCs — a later item.)
+- 🔨 **D3 (#15)** incremental `renderChat` (no full DOM rebuild per block) — next.
 - ⏳ rest of D, E pending (this loop).

@@ -320,10 +320,15 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
 
   function poll(){
-    if(document.hidden) return; // D1: don't drain 3 RPCs/2s over the tailnet while backgrounded (battery/radio)
-    rpc("getSessionMessages",{id:sid,dir:DIR}).then(renderChat,function(e){ failChat("getSessionMessages",e); });
-    rpc("agentState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.agent=null; dbg.agent=s&&s.status; setStatus(s); refreshDbg(); },function(e){ dbg.errs.agent=emsg(e); refreshDbg(); });
-    rpc("promptState",{id:sid,dir:DIR}).then(function(s){ dbg.errs.prompt=null; dbg.prompt=s&&(s.isWaiting?"waiting":"idle"); renderAnswer(s); },function(e){ dbg.errs.prompt=emsg(e); refreshDbg(); });
+    if(document.hidden) return; // D1: don't drain RPCs over the tailnet while backgrounded (battery/radio)
+    // D2: ONE combined read (messages + agentState + promptState) instead of 3 separate transcript re-reads.
+    rpc("sessionSnapshot",{id:sid,dir:DIR}).then(function(r){
+      r=r||{};
+      dbg.errs.msgs=null; renderChat(r.messages);
+      var a=r.agentState; dbg.errs.agent=null; dbg.agent=a&&a.status; setStatus(a);
+      var pr=r.promptState; dbg.errs.prompt=null; dbg.prompt=pr&&(pr.isWaiting?"waiting":"idle"); renderAnswer(pr);
+      refreshDbg();
+    },function(e){ failChat("sessionSnapshot",e); dbg.errs.agent=emsg(e); dbg.errs.prompt=emsg(e); refreshDbg(); });
   }
 
   // ---- composer ----

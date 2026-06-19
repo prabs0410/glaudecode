@@ -80,6 +80,23 @@ describe("dispatch", () => {
     expect(out.status).toBe("thinking");
   });
 
+  test("sessionSnapshot returns messages + agentState + promptState from ONE cached read (D2)", async () => {
+    let reads = 0;
+    const a = stubAdapter({
+      getSessionMessages: async () => {
+        reads++;
+        return [{ id: "m", role: "user", timestamp: new Date().toISOString(), blocks: [] }] as any;
+      },
+    });
+    const out: any = await dispatch(a, "sessionSnapshot", { id: "snap-d2", dir: "/r" });
+    expect(out.messages).toHaveLength(1);
+    expect(out.agentState.status).toBe("thinking");
+    expect(out.promptState).toMatchObject({ isWaiting: false });
+    expect(reads).toBe(1); // ONE transcript read drives all three derivations
+    await dispatch(a, "sessionSnapshot", { id: "snap-d2", dir: "/r" }); // within the short TTL
+    expect(reads).toBe(1); // ...the cache collapses the burst to a single read
+  });
+
   test("timeline computes tool/thinking entries from messages", async () => {
     const a = stubAdapter({
       getSessionMessages: async () =>
