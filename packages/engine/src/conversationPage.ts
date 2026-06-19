@@ -23,6 +23,9 @@ export const CONVERSATION_HTML = `<!doctype html>
   #bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
   #bar a{color:var(--accent2);text-decoration:none;font-size:18px}
   #title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42%}
+  /* BL-6: when the rendered session != the pane you type into, show it (never silent). Tap = switch. */
+  #splitchip{display:none;font-size:11px;color:var(--amber);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34%;border:1px solid #5a4a1a;border-radius:6px;padding:1px 6px}
+  #splitchip.on{display:inline-block}
   #status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
   #status .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
   #status.run .dot{background:var(--amber)} #status.run{color:var(--amber)}
@@ -107,6 +110,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   <div id="bar">
     <button id="menu" title="Menu">☰</button>
     <span id="title" class="muted">…</span>
+    <span id="splitchip" title="You're typing into a different pane than the session shown — tap to switch"></span>
     <span id="status"><span class="dot"></span><span class="t">…</span></span>
     <a id="toterm" class="ib" title="Raw terminal" href="#">⌨</a>
   </div>
@@ -287,17 +291,27 @@ export const CONVERSATION_HTML = `<!doctype html>
   // "Detected Claude session in shell"). We RENDER sid but still TYPE into paneId. The HUD shows both.
   function tsOf(s){ var v=s&&s.lastModified; if(v==null)return 0; if(typeof v==="number")return v; var n=Date.parse(String(v)); return isNaN(n)?0:n; }
   function pickRecent(list){ var best=null,bt=-1; (list||[]).forEach(function(s){ var t=tsOf(s); if(t>bt){bt=t;best=s;} }); return best; }
+  // BL-6: never let the read/type split be silent. When the rendered session (sid) differs from the
+  // pane you type into (paneId) — the founder's normal "claude in a shell" case — show it in the bar;
+  // tapping opens the drawer to switch session. (Full detail is also in the Debug HUD.)
+  var splitEl=document.getElementById("splitchip");
+  function updateSplitChip(){
+    var t=document.getElementById("title");
+    if(sid && sid!==paneId){ t.textContent="📄 "+sid.slice(0,8); splitEl.textContent="⌨ "+paneId.slice(0,10); splitEl.classList.add("on"); }
+    else { t.textContent=(paneId||"").slice(0,12); splitEl.classList.remove("on"); }
+  }
+  if(splitEl) splitEl.onclick=function(){ var m=document.getElementById("menu"); if(m) m.click(); };
   function resolveAndPoll(){
     rpc("getSessionMessages",{id:paneId,dir:DIR}).then(function(m){
-      if(m&&m.length){ sid=paneId; dbg.resolved="pane id"; dbg.errs.sessions=null; refreshDbg(); poll(); }
+      if(m&&m.length){ sid=paneId; dbg.resolved="pane id"; dbg.errs.sessions=null; updateSplitChip(); refreshDbg(); poll(); }
       else inferSession();
     },function(){ inferSession(); });
   }
   function inferSession(){
     rpc("listSessions",{dir:DIR}).then(function(list){
       var best=pickRecent(list);
-      sid=best?best.id:paneId; dbg.resolved=best?"inferred (recent in project)":"no session found"; dbg.errs.sessions=null; refreshDbg(); poll();
-    },function(e){ dbg.errs.sessions=emsg(e); sid=paneId; refreshDbg(); poll(); });
+      sid=best?best.id:paneId; dbg.resolved=best?"inferred (recent in project)":"no session found"; dbg.errs.sessions=null; updateSplitChip(); refreshDbg(); poll();
+    },function(e){ dbg.errs.sessions=emsg(e); sid=paneId; updateSplitChip(); refreshDbg(); poll(); });
   }
 
   function poll(){

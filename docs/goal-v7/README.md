@@ -119,5 +119,6 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **A3 (OBS-4)** phone Debug tab + scoped `diagnosticsView` (STEER, privacy-safe subset — rpc/ws/engine/phone only, never pair/revoke/audit) — 5th drawer tab renders health + event feed. (399 engine tests.) **OBS-4 complete.**
 - ✅ **A4 (OBS-5)** audit surfaced on the Mac (Audit tab) + APM metrics (already in A2's panel). **PHASE A COMPLETE — the observability layer is done.**
 - ✅ **B1 (BL-3)** absolute tap-to-answer — pure `moveToOptionKeys` (pin-to-top then down×index, position-independent) + proper multiSelect (Space-toggle + Confirm), applied to BOTH pages. 402 engine tests (+3). The wrong-Allow bug is fixed.
-- 🔨 **B2 (BL-6)** surface `sid != paneId` (a "showing X · typing to Y" chip) — next.
-- ⏳ B3, B4, C, D, E pending (this loop).
+- ✅ **B2 (BL-6 surface)** `sid != paneId` chip — when the rendered session differs from the typed pane (the claude-in-a-shell case), the bar shows "📄 session · ⌨ pane" (tap → drawer to switch). The typed-send RPC is a noted bigger follow-up. (Surface done.)
+- 🔨 **B3 (BL-9)** re-infer the phone session periodically + **B4 (BL-10)** `bun run verify` — next.
+- ⏳ C, D, E pending (this loop).
