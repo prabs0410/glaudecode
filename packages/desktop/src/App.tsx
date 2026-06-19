@@ -18,6 +18,7 @@ import { Splitter } from "./Splitter";
 import { ResumeBanner } from "./ResumeBanner";
 import { TERMINAL_THEMES, THEME_NAMES, DEFAULT_THEME } from "./terminalThemes";
 import { matchEvent } from "./keybindings";
+import { inferShellSession } from "./sessionInference";
 import {
   createWorktree,
   getKeybindings,
@@ -208,36 +209,33 @@ export default function App() {
   }, [activeCwd]);
 
   // Detect a Claude session running inside the active *Shell* pane (a `claude` the user started
-  // by hand, not via "+ Claude"). We can't know its id directly, so infer it: poll the active
-  // cwd's sessions and take the most-recently-modified one IF it changed in the last ~2 min
-  // (i.e. it's actively live). This binds the dock to a session GlaudeCode didn't spawn.
+  // by hand, not via "+ Claude"). We can't know its id directly, so infer it from the active cwd's
+  // sessions via the pure `inferShellSession` tiebreaker (engine-mirrored, unit-tested): it docks a
+  // single live session confidently and refuses to silently bind when two are live in one repo —
+  // surfacing `ambiguous` instead of locking onto the wrong one (audit #11).
   const [inferred, setInferred] = useState<{ sessionId: string; dir: string } | null>(null);
+  const [inferAmbiguous, setInferAmbiguous] = useState(false);
   useEffect(() => {
     const p = panes.find((x) => x.paneId === activePaneId);
     // Claude panes already bind via `inspected`; only infer for non-Claude (shell) panes.
     if (!activeCwd || p?.kind === "claude") {
       setInferred(null);
+      setInferAmbiguous(false);
       return;
     }
     let alive = true;
-    let locked: string | null = null; // sticky: the session id we've locked onto for this cwd
-    const LIVE_WINDOW = 2 * 60 * 1000;
+    let locked: string | null = null; // sticky lock, threaded back into the next tick
     setInferred(null); // reset when (re)entering a shell pane / new cwd
+    setInferAmbiguous(false);
     const tick = async () => {
       try {
         const sessions = await listSessions(activeCwd);
         if (!alive) return;
-        let best: { s: SessionSummary; t: number } | null = null;
-        for (const s of sessions) {
-          const t = sessionTs(s);
-          if (t > (best?.t ?? -1)) best = { s, t };
-        }
-        // Lock onto the newest session that's been live recently. Once locked, stay on it even
-        // as it idles (sticky) — only switch if a different, newer-recent session appears.
-        if (best && Date.now() - best.t < LIVE_WINDOW && best.s.id !== locked) {
-          locked = best.s.id;
-          setInferred({ sessionId: best.s.id, dir: activeCwd });
-        }
+        const candidates = sessions.map((s) => ({ id: s.id, ts: sessionTs(s) }));
+        const r = inferShellSession(candidates, { now: Date.now(), locked });
+        locked = r.locked;
+        setInferred(r.sessionId ? { sessionId: r.sessionId, dir: activeCwd } : null);
+        setInferAmbiguous(r.ambiguous);
       } catch {
         /* leave the current inference in place on a transient read error */
       }
@@ -570,6 +568,7 @@ export default function App() {
             selectedId={docked?.sessionId ?? null}
             projectDir={dir}
             inferred={!inspected && !!inferred}
+            ambiguous={!inspected && inferAmbiguous}
             width={dockW}
           />
         )}

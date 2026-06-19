@@ -1235,6 +1235,14 @@ body,
   background: #1c1708;
   border-bottom: 1px solid #2d2410;
 }
+/* A genuine two-live-session tie — the dock may be showing the wrong session (audit #11). Red-tone
+   so it reads as "be careful", not the neutral amber of a confident auto-detect. */
+.dock-inferred.ambiguous {
+  color: #f0883e;
+  background: #2a1206;
+  border-bottom-color: #4a2208;
+  cursor: help;
+}
 .dock-tabs {
   display: flex;
   border-bottom: 1px solid #1f2630;

@@ -16,6 +16,7 @@ export function RightDock({
   selectedId,
   projectDir,
   inferred = false,
+  ambiguous = false,
   width,
 }: {
   dir: string | null;
@@ -24,6 +25,9 @@ export function RightDock({
   projectDir: string | null;
   /** True when this session was auto-detected in a shell pane (heuristic), not spawned by us. */
   inferred?: boolean;
+  /** True when ≥2 sessions are live in this cwd and the inference can't tell which the shell drives;
+   *  the dock may be showing the wrong one (audit #11) — say so rather than imply certainty. */
+  ambiguous?: boolean;
   width?: number;
 }) {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -31,8 +35,15 @@ export function RightDock({
   return (
     <section className="rightdock" style={width ? { width, minWidth: width } : undefined}>
       {inferred && selectedId && (
-        <div className="dock-inferred" title="Auto-detected from the active shell's working directory">
-          ⌁ Detected Claude session in this shell
+        <div
+          className={`dock-inferred${ambiguous ? " ambiguous" : ""}`}
+          title={
+            ambiguous
+              ? "Multiple Claude sessions are live in this folder — this may not be the one you're typing in. Open the session in its own pane to be sure."
+              : "Auto-detected from the active shell's working directory"
+          }
+        >
+          {ambiguous ? "⚠ Multiple live sessions here — showing the newest (may be wrong)" : "⌁ Detected Claude session in this shell"}
         </div>
       )}
       <div className="dock-tabs">
