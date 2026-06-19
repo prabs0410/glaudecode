@@ -116,5 +116,6 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **OBS-2** EventLog hub + `diagnostics()` RPC + instrumentation — `1e77031`, `27c4bd3`. (397 engine tests.)
 - ✅ **A1 (OBS-3)** phone→Mac error pipe complete: `POST /clientlog-remote` + BOTH pages forward window error + unhandledrejection + tap-to-open HUD — `ffc2bd4`, `4be9183`. (398 engine tests.)
 - ✅ **A2 (OBS-4)** Mac diagnostics panel — `DiagnosticsPanel.tsx` (command palette → "Diagnostics…"): live event feed (filter by kind/level), per-method APM table, health row. Polls `diagnostics()`, pauses when hidden.
-- 🔨 **A3 (OBS-4)** phone Debug tab + scoped `diagnosticsView` — next.
-- ⏳ A4 → E pending (this loop).
+- ✅ **A3 (OBS-4)** phone Debug tab + scoped `diagnosticsView` (STEER, privacy-safe subset — rpc/ws/engine/phone only, never pair/revoke/audit) — 5th drawer tab renders health + event feed. (399 engine tests.) **OBS-4 complete.**
+- 🔨 **A4 (OBS-5)** audit surfaced on the Mac (Audit tab in the diagnostics panel) — next.
+- ⏳ Phase B → E pending (this loop).

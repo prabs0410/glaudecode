@@ -70,6 +70,7 @@ export type RpcMethod =
   | "approvalHookStatus"
   | "auditLog"
   | "diagnostics"
+  | "diagnosticsView"
   | "budgetStatus"
   | "getBudget"
   | "setBudget"
@@ -141,6 +142,7 @@ export const METHODS = new Set<RpcMethod>([
   "approvalHookStatus",
   "auditLog",
   "diagnostics",
+  "diagnosticsView",
   "budgetStatus",
   "getBudget",
   "setBudget",
@@ -204,6 +206,11 @@ export const STEER_METHODS = new Set<string>([
   "handoff", "resolveApproval", "setBudget", "reindex",
   "gitStage", "gitCommit", "gitRestore", "gitRevertHunk", "addBookmark", "removeBookmark",
   "setKeybinding", "resetKeybindings", "savePrompt", "deletePrompt", "buildSlashCommand",
+  // Read-only but activity-revealing: the phone Debug tab's diagnostics. Requires STEER (a paired
+  // device that can already act) — NOT a view device — and returns only a PRIVACY-SAFE subset
+  // (rpc/ws/engine/phone + a slim health), never the pair/revoke/audit kinds the local `diagnostics`
+  // exposes. The full stream stays LOCAL-only.
+  "diagnosticsView",
 ]);
 // Forward-looking (V5 Phase 7.2.1): a PTY-input/arming RPC would go here so it MUST be classified
 // `terminal`, never silently `steer`. EMPTY by design today — terminal RCE is gated at the WS INPUT
@@ -513,6 +520,31 @@ export async function dispatch(
           kinds,
           level: typeof p.level === "string" ? (p.level as EventLevel) : undefined,
         }) ?? [],
+        metrics: el?.rpcMetrics() ?? [],
+      };
+    }
+    case "diagnosticsView": {
+      // Phone-scoped diagnostics (STEER): a PRIVACY-SAFE subset for the phone Debug tab — health +
+      // the non-sensitive event kinds (rpc/ws/engine/phone), NEVER pair/revoke/audit/bridge which
+      // reveal other devices or the RCE trail. lastError is computed from the filtered events only.
+      const el = deps.eventLog;
+      const SAFE: EventKind[] = ["rpc", "ws", "engine", "phone"];
+      const panes = deps.paneHub?.list() ?? [];
+      const now = Date.now();
+      const events = el?.list({ limit: typeof p.limit === "number" ? Math.min(p.limit, 200) : 120, kinds: SAFE, sinceSeq: typeof p.sinceSeq === "number" ? p.sinceSeq : undefined }) ?? [];
+      let lastError: (typeof events)[number] | null = null;
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (events[i].level === "error") { lastError = events[i]; break; }
+      }
+      return {
+        health: {
+          engineUp: true,
+          uptimeMs: deps.startedAt ? now - deps.startedAt : null,
+          bridgeConnected: deps.bridgeConnected ? deps.bridgeConnected() : null,
+          panes: panes.length,
+          lastError,
+        },
+        events,
         metrics: el?.rpcMetrics() ?? [],
       };
     }

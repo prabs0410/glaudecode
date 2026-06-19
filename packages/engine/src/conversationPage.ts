@@ -137,6 +137,7 @@ export const CONVERSATION_HTML = `<!doctype html>
       <button data-s="search"><span class="gi">🔍</span>Search</button>
       <button data-s="prompts"><span class="gi">⌘</span>Prompts</button>
       <button data-s="memory"><span class="gi">🧠</span>Memory</button>
+      <button data-s="debug"><span class="gi">🩺</span>Debug</button>
     </div>
     <div id="dcontent"></div>
     <div id="dfoot">Diffs &amp; cost stay on the Mac · revoke a device on the Mac</div>
@@ -440,6 +441,7 @@ export const CONVERSATION_HTML = `<!doctype html>
       else if(name==="search") renderSearch();
       else if(name==="prompts") renderPrompts();
       else if(name==="memory") renderMemory();
+      else if(name==="debug") renderDebug();
     }
     dtabs.addEventListener("click",function(e){ var b=e.target.closest("button"); if(b) select(b.getAttribute("data-s")); });
 
@@ -490,6 +492,22 @@ export const CONVERSATION_HTML = `<!doctype html>
       dcontent.appendChild(hint(name));
       rpc("readMemory",{dir:DIR,path:path}).then(function(r){ var pre=document.createElement("pre"); pre.textContent=(r&&r.content)||""; dcontent.appendChild(pre); })
         .catch(function(){ dcontent.appendChild(hint("Couldn't read file.")); });
+    }
+    function renderDebug(){
+      dcontent.appendChild(hint("Loading…"));
+      rpc("diagnosticsView",{limit:120}).then(function(d){ clear();
+        var h=(d&&d.health)||{};
+        var head=el("roview"); head.appendChild(el("","Diagnostics")); head.appendChild(el("roTag","live")); dcontent.appendChild(head);
+        dcontent.appendChild(el("hint","engine "+(h.engineUp?"up":"down")+" · bridge "+(h.bridgeConnected?"ok":"—")+" · "+(h.panes!=null?h.panes:"?")+" panes · up "+(h.uptimeMs!=null?Math.round(h.uptimeMs/1000)+"s":"?")));
+        if(h.lastError) dcontent.appendChild(el("hint","last error: "+((h.lastError.msg)||"")));
+        var evs=(d&&d.events)||[];
+        if(!evs.length){ dcontent.appendChild(hint("No events yet.")); return; }
+        evs.slice().reverse().slice(0,80).forEach(function(e){
+          var row=el("drow","["+e.kind+"] "+e.msg+(e.data&&typeof e.data.ms==="number"?(" "+e.data.ms+"ms"):""));
+          if(e.level==="error") row.style.color="#ff9a92"; else if(e.level==="warn") row.style.color="#e3b341";
+          dcontent.appendChild(row);
+        });
+      }).catch(function(e){ clear(); dcontent.appendChild(hint("Diagnostics needs Steer access (re-pair on the Mac) or the engine is unreachable. "+((e&&e.message)||""))); });
     }
   })();
 

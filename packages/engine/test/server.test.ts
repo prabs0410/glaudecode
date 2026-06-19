@@ -105,6 +105,29 @@ describe("engine server", () => {
     expect(denied.status).toBe(403);
   });
 
+  test("diagnosticsView is steer-scoped + privacy-safe (only rpc/ws/engine/phone kinds); a view token is 403 (OBS-4)", async () => {
+    const steer = server.pairing.redeem(server.pairing.createPairCode("steer").code, "phone-dbg")!.token;
+    const res = await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${steer}`, "content-type": "application/json" },
+      body: JSON.stringify({ method: "diagnosticsView", params: {} }),
+    });
+    expect(res.status).toBe(200);
+    const { result } = await res.json();
+    expect(result.health.engineUp).toBe(true);
+    expect(Array.isArray(result.events)).toBe(true);
+    // the phone view NEVER leaks the sensitive kinds (pair/revoke/audit/bridge)
+    expect(result.events.every((e: any) => ["rpc", "ws", "engine", "phone"].includes(e.kind))).toBe(true);
+    // a view token can't reach it (requires steer)
+    const view = server.pairing.redeem(server.pairing.createPairCode("view").code, "view-dbg")!.token;
+    const denied = await fetch(`${base()}/rpc`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${view}`, "content-type": "application/json" },
+      body: JSON.stringify({ method: "diagnosticsView", params: {} }),
+    });
+    expect(denied.status).toBe(403);
+  });
+
   test("/clientlog-remote: a paired device forwards an error into the observability stream; no token → 401 (OBS-3)", async () => {
     const tok = server.pairing.redeem(server.pairing.createPairCode("view").code, "phone-log")!.token;
     const res = await fetch(`${base()}/clientlog-remote`, {
