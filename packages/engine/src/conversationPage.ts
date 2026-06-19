@@ -44,6 +44,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   #answer .opt{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line2);
     border-radius:9px;padding:11px 12px;margin-bottom:7px;color:var(--text);font-size:14px;cursor:pointer}
   #answer .opt small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  #answer .opt.on{border-color:var(--accent);background:#16263a}
   /* composer */
   #composer{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line)}
   #keys{display:flex;gap:6px;overflow-x:auto;padding:7px 10px 0}
@@ -263,15 +264,21 @@ export const CONVERSATION_HTML = `<!doctype html>
     if(!q||!q.options.length){ box.style.display="none"; return; }
     box.style.display="block";
     box.appendChild(el("q",q.question));
-    q.options.forEach(function(o,i){
-      var btn=document.createElement("button"); btn.className="opt"; btn.textContent=o.label;
-      if(o.description){ var d=el("",o.description); d.style.cssText="display:block;color:var(--muted);font-size:11px;margin-top:2px"; btn.appendChild(d); }
-      btn.onclick=function(){
-        var seq=""; for(var k=0;k<i;k++) seq+="\\x1b[B"; // down-arrow × index, then Enter (V6 hardening: live index later)
-        sendText(seq+"\\r"); box.style.display="none"; lastQ=null;
-      };
-      box.appendChild(btn);
-    });
+    // ABSOLUTE selection (BL-3 / mirror of moveToOptionKeys): pin the TUI cursor to the TOP first
+    // (up × #options — the list clamps, so it's position-independent regardless of any pre-highlight),
+    // THEN down × index. The old "down × index from assumed row 0" could silently submit the WRONG
+    // option (Allow vs Deny). multiSelect is answered by toggling (Space) + a single Confirm (Enter).
+    var n=q.options.length;
+    function moveTo(i){ var s=""; for(var u=0;u<n;u++) s+="\\x1b[A"; for(var d=0;d<i;d++) s+="\\x1b[B"; return s; }
+    function mkOpt(o){ var btn=document.createElement("button"); btn.className="opt"; btn.textContent=o.label;
+      if(o.description){ var d=el("",o.description); d.style.cssText="display:block;color:var(--muted);font-size:11px;margin-top:2px"; btn.appendChild(d); } return btn; }
+    if(q.multiSelect){
+      q.options.forEach(function(o,i){ var btn=mkOpt(o); btn.onclick=function(){ sendText(moveTo(i)+" "); btn.classList.toggle("on"); }; box.appendChild(btn); });
+      var conf=document.createElement("button"); conf.className="opt"; conf.textContent="✓ Confirm selection";
+      conf.onclick=function(){ sendText("\\r"); box.style.display="none"; lastQ=null; }; box.appendChild(conf);
+    } else {
+      q.options.forEach(function(o,i){ var btn=mkOpt(o); btn.onclick=function(){ sendText(moveTo(i)+"\\r"); box.style.display="none"; lastQ=null; }; box.appendChild(btn); });
+    }
   }
 
   // Resolve WHICH session to render. A "+Claude" pane has paneId===sessionId; but running claude

@@ -33,3 +33,17 @@ export function ctrlByte(ch: string): string {
   if (code >= 0x61 && code <= 0x7a) return String.fromCharCode(code & 0x1f); // a–z (already handled by toUpperCase, kept explicit)
   return "";
 }
+
+/** Keystrokes to ABSOLUTELY land on option `index` of a Claude AskUserQuestion list with `numOptions`
+ *  options: first pin the cursor to the TOP (up-arrow × numOptions — the list clamps at the top, so
+ *  this is position-INDEPENDENT regardless of any pre-highlighted default or a prior move), then
+ *  down-arrow × index. Returns ONLY the navigation (no Enter/Space) — the caller appends "\r" to submit
+ *  a single-select or " " to toggle a multiSelect. Fixes the wrong-option bug from assuming the cursor
+ *  starts at row 0 (BL-3 / audit M11). MIRRORED in termPage.ts + conversationPage.ts. */
+export function moveToOptionKeys(numOptions: number, index: number): string {
+  const up = "\x1b[A";
+  const down = "\x1b[B";
+  const n = Math.max(1, Math.floor(numOptions) || 1);
+  const i = Math.max(0, Math.min(Math.floor(index) || 0, n - 1));
+  return up.repeat(n) + down.repeat(i);
+}

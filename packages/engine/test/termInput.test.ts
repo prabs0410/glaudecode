@@ -1,8 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { ctrlByte, wrapForPaste } from "../src/termInput";
+import { ctrlByte, wrapForPaste, moveToOptionKeys } from "../src/termInput";
 import { TERM_HTML } from "../src/termPage";
 
 const E = "\x1b"; // ESC
+
+describe("moveToOptionKeys (absolute tap-to-answer — BL-3)", () => {
+  test("pins to the top (up × numOptions) then goes down × index", () => {
+    expect(moveToOptionKeys(3, 0)).toBe((E + "[A").repeat(3)); // up×3, down×0
+    expect(moveToOptionKeys(3, 2)).toBe((E + "[A").repeat(3) + (E + "[B").repeat(2));
+    expect(moveToOptionKeys(4, 1)).toBe((E + "[A").repeat(4) + (E + "[B").repeat(1));
+  });
+  test("is position-independent (always starts by pinning to the top)", () => {
+    // No matter the prior cursor, up×n reaches the top of an n-item clamped list, so the down count is exact.
+    expect(moveToOptionKeys(2, 1).startsWith((E + "[A").repeat(2))).toBe(true);
+  });
+  test("clamps a bad index + degenerate counts (never navigates past the list)", () => {
+    expect(moveToOptionKeys(3, 9)).toBe((E + "[A").repeat(3) + (E + "[B").repeat(2)); // index clamped to 2
+    expect(moveToOptionKeys(3, -1)).toBe((E + "[A").repeat(3)); // index clamped to 0
+    expect(moveToOptionKeys(0, 0)).toBe(E + "[A"); // numOptions floored to 1
+  });
+});
 /** A wrapped paste must carry NO end-marker except the trailing wrapper — otherwise the PTY ends
  *  the paste early and runs the remainder as live keystrokes (paste-jacking). */
 function hasInteriorMarker(out: string): boolean {

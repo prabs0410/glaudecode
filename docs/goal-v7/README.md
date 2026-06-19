@@ -118,5 +118,6 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 - ✅ **A2 (OBS-4)** Mac diagnostics panel — `DiagnosticsPanel.tsx` (command palette → "Diagnostics…"): live event feed (filter by kind/level), per-method APM table, health row. Polls `diagnostics()`, pauses when hidden.
 - ✅ **A3 (OBS-4)** phone Debug tab + scoped `diagnosticsView` (STEER, privacy-safe subset — rpc/ws/engine/phone only, never pair/revoke/audit) — 5th drawer tab renders health + event feed. (399 engine tests.) **OBS-4 complete.**
 - ✅ **A4 (OBS-5)** audit surfaced on the Mac (Audit tab) + APM metrics (already in A2's panel). **PHASE A COMPLETE — the observability layer is done.**
-- 🔨 **B1 (BL-3)** absolute tap-to-answer (wrong-Allow bug) — next.
-- ⏳ Phase B (rest) → E pending (this loop).
+- ✅ **B1 (BL-3)** absolute tap-to-answer — pure `moveToOptionKeys` (pin-to-top then down×index, position-independent) + proper multiSelect (Space-toggle + Confirm), applied to BOTH pages. 402 engine tests (+3). The wrong-Allow bug is fixed.
+- 🔨 **B2 (BL-6)** surface `sid != paneId` (a "showing X · typing to Y" chip) — next.
+- ⏳ B3, B4, C, D, E pending (this loop).

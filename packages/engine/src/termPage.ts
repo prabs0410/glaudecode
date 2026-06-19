@@ -280,9 +280,9 @@ export const TERM_HTML = `<!doctype html>
     el.appendChild(qd);
     // A multiSelect prompt is answered by TOGGLING options (Space) and submitting once (Enter) — the
     // old code sent down×i + bare Enter for every option, silently confirming the WRONG/empty
-    // selection (audit M11). We track the TUI's highlighted row (assumed to start at 0, same as the
-    // single-select path) and move relative to it; a separate Confirm button submits. Best-effort.
-    var cursor = 0;
+    // selection (audit M11). Each tap now navigates ABSOLUTELY: pin the cursor to the TOP first
+    // (up × #options, which clamps) then down × index — position-independent (BL-3) — then Space.
+    // A separate Confirm button submits.
     function mkOpt(o) {
       var btn = document.createElement("button"); btn.className = "smartbtn";
       btn.textContent = o.label; // textContent — never innerHTML — so option text can't inject markup
@@ -296,10 +296,9 @@ export const TERM_HTML = `<!doctype html>
       q.options.forEach(function (o, i) {
         var btn = mkOpt(o);
         btn.onclick = function () {
-          var delta = i - cursor, step = delta >= 0 ? "\\x1b[B" : "\\x1b[A", seq = "";
-          for (var k = 0; k < Math.abs(delta); k++) seq += step;
-          sendText(seq + " "); // move to row i, then Space toggles it (no submit)
-          cursor = i;
+          // Absolute: pin to top (up × #options, clamps) then down × i, then Space toggles (BL-3).
+          var n = q.options.length, seq = ""; for (var u = 0; u < n; u++) seq += "\\x1b[A"; for (var d = 0; d < i; d++) seq += "\\x1b[B";
+          sendText(seq + " ");
           btn.classList.toggle("on"); // reflect the toggle locally
         };
         el.appendChild(btn);
@@ -311,7 +310,7 @@ export const TERM_HTML = `<!doctype html>
       q.options.forEach(function (o, i) {
         var btn = mkOpt(o);
         btn.onclick = function () {
-          var seq = ""; for (var k = 0; k < i; k++) seq += "\\x1b[B"; // down-arrow × index
+          var n = q.options.length, seq = ""; for (var u = 0; u < n; u++) seq += "\\x1b[A"; for (var d = 0; d < i; d++) seq += "\\x1b[B"; // absolute pin-to-top (BL-3)
           sendText(seq + "\\r"); // single-select: navigate + submit
           el.innerHTML = ""; lastQ = null; // clear after answering
         };
