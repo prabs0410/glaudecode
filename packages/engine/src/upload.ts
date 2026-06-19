@@ -29,6 +29,49 @@ export function safeUploadName(raw: string): string {
 }
 
 /**
+ * Read a byte stream into a single buffer, aborting the moment the running total exceeds `cap` (#36).
+ * The naive `await request.arrayBuffer()` buffers the WHOLE body before any size check, so a chunked
+ * upload with no honest `content-length` could OOM the sidecar before a post-hoc `bytes.length > cap`
+ * fired. This counts bytes AS they arrive and cancels the stream at the first chunk over the cap, so
+ * we never hold more than `cap` (+ one chunk) in memory. Returns the bytes, or `null` if the cap was
+ * exceeded (the caller responds 413). A null stream → an empty buffer (an empty body the caller 400s).
+ */
+export async function readStreamCapped(
+  stream: ReadableStream<Uint8Array> | null | undefined,
+  cap: number,
+): Promise<Uint8Array | null> {
+  if (!stream) return new Uint8Array(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    let res: Awaited<ReturnType<typeof reader.read>>;
+    try {
+      res = await reader.read();
+    } catch {
+      return null; // a broken/aborted body is treated as a failed upload, not a partial save
+    }
+    if (res.done) break;
+    const value = res.value;
+    if (!value || value.byteLength === 0) continue;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel().catch(() => {}); // stop the peer streaming more; we already refuse it
+      return null;
+    }
+    chunks.push(value);
+  }
+  if (chunks.length === 1) return chunks[0];
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out;
+}
+
+/**
  * Pick a non-clobbering destination filename: if `name` is free, use it; otherwise insert -1, -2 …
  * before the extension. `exists` is injected so this stays pure + unit-testable.
  */

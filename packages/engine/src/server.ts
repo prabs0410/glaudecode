@@ -27,7 +27,7 @@ import { TERM_HTML } from "./termPage";
 import { CONVERSATION_HTML } from "./conversationPage";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { safeUploadName, uniqueUploadName, UPLOAD_SUBDIR, MAX_UPLOAD_BYTES } from "./upload";
+import { safeUploadName, uniqueUploadName, readStreamCapped, UPLOAD_SUBDIR, MAX_UPLOAD_BYTES } from "./upload";
 
 // Engine-vendored xterm.js (self-hosted, no CDN — V5 Phase 1). Read once at startup as UTF-8 text
 // (both are text assets); null if the vendor dir is missing (then it degrades to 503, not a crash).
@@ -582,9 +582,12 @@ export function startEngineServer(opts: StartOptions = {}): EngineServer {
         const cap = opts.maxUploadBytes ?? MAX_UPLOAD_BYTES;
         const declared = Number(request.headers.get("content-length") || 0);
         if (declared > cap) return Response.json({ error: "file too large" }, { status: 413 });
-        const bytes = new Uint8Array(await request.arrayBuffer().catch(() => new ArrayBuffer(0)));
+        // Stream with a running byte counter (#36): a chunked body with no honest content-length can't
+        // slip past the declared-size check above and OOM us — readStreamCapped aborts at the first
+        // chunk over the cap, so we never buffer more than the cap.
+        const bytes = await readStreamCapped(request.body, cap);
+        if (bytes === null) return Response.json({ error: "file too large" }, { status: 413 });
         if (bytes.length === 0) return Response.json({ error: "empty upload" }, { status: 400 });
-        if (bytes.length > cap) return Response.json({ error: "file too large" }, { status: 413 });
         let rawName = "upload";
         try {
           rawName = decodeURIComponent(request.headers.get("x-filename") || "upload");

@@ -7,7 +7,53 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startEngineServer, type EngineServer } from "../src/server";
-import { safeUploadName, uniqueUploadName, UPLOAD_SUBDIR } from "../src/upload";
+import { safeUploadName, uniqueUploadName, readStreamCapped, UPLOAD_SUBDIR } from "../src/upload";
+
+/** A ReadableStream that emits the given chunks then closes — to drive readStreamCapped directly. */
+function streamOf(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  let i = 0;
+  return new ReadableStream({
+    pull(c) {
+      if (i < chunks.length) c.enqueue(chunks[i++]);
+      else c.close();
+    },
+  });
+}
+
+describe("readStreamCapped (streaming byte counter — no full-buffer before the cap, #36)", () => {
+  test("under the cap → the concatenated bytes", async () => {
+    const out = await readStreamCapped(streamOf([Uint8Array.from([1, 2]), Uint8Array.from([3, 4, 5])]), 64);
+    expect(out).not.toBeNull();
+    expect([...out!]).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test("exactly at the cap → accepted (the trigger is strictly over)", async () => {
+    const out = await readStreamCapped(streamOf([new Uint8Array(64)]), 64);
+    expect(out?.length).toBe(64);
+  });
+
+  test("over the cap ACROSS chunks → null, and it stops early (doesn't read the tail)", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(40)); // 40, 80(>64 → abort), … — an unbounded chunked body
+      },
+    });
+    const out = await readStreamCapped(stream, 64);
+    expect(out).toBeNull();
+    expect(pulled).toBeLessThanOrEqual(2); // bailed at the 2nd chunk, never drained the (infinite) stream
+  });
+
+  test("a single chunk larger than the cap → null", async () => {
+    expect(await readStreamCapped(streamOf([new Uint8Array(65)]), 64)).toBeNull();
+  });
+
+  test("a null/absent body → an empty buffer (the route 400s that)", async () => {
+    expect((await readStreamCapped(null, 64))?.length).toBe(0);
+    expect((await readStreamCapped(undefined, 64))?.length).toBe(0);
+  });
+});
 
 describe("safeUploadName (no traversal, ever)", () => {
   test("strips any path components down to the basename", () => {
@@ -115,6 +161,20 @@ describe("/upload route", () => {
     const big = new Uint8Array(65); // server cap is 64 bytes
     const res = await upload(termToken(), "big.bin", big);
     expect(res.status).toBe(413);
+  });
+
+  test("a CHUNKED over-cap body (no honest content-length) is still rejected 413, not OOM'd (#36)", async () => {
+    // Stream 3×40 = 120 bytes as a chunked body — the declared-size fast-path can't catch it, so the
+    // streaming counter must. Nothing is written to disk.
+    const res = await fetch(`${base}/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${termToken()}`, "x-filename": "huge.bin" },
+      body: streamOf([new Uint8Array(40), new Uint8Array(40), new Uint8Array(40)]),
+      // @ts-expect-error duplex is required by the fetch spec for a stream body (supported by Bun)
+      duplex: "half",
+    });
+    expect(res.status).toBe(413);
+    expect(existsSync(join(uploads, "huge.bin"))).toBe(false);
   });
 
   test("an empty upload → 400", async () => {
