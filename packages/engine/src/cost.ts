@@ -1,4 +1,5 @@
 import type { SessionMessage } from "./types";
+import { matchModelKey } from "./modelMatch";
 
 // Token + cost accounting for a session. Interactive Claude Code sessions record
 // token usage but NOT a dollar cost, so we compute an ESTIMATE: tokens x a
@@ -81,9 +82,8 @@ export function computeSessionCost(
 }
 
 function priceFor(model: string, table: PriceTable): ModelPrice | undefined {
-  const m = model.toLowerCase();
-  for (const key of Object.keys(table)) {
-    if (m.includes(key.toLowerCase())) return table[key];
-  }
-  return undefined;
+  // Longest-key-first (#38) via the shared matcher — a more specific family key wins over a shorter
+  // token it contains, instead of whichever Object.keys order happened to surface first.
+  const match = matchModelKey(model, Object.keys(table));
+  return match ? table[match.key] : undefined;
 }

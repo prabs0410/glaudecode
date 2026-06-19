@@ -1,4 +1,5 @@
 import type { SessionMessage } from "./types";
+import { matchModelKey } from "./modelMatch";
 
 // Context-window gauge (Epic C §3.1). The live context size ≈ the input-side tokens of
 // the most recent assistant turn — i.e. what was sent to the model on the last request
@@ -64,9 +65,7 @@ function latestAssistantWithUsage(messages: SessionMessage[]): SessionMessage | 
 }
 
 function limitFor(model: string, table: ContextLimitTable): number | undefined {
-  const m = model.toLowerCase();
-  for (const key of Object.keys(table)) {
-    if (m.includes(key.toLowerCase())) return table[key];
-  }
-  return undefined;
+  // Longest-key-first (#38), shared with cost.ts: the most specific family key wins deterministically.
+  const match = matchModelKey(model, Object.keys(table));
+  return match ? table[match.key] : undefined;
 }

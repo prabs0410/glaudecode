@@ -54,6 +54,8 @@ export type {
 } from "./extensionHost";
 export { MetaAgent, generateObservations } from "./metaAgent";
 export type { MetaAgentInput, Observation, ObserveOptions } from "./metaAgent";
+export { matchModelKey } from "./modelMatch";
+export type { ModelKeyMatch } from "./modelMatch";
 export { computeContextUsage, DEFAULT_CONTEXT_LIMITS } from "./contextUsage";
 export type { ContextLimitTable, ContextUsage, ContextUsageOptions } from "./contextUsage";
 export { classifyTool } from "./approval";
