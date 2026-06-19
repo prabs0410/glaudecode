@@ -113,6 +113,14 @@ Work these in BACKLOG order; each is self-contained. Skip any that turn out to n
 
 ## Progress log
 
+> ⏸️ **LOOP PAUSED 2026-06-19** (founder compacting the session). HEAD `9e525b0` + the design-doc
+> commit are clean and `bun run verify` is GREEN. Nothing is half-done. **To resume:** re-run the
+> `/loop` (self-paced) — the next task is **D5** (desktop session-inference tiebreaker → pure tested
+> fn). Remaining: D5 · D6 scope-required · D7 mirror-drift · D8 upload-streaming · D9 cost-match ·
+> D10/D11 test harnesses · D3 incremental-render (after D11) · D12 docs · Phase E push scaffolding.
+> Human-gated (for the founder, not the loop): **C1** token persistence · **WS4** threat-model ·
+> **MagicDNS/HTTPS** (push delivery + clipboard images) · **`prabs0410` gh-auth** (land the branches).
+
 - ✅ **OBS-1** durable engine logs — `9b4d38e`.
 - ✅ **OBS-2** EventLog hub + `diagnostics()` RPC + instrumentation — `1e77031`, `27c4bd3`. (397 engine tests.)
 - ✅ **A1 (OBS-3)** phone→Mac error pipe complete: `POST /clientlog-remote` + BOTH pages forward window error + unhandledrejection + tap-to-open HUD — `ffc2bd4`, `4be9183`. (398 engine tests.)
