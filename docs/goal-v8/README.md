@@ -52,3 +52,20 @@ pull-only today). Full design + rationale: the approved plan (`~/.claude/plans/r
 **Shipped (all committed on `feat/v6-conversation`, `bun run verify` green — engine 500 · desktop 9):** Phase 1 push delivery (sender · approval trigger · service worker · subscribe · icons), Phase 2 C1 HMAC token persistence, Phase 3 WS4 threat-model, Phase 4 review-remediation + push + PR draft.
 
 **Founder-gated (NOT loop work):** enable Tailscale Serve/HTTPS (activates real push delivery + device test) · `gh` auth as `prabs0410` (create PR + merge to main) · WS4 go/no-go (build seamless pairing) · device-bound tokens (the linchpin for a 30-day terminal token) · the deferred question/finished/error detector wiring (needs server-side session enumeration) · the D11/#22 + D12 doc edits from V7.
+
+---
+
+### 🟡 Post-V8 — conversation-page UX (live-tested), IN PROGRESS
+
+The founder tried to *use* the mobile chat page and it was "all there but not usable." V8 had shipped
+green on unit tests but its **lived UX was never validated**. Fixed (commit `b5d3c77`, each verified by
+driving the real page in Chrome at a phone viewport — see `docs/handoffs/2026-06-20-conversation-ux-fixes-and-test-rig.md`
++ memory `feedback-test-the-lived-ux`):
+- ✅ **Layout overlap** (the "input not visible" root cause) — chat/composer were absolutely+fixed
+  positioned and overlapped; rebuilt as a flex column + `100dvh` (keyboard-aware). Input now visible.
+- ✅ **Puck draggable** — was impossible by design (needed a 260ms pause); a deliberate drag now moves it,
+  a quick flick still fires an arrow.
+- ✅ **Collapsible shortcut bar** — added the "⌄ shortcuts" chevron (persisted) + a subtler idle puck.
+- 🔨 **NOT DONE — the founder has more UX feedback coming.** This is a start, not the finished UX. Known
+  rough edges to revisit: the puck's 4 overloaded gestures; steer scope has no composer; general polish.
+  Next step = a real usability pass using the test rig (drive → find cause → fix → re-verify live).
