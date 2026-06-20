@@ -18,9 +18,12 @@ export const CONVERSATION_HTML = `<!doctype html>
   :root{--bg:#0d1117;--panel:#11161d;--panel2:#161c26;--line:#1f2630;--line2:#30363d;--text:#c9d1d9;
     --muted:#8b949e;--dim:#6e7681;--accent:#1f6feb;--accent2:#79c0ff;--green:#3fb950;--amber:#d29922;--user:#1b3a6b}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);overscroll-behavior:none;
+  html{height:100%}
+  /* Flex column so the chat fills the space BETWEEN the bar and composer (no overlap), and 100dvh so
+     the mobile keyboard shrinks the viewport and the composer rides above it instead of being covered. */
+  body{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);overscroll-behavior:none;
     font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif}
-  #bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+  #bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
   #bar a{color:var(--accent2);text-decoration:none;font-size:18px}
   #title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42%}
   /* BL-6: when the rendered session != the pane you type into, show it (never silent). Tap = switch. */
@@ -31,7 +34,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   #status.run .dot{background:var(--amber)} #status.run{color:var(--amber)}
   #status.idle .dot{background:var(--green)} #status.idle{color:var(--green)}
   .ib{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--text);padding:5px 9px;font-size:13px;cursor:pointer}
-  #chat{position:absolute;top:39px;left:0;right:0;bottom:0;overflow-y:auto;overscroll-behavior:contain;
+  #chat{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;padding:14px 12px 8px;display:flex;flex-direction:column;gap:11px}
   .msg{max-width:88%;word-wrap:break-word}
   .user{align-self:flex-end;background:var(--user);border:1px solid #244a86;border-radius:14px 14px 4px 14px;padding:9px 12px;white-space:pre-wrap}
@@ -49,7 +52,10 @@ export const CONVERSATION_HTML = `<!doctype html>
   #answer .opt small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
   #answer .opt.on{border-color:var(--accent);background:#16263a}
   /* composer */
-  #composer{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line)}
+  #composer{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line)}
+  /* Collapse the shortcut row to reclaim vertical space (persisted). */
+  #kbtoggle{display:block;width:100%;background:none;border:0;border-bottom:1px solid var(--line2);color:var(--dim);font-size:11px;letter-spacing:.3px;padding:3px 0;cursor:pointer}
+  #composer.kbc #keys{display:none}
   #keys{display:flex;gap:6px;overflow-x:auto;padding:7px 10px 0}
   #keys button{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line2);border-radius:7px;color:var(--text);padding:6px 11px;font:13px ui-monospace,Menlo,monospace;cursor:pointer}
   #crow{display:flex;align-items:flex-end;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
@@ -62,9 +68,10 @@ export const CONVERSATION_HTML = `<!doctype html>
   /* gesture puck (V6) — tap=Enter · flick=arrows · press-hold=radial · move-then-pause=re-park */
   #puck{position:fixed;width:60px;height:60px;border-radius:50%;z-index:60;touch-action:none;display:none;
     align-items:center;justify-content:center;color:#fff;font-size:21px;border:2px solid #4f8bf5;cursor:grab;
+    opacity:.72;transition:opacity .15s,transform .1s;
     background:radial-gradient(circle at 35% 30%,#3a7bf0,#1f6feb 60%,#1a52b8);
     box-shadow:0 6px 22px rgba(31,111,235,.55),inset 0 1px 2px rgba(255,255,255,.35)}
-  #puck.holding{transform:scale(.94);cursor:grabbing} #puck.carry{transform:scale(1.07);box-shadow:0 8px 28px rgba(31,111,235,.75)}
+  #puck.holding{transform:scale(.94);cursor:grabbing;opacity:1} #puck.carry{transform:scale(1.07);opacity:1;box-shadow:0 8px 28px rgba(31,111,235,.75)}
   .wedge{position:fixed;width:50px;height:50px;border-radius:50%;z-index:59;display:flex;align-items:center;justify-content:center;
     background:var(--panel);border:1px solid var(--line2);color:var(--text);font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.45);
     transition:transform .08s,background .08s;pointer-events:none}
@@ -96,11 +103,12 @@ export const CONVERSATION_HTML = `<!doctype html>
   .roTag{background:#16263a;color:var(--accent2);border-radius:6px;padding:1px 7px;font-size:10px}
   /* diagnostics — tap the status chip to expand; a blank/broken screen explains itself */
   #status{cursor:pointer}
-  #dbg{display:none;position:fixed;top:39px;left:0;right:0;z-index:50;background:#0b0f14f2;border-bottom:1px solid var(--line2);
+  /* In-flow (flex item) banners — they push the chat down when shown instead of overlapping the bar. */
+  #dbg{display:none;flex:0 0 auto;background:#0b0f14f2;border-bottom:1px solid var(--line2);
     padding:9px 12px;font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);max-height:55vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
   #dbg.show{display:block}
   /* D4: a distinct, persistent banner when the engine is unreachable — not a silent freeze */
-  #engineban{display:none;position:fixed;top:39px;left:0;right:0;z-index:55;background:#3a1212;color:#ff7b72;
+  #engineban{display:none;flex:0 0 auto;background:#3a1212;color:#ff7b72;
     font-size:12px;padding:7px 12px;text-align:center;border-bottom:1px solid #5e2b2b;cursor:pointer}
   #engineban.show{display:block}
   #chat .notice{margin:auto;max-width:300px;text-align:center;color:var(--muted);padding:24px 14px}
@@ -125,6 +133,7 @@ export const CONVERSATION_HTML = `<!doctype html>
   <input id="file" type="file" />
   <div id="composer">
     <div id="answer"></div>
+    <button id="kbtoggle" title="Hide / show the shortcut bar">⌄ shortcuts</button>
     <div id="keys">
       <button data-k="/">/</button><button data-k="@">@</button><button data-k="#">#</button><button data-k="!">!</button>
       <button data-seq="esc">Esc</button><button data-seq="cr">⏎</button><button data-seq="ctrlc">^C</button>
@@ -351,6 +360,12 @@ export const CONVERSATION_HTML = `<!doctype html>
   }
   document.getElementById("send").onclick=send;
   tin.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
+  // Collapse/expand the shortcut row (persisted) — the bottom bar the user can fold away to reclaim space.
+  var _comp=document.getElementById("composer"), _kbt=document.getElementById("kbtoggle");
+  function _syncKbt(){ _kbt.textContent=(_comp.classList.contains("kbc")?"⌃":"⌄")+" shortcuts"; }
+  if(localStorage.getItem("ck.kbc")==="1") _comp.classList.add("kbc");
+  _syncKbt();
+  _kbt.onclick=function(){ _comp.classList.toggle("kbc"); try{localStorage.setItem("ck.kbc",_comp.classList.contains("kbc")?"1":"0");}catch(e){} _syncKbt(); };
   // quick-insert + key chips
   Array.prototype.forEach.call(document.querySelectorAll("#keys button"),function(b){
     b.addEventListener("pointerdown",function(e){ e.preventDefault(); });
@@ -435,13 +450,15 @@ export const CONVERSATION_HTML = `<!doctype html>
     puck.addEventListener("pointerdown",function(e){
       e.preventDefault(); try{puck.setPointerCapture(e.pointerId);}catch(err){}
       puck.classList.add("holding");
-      st={x0:e.clientX,y0:e.clientY,ox:pos.x,oy:pos.y,cx:pos.x+SZ/2,cy:pos.y+SZ/2,mode:"idle",hot:null};
+      st={x0:e.clientX,y0:e.clientY,ox:pos.x,oy:pos.y,cx:pos.x+SZ/2,cy:pos.y+SZ/2,mode:"idle",hot:null,t0:Date.now()};
       st.hold=setTimeout(function(){ if(st&&st.mode==="idle"){ st.mode="radial"; buildRadial(st.cx,st.cy); if(navigator.vibrate)navigator.vibrate(8); } },HOLD_MS);
     });
     window.addEventListener("pointermove",function(e){
       if(!st)return; var dx=e.clientX-st.x0, dy=e.clientY-st.y0;
       if(st.mode==="idle" && Math.hypot(dx,dy)>MOVE){ clearTimeout(st.hold); st.mode="flick"; armDwell(); }
-      else if(st.mode==="flick"){ armDwell(); }
+      // A DELIBERATE drag (still moving 240ms+ after touch-down) = pick up & move — no "pause" needed.
+      // A quick swipe (released before 240ms) stays a flick → arrow. This is what makes the puck draggable.
+      else if(st.mode==="flick"){ if(Date.now()-st.t0>240){ clearTimeout(st.dwell); st.mode="carry"; puck.classList.add("carry"); if(navigator.vibrate)navigator.vibrate(8); pos.x=st.ox+dx; pos.y=st.oy+dy; place(); } else { armDwell(); } }
       else if(st.mode==="carry"){ pos.x=st.ox+dx; pos.y=st.oy+dy; place(); }
       else if(st.mode==="radial"){ st.hot=hotWedge(st.cx,st.cy,e.clientX,e.clientY); }
     });
